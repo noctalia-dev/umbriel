@@ -325,10 +325,12 @@ namespace {
   void collectLiveNames(
       std::vector<std::string>& target, std::string_view command, std::string_view key, const LiveBudget& budget
   ) {
-    if (budget.remainingMs() == 0) {
+    // Sampled once: a second read could observe an expired budget and ask for the "no timeout" timeval instead.
+    const int remaining = budget.remainingMs();
+    if (remaining == 0) {
       return;
     }
-    const std::optional<std::string> payload = umbriel::queryIpcJson(command, budget.remainingMs());
+    const std::optional<std::string> payload = umbriel::queryIpcJson(command, remaining);
     if (!payload) {
       return;
     }

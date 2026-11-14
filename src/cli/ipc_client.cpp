@@ -73,7 +73,8 @@ namespace umbriel {
       return fd;
     }
 
-    // One reply line, or nullopt when the peer closed without one. The caller owns `fd` and closes it.
+    // One reply line, or nullopt when the peer closed without one or the receive timeout expired. The caller owns
+    // `fd` and closes it.
     std::optional<std::string> receiveLine(int fd) {
       std::string buf;
       char chunk[4096];
@@ -258,6 +259,10 @@ namespace umbriel {
   }
 
   std::optional<std::string> queryIpcJson(std::string_view command, int budgetMs) {
+    // A zero timeval means no timeout at all, so the caller's exhausted budget is refused before it can block.
+    if (budgetMs <= 0) {
+      return std::nullopt;
+    }
     std::string error;
     const int fd = connectSocket(error);
     if (fd < 0) {

@@ -327,14 +327,14 @@ namespace umbriel {
       case ActionArgKind::WindowMoveBy:
         return CompletionOutcome::Candidates;
       case ActionArgKind::Workspace:
-        if (index == 0 && !workspaceByName) {
+        if (index == *workspaceIndex && !workspaceByName) {
           emitAll(values.workspaces.items(), "workspace");
         }
         return CompletionOutcome::Candidates;
       case ActionArgKind::WorkspaceMoveToOutput:
         if (index == 0) {
           emitAll(values.outputs.items(), "output");
-        } else if (index == 1 && !workspaceByName) {
+        } else if (index == *workspaceIndex && !workspaceByName) {
           emitAll(values.workspaces.items(), "workspace");
         }
         return CompletionOutcome::Candidates;
