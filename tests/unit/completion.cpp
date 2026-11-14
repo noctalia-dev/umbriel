@@ -319,6 +319,18 @@ UMBRIEL_TEST(topLevelFlagsOwnTheirArguments) {
   CHECK(complete({"bogus", ""}).empty());
 }
 
+UMBRIEL_TEST(valuesTheWordGrammarRefusesAreNotOffered) {
+  CompletionValues values;
+  // A configured name the parser treats as a flag, and a submap name it refuses outright, are not candidates.
+  values.outputs = {"eDP-1", "--x"};
+  values.submaps = {"music", "disable", "--flag"};
+  CHECK_EQ(complete({"msg", "dpms-off", ""}, values), std::vector<std::string>{"eDP-1"});
+  CHECK_EQ(
+      complete({"msg", "submap", ""}, values),
+      (std::vector<std::string>{"music", std::string{umbriel::kSubmapResetWord}})
+  );
+}
+
 UMBRIEL_TEST(argumentsStopWhenTheActionTakesNone) {
   CHECK(complete({"msg", "overview-toggle", ""}).empty());
   CHECK(complete({"msg", "overview-toggle", "x"}).empty());
@@ -369,6 +381,10 @@ UMBRIEL_TEST(ipcCommandsCompleteTheirOwnSurface) {
   CHECK(outcome == CompletionOutcome::Delegate);
 
   CHECK_EQ(complete({"input-capture-revoke", ""}), std::vector<std::string>{"all"});
+  // The dispatch strips the JSON flags before reading arguments, so they do not shift the argument position.
+  CHECK_EQ(complete({"input-capture-revoke", "--json", ""}), std::vector<std::string>{"all"});
+  // `config unset` takes `--all` beside `key`; a dash-prefixed choice completes with the flags.
+  CHECK(contains(complete({"config", "unset", "-"}), "--all"));
 
   // The Config group is reached as `config <sub>`; a request name on its own is a line the dispatch refuses.
   CHECK(complete({"config-set", "--"}).empty());

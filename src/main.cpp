@@ -451,8 +451,7 @@ int main(int argc, char** argv) {
         return printConfigSchema(json);
       }
       if (argc >= 3) {
-        const auto* spec = umbriel::findIpcCommand(std::format("{}{}", umbriel::kConfigCommandPrefix, argv[2]));
-        if (spec != nullptr && spec->group == umbriel::IpcCommandGroup::Config) {
+        if (const auto* spec = umbriel::findConfigCommand(argv[2]); spec != nullptr) {
           return runSpecCommand(*spec, argc, argv, 3);
         }
       }
@@ -484,6 +483,7 @@ int main(int argc, char** argv) {
         return EXIT_SUCCESS;
       }
       if (argc != 3) {
+        // A usage error, distinct from the unknown-shell code: 2 is what the scripts reserve for delegation.
         std::println(stderr, "error: completions needs a shell: {}", completionShellList(", "));
         return EXIT_FAILURE;
       }
@@ -513,6 +513,11 @@ int main(int argc, char** argv) {
       const umbriel::CompletionValues values = completionValues();
       const umbriel::CompletionOutcome outcome =
           umbriel::completeWords(words, values, [](std::string_view value, std::string_view description) {
+            // The protocol is one `value<TAB>description` line, so a value carrying a separator, as a window title
+            // may, would forge or split a candidate.
+            if (value.find_first_of("\t\n") != std::string_view::npos) {
+              return;
+            }
             if (description.empty()) {
               std::println("{}", value);
             } else {
