@@ -892,6 +892,8 @@ namespace umbriel {
       for (View* view : sortedEffectViews()) {
         view->refreshConfigChrome();
       }
+      // An open menu never commits again, so a blur change would otherwise wait for its next frame.
+      Popup::refreshAllBlur();
       // Screen and cursor presets take their palette from [colors] too.
       m_effects.applyOutputEffects();
       markDirty(Dirty::Backdrop);
@@ -1357,7 +1359,9 @@ namespace umbriel {
     }
   }
 
-  void Server::onNewXdgPopup(wl_listener* /*listener*/, void* data) {
+  void Server::onNewXdgPopup(wl_listener* listener, void* data) {
+    Server* self;
+    self = wl_container_of(listener, self, m_newXdgPopup);
     auto* popup = static_cast<wlr_xdg_popup*>(data);
     // Layer-shell popups (and any popup without a parent yet) are handled
     // elsewhere; parent can be null when xdg_shell emits new_popup.
@@ -1365,7 +1369,7 @@ namespace umbriel {
       return;
     }
     View* owner = View::fromSurface(popup->parent);
-    new Popup(popup, nullptr, owner != nullptr ? owner->captureTree() : nullptr);
+    new Popup(popup, nullptr, owner != nullptr ? owner->captureTree() : nullptr, self);
   }
 
   void Server::onNewXdgDecoration(wl_listener* listener, void* data) {

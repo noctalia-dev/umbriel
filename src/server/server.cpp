@@ -29,6 +29,7 @@
 #include "scene/quit_confirm.h"
 #include "server/allocator.h"
 #include "server/backend_manager.h"
+#include "server/background_effect.h"
 #include "server/color_manager.h"
 #include "server/drm_lease.h"
 #include "server/ipc.h"
@@ -72,7 +73,7 @@ namespace umbriel {
     // Security-context clients only receive reviewed, ordinary application
     // protocols. New globals stay unavailable until they are classified here.
     // [[security_context_rule]] widens the set for matching clients.
-    constexpr std::array<std::string_view, 32> kAllowedSecurityContextGlobals{
+    constexpr std::array<std::string_view, 33> kAllowedSecurityContextGlobals{
         "wl_shm",
         "wl_drm",
         "zwp_linux_dmabuf_v1",
@@ -105,6 +106,7 @@ namespace umbriel {
         "wl_seat",
         "wp_cursor_shape_manager_v1",
         "zwp_text_input_manager_v3",
+        "ext_background_effect_manager_v1",
     };
 
     bool isAllowedSecurityContextGlobal(std::string_view interface) {
@@ -718,6 +720,13 @@ namespace umbriel {
         throw std::runtime_error("failed to create color-management manager");
       }
     }
+    // Client-requested backdrop blur (ext_background_effect_v1). Created after
+    // the compositor so ext-background-effect's surfaces can be looked up, and
+    // before any client can bind it.
+    m_backgroundEffect = std::make_unique<BackgroundEffectManager>(m_display);
+    if (m_backgroundEffect->global() == nullptr) {
+      throw std::runtime_error("failed to create ext-background-effect manager");
+    }
     const Config::Appearance::Blur& blur = config().appearance.blur;
     wlr_scene_set_blur_data(
         m_scene, blur.passes, blur.radius, static_cast<float>(blur.noise), static_cast<float>(blur.brightness),
@@ -1099,6 +1108,7 @@ namespace umbriel {
     wl_display_destroy_clients(m_display);
     m_drmLeaseManager.reset();
     m_colorManager.reset();
+    m_backgroundEffect.reset();
     m_syncobjAcquireBarrier.reset();
     m_syncobjUnmapRelease.reset();
     m_syncobjSupersededRelease.reset();

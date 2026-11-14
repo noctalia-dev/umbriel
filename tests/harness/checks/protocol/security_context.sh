@@ -41,6 +41,7 @@ readonly -a NORMAL_GLOBALS=(
   wl_seat
   wp_cursor_shape_manager_v1
   zwp_text_input_manager_v3
+  ext_background_effect_manager_v1
 )
 
 readonly -a RESTRICTED_GLOBALS=(

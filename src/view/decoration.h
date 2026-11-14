@@ -59,7 +59,7 @@ namespace umbriel {
     void updateBlur(
         wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry,
         fx_corner_radii corners, const wlr_box* clip, float surfaceOpacity, float blurAlpha,
-        const SurfaceBlurOptions& options
+        const SurfaceBlurOptions& options, const ClientBlurRegion& clientBlur = {}
     );
     void hideBlur();
     void setBlurLive(bool live) { m_blur.setLive(live); }

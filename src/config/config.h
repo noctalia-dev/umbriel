@@ -794,6 +794,10 @@ namespace umbriel {
       bool opaqueFullscreen = true;
       struct Blur {
         bool enabled = true;
+        // Honour client-requested backdrop blur (ext_background_effect_v1).
+        // Turning this off keeps the global advertised but ignores requests,
+        // like a compositor policy.
+        bool clientRequests = true;
         bool optimized = true;
         int passes = 2;
         int radius = 5;

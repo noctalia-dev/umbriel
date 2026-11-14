@@ -26,6 +26,7 @@ extern "C" {
 #include "scene/ssd_frame.h"
 #include "scene/surface_shape.h"
 #include "scene/text_buffer.h"
+#include "server/background_effect.h"
 #include "server/color_manager.h"
 #include "server/focus.h"
 #include "server/server.h"
@@ -459,10 +460,14 @@ namespace umbriel {
       applySurfaceShape(entry->buffer, surface, shape);
       roundToCardBox(entry->buffer);
       const wlr_box blurBox{0, 0, contentW, contentH};
+      // The card draws the committed geometry over the card box, so a client-requested region maps with that source.
+      const pixman_region32_t* clientRegion = m_server->backgroundEffect() != nullptr && entry->isRoot
+          ? m_server->backgroundEffect()->region(surface)
+          : nullptr;
       card.blur.setAlpha(1.0F);
       card.blur.update(
           card.tree, surface, blurBox, geometry, contentCorners, nullptr, view->blurOptions(), entry->buffer->opacity,
-          entry->buffer
+          entry->buffer, ClientBlurRegion{.region = clientRegion, .source = geometry}
       );
       blurUpdated = true;
     }
