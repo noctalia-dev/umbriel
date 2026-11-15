@@ -10,19 +10,28 @@ namespace umbriel {
 #   eval "$(umbriel completions bash)"
 # The words up to the cursor, as the line spells them: readline splits COMP_WORDS on `COMP_WORDBREAKS`, which
 # includes `:`, and leaves backslash escapes in place, so neither reaches `umbriel complete` intact otherwise.
+# Sets `_umbriel_words` to those words, `_umbriel_kept` to the part of the last one readline keeps (everything after
+# the last unquoted, unescaped break character), and `_umbriel_quote` to the quote still open at the cursor.
 _umbriel_words() {
-  local line=$1 char word= escaped=0 quote=
+  local line=$1 char word= kept= escaped=0 quote=
   local -a words=()
   local i
+  local breaks=${COMP_WORDBREAKS//[[:space:]\"\'\\]/}
   for ((i = 0; i < ${#line}; ++i)); do
     char=${line:i:1}
     if ((escaped)); then
       word+=$char
+      kept+=$char
       escaped=0
     elif [[ $char == '\' ]]; then
       escaped=1
     elif [[ -n $quote ]]; then
-      [[ $char == "$quote" ]] && quote= || word+=$char
+      if [[ $char == "$quote" ]]; then
+        quote=
+      else
+        word+=$char
+        kept+=$char
+      fi
     elif [[ $char == "'" || $char == '"' ]]; then
       quote=$char
     elif [[ $char == ' ' || $char == $'\t' ]]; then
@@ -30,18 +39,43 @@ _umbriel_words() {
         words+=("$word")
         word=
       fi
+      kept=
+    elif [[ -n $breaks && $breaks == *"$char"* ]]; then
+      word+=$char
+      kept=
     else
       word+=$char
+      kept+=$char
     fi
   done
   words+=("$word")
-  printf '%s\n' "${words[@]}"
+  _umbriel_kept=$kept
+  _umbriel_quote=$quote
+  _umbriel_words=("${words[@]}")
+}
+
+# A value as the shell must re-read it: `%q` where the word is unquoted, and the quote's own escapes inside an open
+# one, where a backslash is literal.
+_umbriel_escape() {
+  local value=$1
+  case "$_umbriel_quote" in
+    '"')
+      value=${value//\\/\\\\}
+      value=${value//\"/\\\"}
+      value=${value//\$/\\$}
+      value=${value//\`/\\\`}
+      printf '%s' "$value"
+      ;;
+    "'") printf '%s' "$value" ;;
+    *) printf '%q' "$value" ;;
+  esac
 }
 
 _umbriel() {
   local -a words=()
-  local output code=0 value description current prefix
-  mapfile -t words < <(_umbriel_words "${COMP_LINE:0:COMP_POINT}")
+  local output code=0 value description
+  _umbriel_words "${COMP_LINE:0:COMP_POINT}"
+  words=("${_umbriel_words[@]}")
   output=$(umbriel complete -- "${words[@]:1}" 2>/dev/null) || code=$?
   if ((code == 2)); then
     compopt -o default 2>/dev/null || true
@@ -52,16 +86,13 @@ _umbriel() {
     return 0
   fi
   COMPREPLY=()
-  # readline replaces only what follows the last `COMP_WORDBREAKS` character, which includes `:`, so the part the line
-  # already holds is dropped from a candidate before it is quoted for re-entry. Quoting is readline's own job the
-  # filenames option does for files; done here it also covers a value with no whitespace, and it never appends a slash
-  # to a value that happens to name a directory.
-  current=${words[-1]}
-  prefix=${current%"${current##*:}"}
+  # readline keeps the part of the word before the last unquoted, unescaped break character and replaces the rest, so
+  # a candidate supplies only what is missing.
+  local head=${words[-1]%"$_umbriel_kept"}
   while IFS=$'\t' read -r value description; do
     [[ -n $value ]] || continue
-    [[ -n $prefix && $value == "$prefix"* ]] && value=${value#"$prefix"}
-    COMPREPLY+=("$(printf '%q' "$value")")
+    [[ -n $head && $value == "$head"* ]] && value=${value#"$head"}
+    COMPREPLY+=("$(_umbriel_escape "$value")")
   done <<<"$output"
   return 0
 }
