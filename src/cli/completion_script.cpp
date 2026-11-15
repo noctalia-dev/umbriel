@@ -10,10 +10,11 @@ namespace umbriel {
 #   eval "$(umbriel completions bash)"
 # The words up to the cursor, as the line spells them: readline splits COMP_WORDS on `COMP_WORDBREAKS`, which
 # includes `:`, and leaves backslash escapes in place, so neither reaches `umbriel complete` intact otherwise.
-# Sets `_umbriel_words` to those words, `_umbriel_kept` to the part of the last one readline keeps (everything after
-# the last unquoted, unescaped break character), and `_umbriel_quote` to the quote still open at the cursor.
+# Sets `_umbriel_words` to those words, `_umbriel_kept` to the part of the last one readline replaces (everything after
+# the last unquoted, unescaped break character, or after a quote still open at the cursor), and `_umbriel_quote` to
+# that open quote.
 _umbriel_words() {
-  local line=$1 char word= kept= escaped=0 quote=
+  local line=$1 char word= kept= open= escaped=0 quote=
   local -a words=()
   local i
   local breaks=${COMP_WORDBREAKS//[[:space:]\"\'\\]/}
@@ -28,14 +29,14 @@ _umbriel_words() {
     elif [[ -n $quote ]]; then
       if [[ $char == "$quote" ]]; then
         quote=
-        kept=
       else
         word+=$char
         kept+=$char
+        open+=$char
       fi
     elif [[ $char == "'" || $char == '"' ]]; then
       quote=$char
-      kept=
+      open=
     elif [[ $char == ' ' || $char == $'\t' ]]; then
       if [[ -n $word ]]; then
         words+=("$word")
@@ -51,7 +52,13 @@ _umbriel_words() {
     fi
   done
   words+=("$word")
-  _umbriel_kept=$kept
+  # An open quote is the only break character readline still holds, so what follows it is all it replaces; once the
+  # quote is closed the word it made is what readline replaces whole.
+  if [[ -n $quote ]]; then
+    _umbriel_kept=$open
+  else
+    _umbriel_kept=$kept
+  fi
   _umbriel_quote=$quote
   _umbriel_words=("${words[@]}")
 }

@@ -789,6 +789,11 @@ UMBRIEL_TEST(bashScriptReplacesOnlyWhatReadlineDoes) {
       joined(bash.complete({"umbriel msg window-focus 'kitty:Don", "kitty:Don'\ttitle"}).candidates),
       "[kitty:Don'\\''']"
   );
+  // A closed quote makes one word of everything inside and after it, so the whole value replaces the word.
+  CHECK_EQ(
+      joined(bash.complete({"umbriel msg window-focus \"kitty:Don't\"", "kitty:Don't\ttitle"}).candidates),
+      "[kitty:Don\\'t]"
+  );
   // A second TAB reads the quotes the first one inserted, so the value continues after them.
   CHECK_EQ(
       joined(bash.complete({"umbriel msg window-focus \"kitty:hello\"'!'\"",
