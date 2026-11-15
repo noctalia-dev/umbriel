@@ -381,7 +381,7 @@ namespace umbriel {
   }
 
   bool InputCapturePermissions::revoke(std::string_view id) {
-    const bool all = id == "all";
+    const bool all = id == kRevokeAllWord;
     if (!all && !hexString(id, 32)) {
       return false;
     }
