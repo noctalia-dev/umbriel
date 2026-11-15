@@ -35,6 +35,10 @@ namespace umbriel {
       return {};
     }
 
+    // A reply is one JSON line from a compositor this CLI started talking to; the cap only keeps a peer from growing
+    // the buffer without bound while the deadline runs down.
+    constexpr size_t kMaxReplySize = 1U << 20;
+
     // Milliseconds left until `deadline`, rounded up so a sub-millisecond remainder still waits, and 0 once spent.
     int remainingMs(std::chrono::steady_clock::time_point deadline) {
       const auto left = std::chrono::ceil<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
@@ -59,6 +63,10 @@ namespace umbriel {
     // that owes a keystroke a budget passes `deadline` and gets a connect that cannot outlast it.
     int
     connectSocket(std::string& error, std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt) {
+      if (deadline && remainingMs(*deadline) <= 0) {
+        error = "completion budget spent before the query";
+        return -1;
+      }
       std::string socketPath = resolveSocketPath();
       if (socketPath.empty()) {
         error = "cannot find umbriel socket (is the compositor running?)";
@@ -108,30 +116,32 @@ namespace umbriel {
       return fd;
     }
 
-    // One reply line, or nullopt when the peer closed without one or the deadline passed. A timeout covers a single
-    // `recv`, so a peer that trickles the reply is re-armed against the same deadline instead of extending it. The
-    // caller owns `fd` and closes it.
+    // One reply line without its terminator, or nullopt when the peer closed without one, the reply exceeded the cap,
+    // or the deadline passed. A timeout covers a single `recv`, so a peer that trickles the reply is re-armed against
+    // the same deadline instead of extending it. Reading stops at the first newline: a peer that answers and then holds
+    // the connection open must not cost the caller the rest of its budget. The caller owns `fd` and closes it.
     std::optional<std::string>
     receiveLine(int fd, std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt) {
       std::string buf;
       char chunk[4096];
       while (true) {
         if (deadline && !setTimeout(fd, SO_RCVTIMEO, *deadline)) {
-          break;
+          return std::nullopt;
         }
         const ssize_t received = recv(fd, chunk, sizeof(chunk), 0);
         if (received <= 0) {
-          break;
+          return std::nullopt;
         }
         buf.append(chunk, static_cast<size_t>(received));
+        const size_t newline = buf.find('\n');
+        if (newline != std::string::npos) {
+          buf.resize(newline);
+          return buf;
+        }
+        if (buf.size() > kMaxReplySize) {
+          return std::nullopt;
+        }
       }
-      if (buf.empty()) {
-        return std::nullopt;
-      }
-      if (buf.back() == '\n') {
-        buf.pop_back();
-      }
-      return buf;
     }
 
     bool sendAll(int fd, std::string_view payload, bool report = true) {
@@ -298,7 +308,7 @@ namespace umbriel {
     return EXIT_SUCCESS;
   }
 
-  std::optional<std::string> queryIpcJson(std::string_view command, std::chrono::steady_clock::time_point deadline) {
+  std::optional<nlohmann::json> queryIpcJson(std::string_view command, std::chrono::steady_clock::time_point deadline) {
     std::string error;
     const int fd = connectSocket(error, deadline);
     if (fd < 0) {
@@ -313,11 +323,11 @@ namespace umbriel {
     if (!line) {
       return std::nullopt;
     }
-    const auto resp = nlohmann::json::parse(*line, nullptr, false);
+    const nlohmann::json resp = nlohmann::json::parse(*line, nullptr, false);
     if (resp.is_discarded() || !resp.is_object() || !resp.contains("ok")) {
       return std::nullopt;
     }
-    return resp["ok"].dump();
+    return resp["ok"];
   }
 
 } // namespace umbriel

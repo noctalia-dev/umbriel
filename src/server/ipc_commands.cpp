@@ -1369,7 +1369,7 @@ namespace umbriel {
     }
     std::string error;
     toml::table overrides;
-    if (args.front() == "--all") {
+    if (args.front() == kUnsetAllWord) {
       if (configStore().overrides().empty()) {
         return nlohmann::json{{"ok", nullptr}};
       }
@@ -1565,8 +1565,12 @@ namespace umbriel {
   }
 
   namespace {
-    constexpr std::array kRevokeChoices{std::string_view{"all"}};
-    constexpr std::array kUnsetChoices{std::string_view{"--all"}};
+    constexpr std::array kRevokeChoices{std::string_view{kRevokeAllWord}};
+    constexpr std::array kUnsetChoices{std::string_view{kUnsetAllWord}};
+    constexpr std::array kOnOffChoices{std::string_view{"on"}, std::string_view{"off"}};
+    constexpr std::array kSwipePhaseChoices{
+        std::string_view{"begin"}, std::string_view{"update"}, std::string_view{"end"}
+    };
   } // namespace
 
   static constexpr IpcCommandSpec kIpcCommands[] = {
@@ -1578,7 +1582,7 @@ namespace umbriel {
       {"output-create", "<name> [mode]", "create a virtual output (optional mode, as 1920x1080@60)",
        IpcCommandGroup::Control, true, &IpcCommands::outputCreate, &printOutputName},
       {"output-destroy", "<name>", "destroy a virtual output", IpcCommandGroup::Control, true,
-       &IpcCommands::outputDestroy, nullptr},
+       &IpcCommands::outputDestroy, nullptr, 2, IpcArgCompletion(IpcArgCompletion::Kind::Output)},
       {"config-replace", "<path>", "load and watch a different config file", IpcCommandGroup::Control, true,
        &IpcCommands::configReplace, nullptr, 2, IpcArgCompletion(IpcArgCompletion::Kind::Path)},
       {"config-set", "<key> <value>", "override a config value until the compositor exits", IpcCommandGroup::Config,
@@ -1614,14 +1618,18 @@ namespace umbriel {
       {"clock-resume", "", "let animation time follow the monotonic clock again, from where it stopped",
        IpcCommandGroup::Harness, false, &IpcCommands::clockResume, nullptr},
       {"swipe-test", "<begin|update|end> <ms> [dx dy|cancelled]", "inject three-finger swipe events (harness only)",
-       IpcCommandGroup::Harness, true, &IpcCommands::swipeForTest, nullptr},
+       IpcCommandGroup::Harness, true, &IpcCommands::swipeForTest, nullptr, 2,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kSwipePhaseChoices, "swipe phase")},
       {"animation-capture-fail", "<on|off>", "inject animation capture failure (harness only)",
-       IpcCommandGroup::Harness, true, &IpcCommands::animationCaptureFail, nullptr},
+       IpcCommandGroup::Harness, true, &IpcCommands::animationCaptureFail, nullptr, 2,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kOnOffChoices, "state")},
       {"blur-composite-split", "<on|off>",
        "composite backdrop blur through an effect buffer and wait until every output has drawn it (harness only)",
-       IpcCommandGroup::Harness, true, &IpcCommands::blurCompositeSplit, nullptr, 35},
+       IpcCommandGroup::Harness, true, &IpcCommands::blurCompositeSplit, nullptr, 35,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kOnOffChoices, "state")},
       {"event-pacing-hold", "<on|off>", "hold paced IPC events back until off (harness only)", IpcCommandGroup::Harness,
-       true, &IpcCommands::eventPacingHold, nullptr},
+       true, &IpcCommands::eventPacingHold, nullptr, 2,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kOnOffChoices, "state")},
       {"renderer-recover", "", "emit renderer loss and exercise recovery", IpcCommandGroup::Harness, false,
        &IpcCommands::rendererRecover, nullptr},
       {"plane-cursor", "<output> <x> <y> <visible> <image> [width height hotspot_x hotspot_y]",

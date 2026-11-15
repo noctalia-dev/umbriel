@@ -9,6 +9,7 @@
 #include "view/window_region.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
@@ -474,12 +475,15 @@ namespace umbriel {
   // Every layout mode name in enum order, and the `column-set-display` words in `ColumnDisplay` order: the parsers and
   // shell completion read one table each.
   std::span<const std::string_view> layoutModeNames();
+  // Every layout mode, in the order `workspace-set-layout` cycles them, which `layoutModeNames` spells.
+  inline constexpr std::array<LayoutMode, 4> kFullLayoutCycle{
+      LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master, LayoutMode::Stacking
+  };
   std::span<const std::string_view> columnDisplayNames();
   // The `column-set-display` value a word names, or nullopt for anything else.
   std::optional<ColumnDisplay> columnDisplayNamed(std::string_view name);
-  // `session-quit`'s only word, and the scratchpad a wordless scratchpad action addresses.
+  // `session-quit`'s only word.
   inline constexpr std::string_view kSkipConfirmationWord = "skip-confirmation";
-  inline constexpr std::string_view kImplicitScratchpad = "default";
   // `workspace-set-layout`'s cycle keyword; the modes it cycles come from `layoutModeNames`.
   inline constexpr std::string_view kLayoutModeToggleWord = "toggle";
   // `workspace-move-to-output`'s destination word for the output under the pointer.
@@ -510,6 +514,14 @@ namespace umbriel {
     bool poolRequired;
   };
   std::optional<EffectActionReference> effectActionReference(const Keybind& bind);
+  // The slot an effect action selects into, or nullopt when the action is not an effect action. `Animation` is not a
+  // slot, so no action ever names it.
+  std::optional<EffectKind> effectSlotKind(KeybindAction action);
+  // The most positional words an argument kind's parser reads, or nullopt when it reads an unbounded tail (`spawn`).
+  // Reading one more word than this leaves the grammar with nothing, so a position beyond it offers no flags either.
+  std::optional<size_t> actionPositionalArity(ActionArgKind kind);
+  // Whether the action cycles pools, which needs a pool rather than accepting either.
+  bool effectSlotRequiresPool(KeybindAction action);
 
   std::span<const ActionSpec> actionSpecs();
   // The spec with exactly this name, or null.

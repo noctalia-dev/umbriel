@@ -1,5 +1,8 @@
 #pragma once
 
+#include "config/effects.h"
+
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
@@ -29,7 +32,6 @@ namespace umbriel {
 
     CompletionList() = default;
     CompletionList(std::initializer_list<std::string> items);
-    CompletionList(std::vector<std::string> items);
     explicit CompletionList(Filler filler);
 
     // A literal list keeps its order; a filler's list is sorted on the first read and never filled twice.
@@ -41,13 +43,37 @@ namespace umbriel {
     mutable bool m_filled = false;
   };
 
+  // The effect names a position may reference, filtered by the slot kind and the preset/pool constraint the action
+  // imposes. One list is filled per kind asked for, so a position that reaches no effect pays for none.
+  class EffectCandidates {
+  public:
+    using Filler = std::function<void(std::vector<std::string>& presets, std::vector<std::string>& pools, EffectKind)>;
+
+    EffectCandidates() = default;
+    explicit EffectCandidates(Filler filler);
+
+    const std::vector<std::string>& presets(EffectKind kind) const;
+    const std::vector<std::string>& pools(EffectKind kind) const;
+
+  private:
+    struct KindLists {
+      std::vector<std::string> presets;
+      std::vector<std::string> pools;
+    };
+
+    void fill(EffectKind kind) const;
+
+    Filler m_filler;
+    mutable std::array<KindLists, 5> m_byKind{};
+    mutable std::array<bool, 5> m_filled{};
+  };
+
   // Configuration-derived entries need no session; the live ones come from a running compositor and are optional.
   struct CompletionValues {
     CompletionList outputs;
     CompletionList windows;
     CompletionList workspaces;
-    CompletionList effectPresets;
-    CompletionList effectPools;
+    EffectCandidates effects;
     CompletionList scratchpads;
     CompletionList submaps;
   };

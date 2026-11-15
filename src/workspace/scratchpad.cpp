@@ -1,7 +1,6 @@
 #include "workspace/scratchpad.h"
 
 #include "config/config.h"
-#include "config/keybind_parse.h"
 #include "input/cursor.h"
 #include "input/seat.h"
 #include "output/output.h"
