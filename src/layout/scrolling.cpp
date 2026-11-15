@@ -1464,6 +1464,20 @@ namespace umbriel {
       return setHeightWeight(columnIndex, row, total * target);
     }
     const double oldWeight = std::max(kMinHeightWeight, heightWeight(columnIndex, row));
+    // A column with free space trades the change with that space, as a lone row does, so the other units keep their
+    // size. Growing past it falls through to the units sharing the column.
+    const double total = columnTotalWeight(column);
+    const double topGap = std::max(0.0, column.topGapWeight);
+    const double gaps = topGap + std::max(0.0, column.bottomGapWeight);
+    if (gaps > 0.0) {
+      const double weight = std::max(0.1, fraction) * total;
+      const double kept = std::max(0.0, gaps + oldWeight - weight) / gaps;
+      column.topGapWeight = topGap * kept;
+      column.bottomGapWeight = (gaps - topGap) * kept;
+      if (kept > 0.0) {
+        return setHeightWeight(columnIndex, row, weight);
+      }
+    }
     const double others = columnTotalWeight(column) - oldWeight;
     double target = fraction;
     // Growing stops where another unit would show less than its minimum, so no weight claims less than is shown.
