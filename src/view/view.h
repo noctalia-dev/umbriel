@@ -464,13 +464,9 @@ namespace umbriel {
     // output's usable area and restores to the box it had before; tiled windows
     // toggle their column's full-width state.
     void toggleMaximized();
-    // Apply the maximize state a client request would carry (what a titlebar
-    // double-click produces): a tiled window honors the workspace's
-    // client_maximize, and a floating window keeps the default behavior
-    // whatever it says. handleRequestMaximize ends here too, so the gesture and
-    // a client request pick the same target. The direction is explicit because
-    // the gesture computes the opposite of the current state at its second
-    // press.
+    // Shared target policy for client maximize, title bars, and pointer gestures.
+    // Tiled and stacking windows honor client_maximize; other floats use normal
+    // maximize. The caller supplies the direction for toggles.
     void setMaximizedLikeClientRequest(bool maximized);
     // Restore a floating maximized window to its saved box before a pointer
     // move takes ownership of its position.

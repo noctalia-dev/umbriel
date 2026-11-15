@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Client-requested maximize and unmaximize around [layout] client_maximize: a client's maximize
-# fills the column by default and the usable-area edges when configured, while an unmaximize
-# request exits whichever mode is active instead of following the configured policy.
+# fills the column by default and the usable-area edges when configured, including stacking.
+# An unmaximize request exits whichever mode is active instead of following the configured policy.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -205,4 +205,76 @@ wait_for_field client-maximize-override w 1264
 wait_for_field client-maximize-override h 704
 stop_client
 
-echo "client maximize targets column width by default (1264x704), edges when configured (1280x720) for post-map, restored, and default_maximize-ruled requests, column under a workspace override; unmaximize restores the tile (628x704)"
+# Stacking uses floating placement, but its client maximize follows the workspace policy too.
+# The workspace's column override keeps normal floating maximize despite the global edges setting.
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+layout.mode = "stacking"
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+readonly STACKING_LOG="$UMBRIEL_RUNTIME_DIR/client-maximize-stacking.log"
+request_maximize client-maximize-stacking "$STACKING_LOG"
+wait_for_field client-maximize-stacking floating true
+wait_for_field client-maximize-stacking maximized_to_edges false
+wait_for_field client-maximize-stacking w 1264
+wait_for_field client-maximize-stacking h 704
+send_command M "$STACKING_LOG" 'unmaximize-requested$'
+wait_for_field client-maximize-stacking maximized false
+"$UMBRIEL" settle > /dev/null
+stacking_box() {
+  "$UMBRIEL" windows --json | jq -r '.[] | select(.title == "client-maximize-stacking") | "\(.w)x\(.h)+\(.x)+\(.y)"'
+}
+readonly STACKING_RESTORE=$(stacking_box)
+
+sed -i 's/layout.client_maximize = "column"/layout.client_maximize = "edges"/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+send_command m "$STACKING_LOG" 'maximize-requested$'
+wait_for_field client-maximize-stacking maximized_to_edges true
+wait_for_field client-maximize-stacking w 1280
+wait_for_field client-maximize-stacking h 720
+wait_for_field client-maximize-stacking x 0
+wait_for_field client-maximize-stacking y 0
+
+# Reloading the policy must still let the client leave its active edges state and restore its original box.
+sed -i 's/layout.client_maximize = "edges"/layout.client_maximize = "column"/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+send_command M "$STACKING_LOG" 'unmaximize-requested$'
+wait_for_field client-maximize-stacking maximized_to_edges false
+wait_for_field client-maximize-stacking maximized false
+"$UMBRIEL" settle > /dev/null
+if [[ $(stacking_box) != "$STACKING_RESTORE" ]]; then
+  echo "stacking unmaximize did not restore $STACKING_RESTORE: $(stacking_box)"
+  exit 1
+fi
+
+sed -i 's/layout.client_maximize = "column"/layout.client_maximize = "edges"/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+# The normal maximize action retains its margin even when the client policy selects the edges.
+"$UMBRIEL" msg window-toggle-maximize > /dev/null
+wait_for_field client-maximize-stacking maximized true
+wait_for_field client-maximize-stacking maximized_to_edges false
+wait_for_field client-maximize-stacking w 1264
+send_command M "$STACKING_LOG" 'unmaximize-requested$'
+wait_for_field client-maximize-stacking maximized false
+stop_client
+
+for restored in REQUEST_MAXIMIZED REQUEST_MAXIMIZED_AFTER_MAP; do
+  title="client-maximize-stacking-$restored"
+  log="$UMBRIEL_RUNTIME_DIR/$title.log"
+  env LOG_CONFIGURES=1 MAXIMIZE_ON_STDIN=1 "$restored=1" RESIZE_FILL_COLOR=0xFF5577AA \
+    "$CLIENT" "$title" 640 480 <&"$control_fd" > "$log" 2>&1 &
+  CLIENT_PID=$!
+  await_lines "$log" mapped 1
+  wait_for_field "$title" maximized_to_edges true
+  wait_for_field "$title" w 1280
+  wait_for_field "$title" h 720
+  if [[ $restored == REQUEST_MAXIMIZED && $(grep -m1 '^configured-size=' "$log") != configured-size=1280x720 ]]; then
+    echo "stacking restored maximize did not configure the edges before map: $(cat "$log")"
+    exit 1
+  fi
+  send_command M "$log" 'unmaximize-requested$'
+  wait_for_field "$title" maximized_to_edges false
+  wait_for_field "$title" maximized false
+  stop_client
+done
+
+echo "client maximize follows column and edges policy for tiled and stacking windows, including restored requests, workspace overrides, and unmaximize"
