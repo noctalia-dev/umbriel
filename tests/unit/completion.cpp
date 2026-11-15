@@ -569,11 +569,21 @@ UMBRIEL_TEST(scriptsDeferToTheBinary) {
   const std::string bash = umbriel::completionScript(umbriel::CompletionShell::Bash);
   CHECK(bash.contains("compopt -o default"));
   CHECK(bash.contains("compgen -c"));
+  // readline replaces only what follows the last word-break character, so a value carrying one is split before the
+  // shell sees it; the script drops that part and quotes the rest itself rather than leaving readline's filenames
+  // option to append a slash to a value that names a directory.
+  CHECK(bash.contains("current##*:"));
+  CHECK(bash.contains("printf '%q'"));
+  CHECK(!bash.contains("compopt -o filenames"));
   CHECK(zsh.contains("_path_files"));
   CHECK(zsh.contains("_command_names"));
+  // `_describe` splits both of its arrays on an unescaped `:`, so a window id would otherwise be cut at its colon.
+  CHECK(zsh.contains("values+=(\"${value//:/\\\\:}\")"));
   const std::string fish = umbriel::completionScript(umbriel::CompletionShell::Fish);
   CHECK(fish.contains("__fish_complete_path"));
   CHECK(fish.contains("__fish_complete_command"));
+  // `-ct` leaves the escape the shell inserted in place, so the current token is unescaped before it is sent.
+  CHECK(fish.contains("string unescape"));
 }
 
 UMBRIEL_TEST(shellNamesRoundTrip) {
