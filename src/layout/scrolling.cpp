@@ -734,13 +734,15 @@ namespace umbriel {
       const size_t edge = direction > 0 ? end - 1 : start;
       const double weight =
           claimInsertWeight(col, static_cast<int>(direction > 0 ? end : start), col.heightWeights[start]);
+      // The group shows the tab before it, or after it when it was first, as when it closes.
+      const View* shown = col.views[at > start ? at - 1 : at + 1];
       if (direction > 0) {
         rotateRows(col, at, at + 1, end);
       } else {
         rotateRows(col, start, at, at + 1);
       }
-      col.tabs.select(edge);
       col.tabs.leave(edge);
+      col.tabs.select(static_cast<size_t>(rowOf(shown)));
       col.heightWeights[edge] = weight;
       return true;
     }
