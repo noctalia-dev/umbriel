@@ -6,6 +6,7 @@
 #include "cli/cli_words.h"
 #include "cli/complete.h"
 #include "config/keybind_parse.h"
+#include "input/input_capture.h"
 #include "server/ipc.h"
 #include "server/ipc_commands.h"
 #include "view/window_region.h"
@@ -277,6 +278,22 @@ UMBRIEL_TEST(aWorkspaceIsSelectedOnce) {
   CHECK(complete({"msg", "workspace-switch", "web", "--name", ""}, values).empty());
   // A surplus positional is a line the parser refuses, so its trailing flag has no vocabulary either.
   CHECK(complete({"msg", "workspace-switch", "web", "extra", "--output", ""}, values).empty());
+  // The arity is the parser's for every kind, not only the workspace ones.
+  CHECK(complete({"msg", "output-sdr-white", "200", "extra", "--"}, values).empty());
+  CHECK(complete({"msg", "effect-screen-set", "vignette", "extra", "--"}, values).empty());
+  CHECK(!complete({"msg", "window-move-to", "top_left", "10", "20", "--"}, values).empty());
+  CHECK(complete({"msg", "window-move-to", "top_left", "10", "20", "extra", "--"}, values).empty());
+  // `--output` is only reachable once a workspace selector is on the line.
+  CHECK(!contains(complete({"msg", "workspace-move-to-output", "--"}, values), umbriel::kActionFlagOutputWord));
+  CHECK(!contains(complete({"msg", "workspace-move-to-output", "DP-1", "--"}, values), umbriel::kActionFlagOutputWord));
+  CHECK(contains(
+      complete({"msg", "workspace-move-to-output", "DP-1", "--name", "web", "--"}, values),
+      umbriel::kActionFlagOutputWord
+  ));
+  CHECK_EQ(
+      complete({"msg", "workspace-move-to-output", "DP-1", "web", "--output", ""}, values),
+      (std::vector<std::string>{"DP-1", "HDMI-A-1"})
+  );
   CHECK(!complete({"msg", "workspace-move-to-output", "DP-1", ""}, values).empty());
   CHECK(complete({"msg", "workspace-move-to-output", "DP-1", "web", ""}, values).empty());
   CHECK(complete({"msg", "workspace-switch", "web", "--name", "web", "--output", ""}, values).empty());
@@ -350,6 +367,12 @@ UMBRIEL_TEST(topLevelFlagsOwnTheirArguments) {
   CHECK_EQ(complete({"-s", "kitty", ""}), std::vector<std::string>{"-c"});
   CHECK(complete({"-c", "umbriel.toml", "-s", "kitty", ""}).empty());
   CHECK(complete({"bogus", ""}).empty());
+  // The walk consumes each flag and its value as a pair, so a value that spells a flag stays a value.
+  CHECK_EQ(complete({"-c", "-s", ""}), std::vector<std::string>{"-s"});
+  CHECK_EQ(complete({"-s", "-c", ""}), std::vector<std::string>{"-c"});
+  // A flag already on the line is not offered again, and a word the dispatch refuses leaves nothing.
+  CHECK(complete({"-c", "a.toml", "-c", ""}).empty());
+  CHECK(complete({"-c", "a.toml", "bogus", ""}).empty());
 }
 
 UMBRIEL_TEST(valuesTheWordGrammarRefusesAreNotOffered) {
@@ -415,6 +438,8 @@ UMBRIEL_TEST(subscribeCompletesEventsAndKeepsTheList) {
   }
   const std::vector<std::string> chained = complete({"subscribe", "theme,win"});
   CHECK_EQ(chained, std::vector<std::string>{"theme,windows"});
+  // `subscribe` accepts the JSON flags ahead of its events, so a dash position offers them.
+  CHECK_EQ(complete({"subscribe", "-"}), (std::vector<std::string>{"--json", "-j"}));
 }
 
 UMBRIEL_TEST(configSubcommandsAndThePathFlag) {
@@ -461,6 +486,26 @@ UMBRIEL_TEST(ipcCommandsCompleteTheirOwnSurface) {
   CHECK(complete({"config-set", "--"}).empty());
 }
 
+UMBRIEL_TEST(closedVocabulariesCompleteTheirWords) {
+  // A dash-prefixed choice such as `config unset --all` is an argument, so it completes on an empty word.
+  CHECK_EQ(complete({"config", "unset", ""}), (std::vector<std::string>{std::string{umbriel::kUnsetAllWord}}));
+  CHECK_EQ(complete({"input-capture-revoke", ""}), (std::vector<std::string>{std::string{umbriel::kRevokeAllWord}}));
+
+  const CompletionValues values = sampleValues();
+  CHECK_EQ(complete({"output-destroy", ""}, values), (std::vector<std::string>{"DP-1", "HDMI-A-1"}));
+  // The harness vocabularies are closed, so each word the parser reads is offered.
+  CHECK_EQ(complete({"animation-capture-fail", ""}), (std::vector<std::string>{"on", "off"}));
+  CHECK_EQ(complete({"event-pacing-hold", ""}), (std::vector<std::string>{"on", "off"}));
+  CHECK_EQ(complete({"blur-composite-split", ""}), (std::vector<std::string>{"on", "off"}));
+  CHECK_EQ(complete({"swipe-test", ""}), (std::vector<std::string>{"begin", "update", "end"}));
+  // A command that reads its words in order offers nothing past the first.
+  CHECK(complete({"output-destroy", "DP-1", ""}, values).empty());
+  CHECK(complete({"swipe-test", "begin", ""}).empty());
+  // A command that takes no argument leaves no position once one arrives, so its flags stop completing too.
+  CHECK(complete({"windows", "bogus", "-"}).empty());
+  CHECK(complete({"input-capture-revoke", "all", "extra", "-"}).empty());
+}
+
 UMBRIEL_TEST(valuesLoadOnlyWhenAPositionReadsThem) {
   std::vector<std::string> reads;
   CompletionValues values;
@@ -469,10 +514,10 @@ UMBRIEL_TEST(valuesLoadOnlyWhenAPositionReadsThem) {
   values.workspaces = recording(reads, "workspace");
   values.effects = umbriel::EffectCandidates(
       [&reads](std::vector<std::string>& presets, std::vector<std::string>& pools, umbriel::EffectKind) {
-        reads.push_back("effect preset");
-        reads.push_back("effect pool");
-        presets.push_back("preset:1");
-        pools.push_back("pool:1");
+        reads.emplace_back("effect preset");
+        reads.emplace_back("effect pool");
+        presets.emplace_back("preset:1");
+        pools.emplace_back("pool:1");
       }
   );
   values.scratchpads = recording(reads, "scratchpad");
