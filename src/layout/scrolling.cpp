@@ -1470,7 +1470,7 @@ namespace umbriel {
     const double topGap = std::max(0.0, column.topGapWeight);
     const double gaps = topGap + std::max(0.0, column.bottomGapWeight);
     if (gaps > 0.0) {
-      const double weight = std::max(0.1, fraction) * total;
+      const double weight = std::max(kMinHeightWeight, std::max(0.1, fraction) * total);
       const double kept = std::max(0.0, gaps + oldWeight - weight) / gaps;
       column.topGapWeight = topGap * kept;
       column.bottomGapWeight = (gaps - topGap) * kept;
