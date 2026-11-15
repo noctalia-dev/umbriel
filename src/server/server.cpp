@@ -1286,6 +1286,10 @@ namespace umbriel {
       if (m_xwayland->available() && m_xwayland->setInputSocket(m_eisInput->socketFd())) {
         setenv("DISPLAY", m_xwayland->displayName(), 1);
       } else {
+        // A creation failure already logged itself in the Xwayland constructor; only this branch is otherwise silent.
+        if (m_xwayland->available()) {
+          kLog.error("Xwayland could not expose its EIS input socket; X11 applications will not work");
+        }
         m_xwayland.reset();
         m_eisInput.reset();
       }
@@ -1354,6 +1358,8 @@ namespace umbriel {
   void Server::showConfigDiagnostics() {
     std::vector<ConfigDiagnostic> diagnostics = configDiagnostics();
     if (config().general.xwayland && m_xwayland == nullptr) {
+      // Derived from runtime state rather than recorded while reading the configuration, so it is re-drawn on every
+      // reload; the failure itself is logged once, where it happens.
       ConfigDiagnostic diagnostic;
       diagnostic.severity = ConfigDiagnostic::Severity::Warning;
       diagnostic.message =

@@ -144,8 +144,7 @@ namespace umbriel {
         if (!lines.empty()) {
           lines += '\n';
         }
-        const std::string location = diagnostic.location();
-        lines += location.empty() ? diagnostic.message : location + ": " + diagnostic.message;
+        lines += diagnostic.display();
       }
       return lines;
     }
@@ -180,6 +179,19 @@ namespace umbriel {
     std::ranges::stable_sort(m_diagnostics, [](const ConfigDiagnostic& a, const ConfigDiagnostic& b) {
       return std::tie(a.file, a.line, a.column) < std::tie(b.file, b.line, b.column);
     });
+  }
+
+  void ConfigStore::logDiagnostics(const std::vector<ConfigDiagnostic>& diagnostics) const {
+    if (!m_logDiagnosticsEnabled) {
+      return;
+    }
+    for (const ConfigDiagnostic& diagnostic : diagnostics) {
+      if (diagnostic.severity == ConfigDiagnostic::Severity::Error) {
+        kLog.error("{}", diagnostic.display());
+      } else {
+        kLog.warn("{}", diagnostic.display());
+      }
+    }
   }
 
   ConfigReloadResult
@@ -251,6 +263,7 @@ namespace umbriel {
       }
     }
     sortDiagnostics();
+    logDiagnostics(m_diagnostics);
     (void)commit(std::move(loaded), std::move(effective), selection.root, missing);
   }
 
@@ -283,8 +296,8 @@ namespace umbriel {
 
       for (const auto& d : diags) {
         if (d.severity == umbriel::ConfigDiagnostic::Severity::Error) {
-          const std::string loc = d.location();
-          errors += loc.empty() ? d.message : loc + ": " + d.message + "\n";
+          errors += d.display();
+          errors += '\n';
         }
       }
 
@@ -297,6 +310,7 @@ namespace umbriel {
 
     m_implicitCandidates.clear();
     setRootPath(selection.root, true);
+    logDiagnostics(m_diagnostics);
 
     return commit(std::move(loaded), std::move(effective), selection.root, missing);
   }
@@ -324,11 +338,14 @@ namespace umbriel {
     if (outcome != ConfigParseOutcome::Loaded) {
       if (!m_explicitPath && !selection.found && missing) {
         kLog.info("no config file found: {}, using defaults", selection.root.string());
+        logDiagnostics(m_diagnostics);
         return commit(std::move(loaded), std::move(effective), selection.root, true);
       }
+      logDiagnostics(m_diagnostics);
       kLog.warn("config reload failed; keeping previous configuration");
       return {};
     }
+    logDiagnostics(m_diagnostics);
     return commit(std::move(loaded), std::move(effective), selection.root, false);
   }
 
@@ -392,10 +409,13 @@ namespace umbriel {
       m_watchPaths = std::move(watchPaths);
       return {};
     }
+    logDiagnostics(m_diagnostics);
     return commit(std::move(loaded), std::move(effective), selection.root, missing);
   }
 
   void loadConfig(const char* explicitPath) { configStore().load(explicitPath); }
+
+  void setConfigDiagnosticLogging(bool enabled) { configStore().setDiagnosticLogging(enabled); }
 
   ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors) {
     return configStore().replace(explicitPath, errors);

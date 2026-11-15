@@ -1353,6 +1353,9 @@ namespace umbriel {
   }
 
   const Config& config();
+  // Write each load's diagnostics to the log. The compositor switches this on before loading; the CLI leaves it off
+  // and prints from `configDiagnostics()`, and a refused override logs nothing because its load is rolled back.
+  void setConfigDiagnosticLogging(bool enabled);
   void loadConfig(const char* explicitPath);
   ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
   ConfigReloadResult reloadConfig();
