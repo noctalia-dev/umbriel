@@ -10,7 +10,19 @@ If a client stalls or omits an output, the handoff continues after the deadline 
 
 X11 applications can request control of the pointer and keyboard through XTest. Steam uses this for its desktop controller mappings. Umbriel receives these requests through its native EIS backend and asks for permission before allowing desktop input.
 
-Press Enter to allow the requesting application for the current Umbriel session. Any other non-modifier key or pointer click denies it. Allow and deny decisions last until Umbriel restarts. Input received through this XTest emulation path cannot approve another permission prompt.
+Press Enter to allow the requesting application for the current Umbriel session, or R to allow it in every session until you revoke it. Any other non-modifier key or pointer click denies it. Other decisions last until Umbriel restarts. Input received through this XTest emulation path cannot approve another permission prompt.
+
+Applications remembered with R, or named in `[input] x11_input_allow`, are allowed without a prompt. X11 applications report their name themselves, so any X11 application running as your user can claim an allowed name.
+
+Remembered applications are stored in `$XDG_STATE_HOME/umbriel/x11-input-permissions.json`, defaulting to `~/.local/state/umbriel/x11-input-permissions.json`. List and forget them with:
+
+```sh
+umbriel x11-input-permissions
+umbriel x11-input-revoke <name>
+umbriel x11-input-revoke all
+```
+
+Revoking also forgets the session's allow or deny decision for that name and disconnects it, so its next request prompts again. A name in `x11_input_allow` stays allowed until it is removed from the config.
 
 While the session is locked, Umbriel releases held emulated keys and buttons and discards further emulated input. That input is not replayed after unlock. Physical input devices continue to work on the lock screen.
 

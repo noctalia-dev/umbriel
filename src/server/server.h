@@ -9,7 +9,11 @@
 #include "input/pending_releases.h"
 #include "input/shortcuts_inhibit.h"
 #include "input/surface_layouts.h"
+<<<<<<< HEAD
+#include "input/x11_input_permissions.h"
+=======
 #include "output/connector_hdr_state.h"
+>>>>>>> origin/main
 #include "output/enable_overrides.h"
 #include "scene/border_rect.h"
 #include "scene/effect_registry.h"
@@ -291,7 +295,10 @@ namespace umbriel {
     bool followScreenCastOutput(std::string* error = nullptr);
     void stopFollowingScreenCast();
     void confirmScreenCastDynamic();
-    void confirmInputEmulation();
+    void confirmInputEmulation(bool remember = false);
+    // Forgets a remembered X11 input application, or `all`, and its allow or deny decision for this session.
+    [[nodiscard]] bool revokeX11Input(std::string_view application);
+    X11InputPermissions& x11InputPermissions() { return m_x11InputPermissions; }
     void confirmInputCapture(bool remember = false);
     void dismissConfirmation();
     // Owners register themselves for the frame tick. The registry is kept in phase order, so the three traversals above
@@ -969,6 +976,7 @@ namespace umbriel {
     std::string m_pendingInputName;
     std::unordered_set<std::string> m_allowedInputNames;
     std::unordered_set<std::string> m_deniedInputNames;
+    X11InputPermissions m_x11InputPermissions{X11InputPermissions::defaultPath()};
     wl_event_source* m_backgroundFrameTimer = nullptr;
     // Paces hidden `background_render` windows at their output's refresh rate; disarmed while none is hidden.
     wl_event_source* m_backgroundRenderTimer = nullptr;

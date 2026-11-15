@@ -168,6 +168,7 @@ namespace umbriel {
 
     struct Client {
       uint64_t id = 0;
+      std::string name;
       eis_client* handle = nullptr;
       eis_seat* seat = nullptr;
       bool approved = false;
@@ -264,6 +265,7 @@ namespace umbriel {
       }
       auto client = std::make_unique<Client>();
       client->id = ++nextId;
+      client->name = name;
       client->handle = eis_client_ref(handle);
       eis_client_set_user_data(handle, client.get());
       const uint64_t id = client->id;
@@ -620,6 +622,12 @@ namespace umbriel {
     m_impl->cancelled = std::move(cancelled);
   }
   void EisInput::authorizeClient(uint64_t id, bool allowed) { m_impl->approve(id, allowed); }
+
+  void EisInput::disconnectApproved(std::string_view name) {
+    std::erase_if(m_impl->clients, [name](const auto& client) {
+      return client->approved && (name == "all" || client->name == name);
+    });
+  }
   void EisInput::applyConfig() { m_impl->scheduleUpdate(true, false); }
   void EisInput::updateOutputs() { m_impl->scheduleUpdate(false, true); }
   void EisInput::updateModifiers(const wlr_keyboard_modifiers& modifiers) {
