@@ -64,8 +64,8 @@ namespace umbriel {
     void fill(EffectKind kind) const;
 
     Filler m_filler;
-    mutable std::array<KindLists, 5> m_byKind{};
-    mutable std::array<bool, 5> m_filled{};
+    mutable std::array<KindLists, kEffectKindCount> m_byKind{};
+    mutable std::array<bool, kEffectKindCount> m_filled{};
   };
 
   // Configuration-derived entries need no session; the live ones come from a running compositor and are optional.
