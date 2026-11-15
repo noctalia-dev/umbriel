@@ -1622,13 +1622,25 @@ namespace umbriel {
     if (launchToken != nullptr) {
       trackActivationToken(launchToken, true, pid);
     }
-    // The label and command are bounded so a long one cannot push the pid and unit past the log line cap; those
-    // two are the only trace a program that starts nothing leaves.
-    constexpr std::size_t kMaxLabelLength = 1024;
+    // Bound the label and the command so a long one cannot push the pid and unit past the log line cap; those two
+    // are the only trace a program that starts nothing leaves. Bytes, not display width: a run of zero-width
+    // characters has no width to count but still fills the line.
+    constexpr std::size_t kMaxLabelBytes = 1024;
+    const auto bounded = [](const char* text) {
+      std::string_view view = text;
+      if (view.size() <= kMaxLabelBytes) {
+        return std::string(view);
+      }
+      std::size_t end = kMaxLabelBytes;
+      while (end > 0 && (static_cast<unsigned char>(view[end]) & 0xC0U) == 0x80U) {
+        --end;
+      }
+      return std::string(view.substr(0, end));
+    };
     const char* label = description == nullptr ? command : description;
-    const std::string boundedLabel = std::format("{:.{}}", label, kMaxLabelLength);
+    const std::string boundedLabel = bounded(label);
     const std::string commandField =
-        description == nullptr ? std::string() : std::format(", command '{:.{}}'", command, kMaxLabelLength);
+        description == nullptr ? std::string() : std::format(", command '{}'", bounded(command));
     const std::string ownerUnit = scopeRequired ? std::format(", unit {}", scopeUnitName) : std::string();
     kLog.info(
         "launch requested for '{}' (pid {}{}{}) on WAYLAND_DISPLAY={}", boundedLabel, pid, ownerUnit, commandField,
