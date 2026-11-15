@@ -48,6 +48,7 @@ unit_tests = [
   ['output-mode-selection', ['unit/output_mode_selection.cpp'], []],
   ['cursor-plane-pace', ['unit/cursor_plane_pace.cpp'], []],
   ['output-frame-schedule', ['unit/output_frame_schedule.cpp'], []],
+  ['output-vrr-transition', ['unit/output_vrr_transition.cpp'], []],
   ['output-direct-scanout', ['unit/output_direct_scanout.cpp'], []],
   ['output-hdr-transition', ['unit/output_hdr_transition.cpp'], []],
   ['output-connector-hdr-state', ['unit/output_connector_hdr_state.cpp'], []],
