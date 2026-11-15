@@ -558,7 +558,7 @@ int main(int argc, char** argv) {
       const auto shell = umbriel::completionShellNamed(argv[2]);
       if (!shell) {
         std::println(stderr, "error: unknown shell '{}': expected {}", argv[2], completionShellList(", "));
-        return 2;
+        return EXIT_FAILURE;
       }
       std::print("{}", umbriel::completionScript(*shell));
       return EXIT_SUCCESS;
