@@ -111,6 +111,7 @@ namespace umbriel {
         wlr_surface* target;
         int x = 0;
         int y = 0;
+        wlr_box clip{};
         bool found = false;
       } position{target};
 
@@ -125,6 +126,7 @@ namespace umbriel {
             if (sceneSurface != nullptr && sceneSurface->surface == position->target) {
               position->x = x;
               position->y = y;
+              wlr_scene_surface_get_clip(sceneSurface, &position->clip);
               position->found = true;
             }
           },
@@ -134,8 +136,10 @@ namespace umbriel {
       if (!position.found) {
         return false;
       }
-      *sx = (lx - position.x) * scale;
-      *sy = (ly - position.y) * scale;
+      // A clipped surface's buffer starts at the clip origin; add the clip back, as the scene hit test does, so motion
+      // matches the coordinates the surface got on press.
+      *sx = (lx - position.x + position.clip.x) * scale;
+      *sy = (ly - position.y + position.clip.y) * scale;
       return true;
     }
 
