@@ -399,7 +399,7 @@ namespace {
       }
     });
     // A workspace is named either by a `[[workspace]]` rule or by a string inventory on an output; a numeric
-    // inventory creates anonymous members, which only `--name` and live state can address.
+    // inventory creates anonymous members, which only a positional index reaches — completion never offers them.
     values.workspaces = umbriel::CompletionList([=](std::vector<std::string>& target) {
       const umbriel::Config& config = completionConfig(*loaded);
       configNames(target, [](const umbriel::Config& loadedConfig) -> const auto& {
@@ -551,7 +551,7 @@ int main(int argc, char** argv) {
         return EXIT_SUCCESS;
       }
       if (argc != 3) {
-        // A usage error, distinct from the unknown-shell code: 2 is what the scripts reserve for delegation.
+        // Both a missing and an unknown shell are usage errors on 1, clear of the 2 and 3 the scripts delegate on.
         std::println(stderr, "error: completions needs a shell: {}", completionShellList(", "));
         return EXIT_FAILURE;
       }
