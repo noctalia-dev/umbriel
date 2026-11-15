@@ -1545,7 +1545,7 @@ namespace umbriel {
 
   void Server::spawn(const char* command, const char* description, bool withActivationToken) {
     if (m_socketName.empty()) {
-      wlr_log(WLR_ERROR, "cannot spawn before the Wayland socket exists");
+      kLog.error("cannot spawn before the Wayland socket exists");
       return;
     }
 
@@ -1558,9 +1558,10 @@ namespace umbriel {
       kLog.error("cannot launch application because systemd scope isolation is unavailable");
       return;
     }
-    const std::string scopeUnitArgument = scopeRequired
-        ? "--unit=app-umbriel-" + std::to_string(getpid()) + "-" + std::to_string(m_nextApplicationScopeId++) + ".scope"
+    const std::string scopeUnitName = scopeRequired
+        ? "app-umbriel-" + std::to_string(getpid()) + "-" + std::to_string(m_nextApplicationScopeId++) + ".scope"
         : "";
+    const std::string scopeUnitArgument = scopeRequired ? "--unit=" + scopeUnitName : "";
 
     wlr_xdg_activation_token_v1* launchToken = nullptr;
     std::string launchTokenName;
@@ -1579,7 +1580,7 @@ namespace umbriel {
       if (launchToken != nullptr) {
         wlr_xdg_activation_token_v1_destroy(launchToken);
       }
-      wlr_log(WLR_ERROR, "fork failed");
+      kLog.error("cannot launch application: fork failed");
       return;
     }
     if (pid == 0) {
@@ -1621,17 +1622,15 @@ namespace umbriel {
     if (launchToken != nullptr) {
       trackActivationToken(launchToken, true, pid);
     }
-    if (scopeRequired) {
-      wlr_log(
-          WLR_INFO, "launch requested for '%s' on WAYLAND_DISPLAY=%s", description == nullptr ? command : description,
-          m_socketName.c_str()
-      );
-    } else {
-      wlr_log(
-          WLR_INFO, "spawned '%s' on WAYLAND_DISPLAY=%s", description == nullptr ? command : description,
-          m_socketName.c_str()
-      );
-    }
+    // A program that starts nothing leaves no other trace the compositor can vouch for, so this record stands alone.
+    // The pid and unit come before the command: a long command is truncated at the line cap, the anchors are not.
+    const char* label = description == nullptr ? command : description;
+    const std::string commandField = description == nullptr ? std::string() : std::format(", command '{}'", command);
+    const std::string ownerUnit = scopeRequired ? std::format(", unit {}", scopeUnitName) : std::string();
+    kLog.info(
+        "launch requested for '{}' (pid {}{}{}) on WAYLAND_DISPLAY={}", label, pid, ownerUnit, commandField,
+        m_socketName
+    );
   }
 
   void Server::updateSeatCapabilities() { m_seat->updateCapabilities(!m_keyboards.empty(), !m_touchDevices.empty()); }
