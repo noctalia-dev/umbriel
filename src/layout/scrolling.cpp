@@ -3,7 +3,10 @@
 #include "config/config.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <numeric>
+#include <span>
 #include <utility>
 
 // wlr_box and WLR_EDGE_* only. Layout geometry must not pull src/wlr.h, which
@@ -147,6 +150,56 @@ namespace umbriel {
         minimum += layout.tabBarReserve(group->count, group->bar);
       }
       return minimum;
+    }
+
+    // Takes up to `needed` from `amounts`, each in proportion to its room above its floor, and returns what it took.
+    double takeAboveFloors(std::span<double> amounts, std::span<const double> floors, double needed) {
+      double room = 0.0;
+      for (size_t i = 0; i < amounts.size(); ++i) {
+        room += std::max(0.0, amounts[i] - floors[i]);
+      }
+      const double taken = std::min(needed, room);
+      if (taken <= 0.0) {
+        return 0.0;
+      }
+      for (size_t i = 0; i < amounts.size(); ++i) {
+        amounts[i] -= std::max(0.0, amounts[i] - floors[i]) * taken / room;
+      }
+      return taken;
+    }
+
+    // The extents of a column's start gap, each unit and its end gap across `stack`. Each takes its weight's share; a
+    // unit below its minimum takes the difference from the gaps first, then from the units above their minimums, so the
+    // column overflows only when its minimums do not fit.
+    std::vector<int> stackExtents(const Column& column, int stack, const Layout& layout, bool vertical) {
+      const double scale = static_cast<double>(stack) / columnTotalWeight(column);
+      std::array<double, 2> gaps{
+          std::max(0.0, column.topGapWeight) * scale, std::max(0.0, column.bottomGapWeight) * scale
+      };
+      std::vector<double> units;
+      std::vector<double> minimums;
+      double missing = 0.0;
+      for (size_t start = 0; start < column.views.size(); start = column.tabs.unitEnd(start)) {
+        const auto minimum = static_cast<double>(unitMinCross(column, start, layout, vertical));
+        const double share = std::max(kMinHeightWeight, column.heightWeights[start]) * scale;
+        missing += std::max(0.0, minimum - share);
+        units.push_back(std::max(share, minimum));
+        minimums.push_back(minimum);
+      }
+      missing -= takeAboveFloors(gaps, std::array<double, 2>{}, missing);
+      takeAboveFloors(units, minimums, missing);
+
+      // Every extent rounds on its own except the last unit's, which takes what is left so the stack ends where it did.
+      std::vector<int> extents{static_cast<int>(std::lround(gaps[0]))};
+      int used = extents.front();
+      for (size_t unit = 0; unit + 1 < units.size(); ++unit) {
+        extents.push_back(std::max(1, static_cast<int>(std::lround(units[unit]))));
+        used += extents.back();
+      }
+      const auto endGap = static_cast<int>(std::lround(gaps[1]));
+      extents.push_back(std::max(1, stack - used - endGap));
+      extents.push_back(endGap);
+      return extents;
     }
 
     // Rotate rows [first, last) of every per-row vector so row `middle` comes first. Tab groups are the caller's to
@@ -1199,27 +1252,13 @@ namespace umbriel {
       const int rowCount = static_cast<int>(column.tabs.unitCount(column.views.size()));
       const int gapsTotal = std::max(0, rowCount - 1) * gap;
       const int stackCross = std::max(rowCount, availableCross - gapsTotal);
-      const double totalWeight = columnTotalWeight(column);
+      const std::vector<int> extents = stackExtents(column, stackCross, *this, v);
 
-      int cross = (v ? usable.x : usable.y) + edgePad;
-      const int startGapPx =
-          static_cast<int>(std::lround(std::max(0.0, column.topGapWeight) / totalWeight * stackCross));
-      cross += startGapPx;
-      int used = startGapPx;
-
+      int cross = (v ? usable.x : usable.y) + edgePad + extents.front();
+      auto extent = extents.begin() + 1;
       for (size_t start = 0; start < column.views.size(); start = column.tabs.unitEnd(start)) {
-        const double weight = std::max(kMinHeightWeight, column.heightWeights[start]);
-        int crossSize = static_cast<int>(std::lround(weight / totalWeight * stackCross));
-        if (column.tabs.unitEnd(start) >= column.views.size()) {
-          const int endGapPx =
-              static_cast<int>(std::lround(std::max(0.0, column.bottomGapWeight) / totalWeight * stackCross));
-          crossSize = std::max(1, stackCross - used - endGapPx);
-        } else {
-          crossSize = std::max(1, crossSize);
-        }
+        int crossSize = *extent++;
         if (const TabGroup* group = column.tabs.groupAt(start)) {
-          // A group holds its minimum, bar included, as a window holds its own.
-          crossSize = std::max(crossSize, unitMinCross(column, start, *this, v));
           const wlr_box unit = v ? wlr_box{.x = cross, .y = primary, .width = crossSize, .height = primarySize}
                                  : wlr_box{.x = primary, .y = cross, .width = primarySize, .height = crossSize};
           pushTabTargets(column, *group, unit);
@@ -1236,7 +1275,6 @@ namespace umbriel {
           }
         }
         cross += crossSize + gap;
-        used += crossSize;
       }
     }
   }
@@ -1463,37 +1501,54 @@ namespace umbriel {
       column.bottomGapWeight = remainder - column.topGapWeight;
       return setHeightWeight(columnIndex, row, total * target);
     }
-    const double oldWeight = std::max(kMinHeightWeight, heightWeight(columnIndex, row));
-    // A column with free space trades the change with that space, as a lone row does, so the other units keep their
-    // size. Growing past it falls through to the units sharing the column.
+    // The column's total weight stays the same, so the units it does not resize keep their scale. Each unit has a
+    // floor, the weight below which it would show less than its minimum, and none is taken past it.
+    ensureWeightCount(column);
     const double total = columnTotalWeight(column);
-    const double topGap = std::max(0.0, column.topGapWeight);
-    const double gaps = topGap + std::max(0.0, column.bottomGapWeight);
-    if (gaps > 0.0) {
-      const double weight = std::max(kMinHeightWeight, std::max(0.1, fraction) * total);
-      const double kept = std::max(0.0, gaps + oldWeight - weight) / gaps;
-      column.topGapWeight = topGap * kept;
-      column.bottomGapWeight = (gaps - topGap) * kept;
-      if (kept > 0.0) {
-        return setHeightWeight(columnIndex, row, weight);
+    const int unitCount = static_cast<int>(column.tabs.unitCount(column.views.size()));
+    const int stack = std::max(unitCount, m_lastAvailableCross - (unitCount - 1) * m_config->totalGap);
+    const size_t own = column.tabs.unitStart(static_cast<size_t>(row));
+    std::vector<size_t> starts;
+    std::vector<double> weights;
+    std::vector<double> floors;
+    size_t resized = 0;
+    for (size_t start = 0; start < column.views.size(); start = column.tabs.unitEnd(start)) {
+      resized = start == own ? starts.size() : resized;
+      starts.push_back(start);
+      weights.push_back(std::max(kMinHeightWeight, column.heightWeights[start]));
+      const auto minimum = m_lastAvailableCross > 0 ? unitMinCross(column, start, *this, vertical()) : 0;
+      floors.push_back(std::max(kMinHeightWeight, static_cast<double>(minimum) / stack * total));
+    }
+    const double othersFloor = std::accumulate(floors.begin(), floors.end(), 0.0) - floors[resized];
+    const double target = std::clamp(fraction * total, floors[resized], std::max(floors[resized], total - othersFloor));
+    double change = target - weights[resized];
+    floors[resized] = weights[resized];
+
+    // Free space in the column takes the change first, as it does for a lone row, so the other units keep their size.
+    // Growing past it takes from the units with room above their floors; shrinking a column without free space gives to
+    // the other units in proportion.
+    std::array<double, 2> gaps{std::max(0.0, column.topGapWeight), std::max(0.0, column.bottomGapWeight)};
+    const double freeSpace = gaps[0] + gaps[1];
+    if (change > 0.0) {
+      change -= takeAboveFloors(gaps, std::array<double, 2>{}, change);
+      takeAboveFloors(weights, floors, change);
+    } else if (freeSpace > 0.0) {
+      for (double& gap : gaps) {
+        gap -= change * gap / freeSpace;
+      }
+    } else {
+      const double others = total - weights[resized];
+      for (size_t unit = 0; unit < weights.size(); ++unit) {
+        weights[unit] -= unit == resized ? 0.0 : change * weights[unit] / others;
       }
     }
-    const double others = columnTotalWeight(column) - oldWeight;
-    double target = fraction;
-    // Growing stops where another unit would show less than its minimum, so no weight claims less than is shown.
-    if (m_lastAvailableCross > 0) {
-      const int units = static_cast<int>(column.tabs.unitCount(column.views.size()));
-      const int stack = std::max(units, m_lastAvailableCross - (units - 1) * m_config->totalGap);
-      const size_t own = column.tabs.unitStart(static_cast<size_t>(row));
-      for (size_t start = 0; start < column.views.size(); start = column.tabs.unitEnd(start)) {
-        if (start != own) {
-          const double minimum = static_cast<double>(unitMinCross(column, start, *this, vertical())) / stack;
-          target = std::min(target, 1.0 - minimum * others / std::max(kMinHeightWeight, column.heightWeights[start]));
-        }
-      }
+    weights[resized] = target;
+    column.topGapWeight = gaps[0];
+    column.bottomGapWeight = gaps[1];
+    for (size_t unit = 0; unit < starts.size(); ++unit) {
+      setUnitWeight(column, starts[unit], weights[unit]);
     }
-    target = std::clamp(target, 0.1, 0.95);
-    return setHeightWeight(columnIndex, row, target * others / (1.0 - target));
+    return true;
   }
 
   bool ScrollingLayout::setRowBoundary(int columnIndex, int upperRow, double upperWeight, double lowerWeight) {
