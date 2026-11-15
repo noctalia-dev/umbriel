@@ -3,10 +3,8 @@
 #include "config/config.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <numeric>
-#include <span>
 #include <utility>
 
 // wlr_box and WLR_EDGE_* only. Layout geometry must not pull src/wlr.h, which
@@ -163,14 +161,14 @@ namespace umbriel {
         return 0.0;
       }
       for (size_t i = 0; i < amounts.size(); ++i) {
-        amounts[i] -= std::max(0.0, amounts[i] - floors[i]) * taken / room;
+        amounts[i] -= std::max(0.0, amounts[i] - floors[i]) * (taken / room);
       }
       return taken;
     }
 
-    // The extents of a column's start gap, each unit and its end gap across `stack`. Each takes its weight's share; a
-    // unit below its minimum takes the difference from the gaps first, then from the units above their minimums, so the
-    // column overflows only when its minimums do not fit.
+    // The extents of a column's start gap, each unit but the last and its end gap across `stack`. Each takes its
+    // weight's share; a unit below its minimum takes the difference from the gaps first, then from the units above
+    // their minimums, so the column overflows only when its minimums do not fit.
     std::vector<int> stackExtents(const Column& column, int stack, const Layout& layout, bool vertical) {
       const double scale = static_cast<double>(stack) / columnTotalWeight(column);
       std::array<double, 2> gaps{
@@ -189,16 +187,11 @@ namespace umbriel {
       missing -= takeAboveFloors(gaps, std::array<double, 2>{}, missing);
       takeAboveFloors(units, minimums, missing);
 
-      // Every extent rounds on its own except the last unit's, which takes what is left so the stack ends where it did.
       std::vector<int> extents{static_cast<int>(std::lround(gaps[0]))};
-      int used = extents.front();
       for (size_t unit = 0; unit + 1 < units.size(); ++unit) {
         extents.push_back(std::max(1, static_cast<int>(std::lround(units[unit]))));
-        used += extents.back();
       }
-      const auto endGap = static_cast<int>(std::lround(gaps[1]));
-      extents.push_back(std::max(1, stack - used - endGap));
-      extents.push_back(endGap);
+      extents.push_back(static_cast<int>(std::lround(gaps[1])));
       return extents;
     }
 
@@ -1254,10 +1247,14 @@ namespace umbriel {
       const int stackCross = std::max(rowCount, availableCross - gapsTotal);
       const std::vector<int> extents = stackExtents(column, stackCross, *this, v);
 
-      int cross = (v ? usable.x : usable.y) + edgePad + extents.front();
+      const int stackStart = (v ? usable.x : usable.y) + edgePad;
+      int cross = stackStart + extents.front();
       auto extent = extents.begin() + 1;
       for (size_t start = 0; start < column.views.size(); start = column.tabs.unitEnd(start)) {
-        int crossSize = *extent++;
+        // The last unit takes what the units above it left, so space a capped window cannot use is not lost.
+        int crossSize = column.tabs.unitEnd(start) < column.views.size()
+            ? *extent++
+            : std::max(1, stackStart + gapsTotal + stackCross - extents.back() - cross);
         if (const TabGroup* group = column.tabs.groupAt(start)) {
           const wlr_box unit = v ? wlr_box{.x = cross, .y = primary, .width = crossSize, .height = primarySize}
                                  : wlr_box{.x = primary, .y = cross, .width = primarySize, .height = crossSize};
@@ -1484,14 +1481,15 @@ namespace umbriel {
     }
     Column& column = m_columns[static_cast<size_t>(columnIndex)];
     const int row = rowOf(view);
+    ensureWeightCount(column);
+    const double total = columnTotalWeight(column);
+    const int unitCount = static_cast<int>(column.tabs.unitCount(column.views.size()));
     // A tab sizes its whole group, the unit it shows in.
-    if (column.tabs.unitCount(column.views.size()) == 1) {
+    if (unitCount == 1) {
       // No sibling row to trade weight with, so the remainder goes to the column's edge gaps, exactly as dragging the
       // window's top or bottom edge does. An ungapped window keeps its top edge and frees the space below, which is
       // where the next window in the column lands. Existing gaps keep their proportion, so a window a drag pushed
       // against one end stays there.
-      ensureWeightCount(column);
-      const double total = columnTotalWeight(column);
       const double target = std::clamp(fraction, 0.1, 1.0);
       const double remainder = total * (1.0 - target);
       const double topGap = std::max(0.0, column.topGapWeight);
@@ -1503,9 +1501,6 @@ namespace umbriel {
     }
     // The column's total weight stays the same, so the units it does not resize keep their scale. Each unit has a
     // floor, the weight below which it would show less than its minimum, and none is taken past it.
-    ensureWeightCount(column);
-    const double total = columnTotalWeight(column);
-    const int unitCount = static_cast<int>(column.tabs.unitCount(column.views.size()));
     const int stack = std::max(unitCount, m_lastAvailableCross - (unitCount - 1) * m_config->totalGap);
     const size_t own = column.tabs.unitStart(static_cast<size_t>(row));
     std::vector<size_t> starts;
@@ -1522,6 +1517,7 @@ namespace umbriel {
     const double othersFloor = std::accumulate(floors.begin(), floors.end(), 0.0) - floors[resized];
     const double target = std::clamp(fraction * total, floors[resized], std::max(floors[resized], total - othersFloor));
     double change = target - weights[resized];
+    // The resized unit gives none of its own growth.
     floors[resized] = weights[resized];
 
     // Free space in the column takes the change first, as it does for a lone row, so the other units keep their size.
@@ -1538,8 +1534,8 @@ namespace umbriel {
       }
     } else {
       const double others = total - weights[resized];
-      for (size_t unit = 0; unit < weights.size(); ++unit) {
-        weights[unit] -= unit == resized ? 0.0 : change * weights[unit] / others;
+      for (double& weight : weights) {
+        weight -= change * weight / others;
       }
     }
     weights[resized] = target;
