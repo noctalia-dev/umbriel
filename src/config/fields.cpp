@@ -15,7 +15,7 @@
 namespace umbriel {
 
   void emitDiag(ConfigDiagnostic::Severity severity, const toml::source_region* src, std::string msg) {
-    recordDiagnostic(configStore().mutableDiagnostics(), makeDiagnostic(severity, src, std::move(msg)));
+    configStore().addDiagnostic(makeDiagnostic(severity, src, std::move(msg)));
   }
 
   std::string lowercase(std::string_view text) {

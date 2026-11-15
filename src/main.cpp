@@ -397,7 +397,7 @@ int main(int argc, char** argv) {
   }
 
   initLogFile();
-  umbriel::installConfigDiagnosticLogging();
+  umbriel::setConfigDiagnosticLogging(true);
   // wlroots debug output is mostly per-frame scan-out and buffer chatter, so it stays opt-in.
   const char* wlrDebug = std::getenv("UMBRIEL_WLR_DEBUG");
   const bool wlrDebugEnabled = wlrDebug != nullptr && std::strcmp(wlrDebug, "1") == 0;

@@ -68,7 +68,7 @@ namespace umbriel {
   }
 
   void Section::report(ConfigDiagnostic::Severity severity, const toml::node& node, std::string message) {
-    recordDiagnostic(m_diagnostics, makeDiagnostic(severity, node.source(), std::move(message)));
+    m_diagnostics.push_back(makeDiagnostic(severity, node.source(), std::move(message)));
   }
 
   Section& Section::freeform() {

@@ -181,6 +181,19 @@ namespace umbriel {
     });
   }
 
+  void ConfigStore::logDiagnostics(const std::vector<ConfigDiagnostic>& diagnostics) const {
+    if (!m_logDiagnosticsEnabled) {
+      return;
+    }
+    for (const ConfigDiagnostic& diagnostic : diagnostics) {
+      if (diagnostic.severity == ConfigDiagnostic::Severity::Error) {
+        kLog.error("{}", diagnostic.display());
+      } else {
+        kLog.warn("{}", diagnostic.display());
+      }
+    }
+  }
+
   ConfigReloadResult
   ConfigStore::commit(Config&& config, toml::table&& effective, std::filesystem::path rootPath, bool fileMissing) {
     // Computed before the move, and only after the first load: everything is new
@@ -250,6 +263,7 @@ namespace umbriel {
       }
     }
     sortDiagnostics();
+    logDiagnostics(m_diagnostics);
     (void)commit(std::move(loaded), std::move(effective), selection.root, missing);
   }
 
@@ -296,6 +310,7 @@ namespace umbriel {
 
     m_implicitCandidates.clear();
     setRootPath(selection.root, true);
+    logDiagnostics(m_diagnostics);
 
     return commit(std::move(loaded), std::move(effective), selection.root, missing);
   }
@@ -323,11 +338,14 @@ namespace umbriel {
     if (outcome != ConfigParseOutcome::Loaded) {
       if (!m_explicitPath && !selection.found && missing) {
         kLog.info("no config file found: {}, using defaults", selection.root.string());
+        logDiagnostics(m_diagnostics);
         return commit(std::move(loaded), std::move(effective), selection.root, true);
       }
+      logDiagnostics(m_diagnostics);
       kLog.warn("config reload failed; keeping previous configuration");
       return {};
     }
+    logDiagnostics(m_diagnostics);
     return commit(std::move(loaded), std::move(effective), selection.root, false);
   }
 
@@ -391,20 +409,13 @@ namespace umbriel {
       m_watchPaths = std::move(watchPaths);
       return {};
     }
+    logDiagnostics(m_diagnostics);
     return commit(std::move(loaded), std::move(effective), selection.root, missing);
   }
 
   void loadConfig(const char* explicitPath) { configStore().load(explicitPath); }
 
-  void installConfigDiagnosticLogging() {
-    setDiagnosticObserver([](const ConfigDiagnostic& diagnostic) {
-      if (diagnostic.severity == ConfigDiagnostic::Severity::Error) {
-        kLog.error("{}", diagnostic.display());
-      } else {
-        kLog.warn("{}", diagnostic.display());
-      }
-    });
-  }
+  void setConfigDiagnosticLogging(bool enabled) { configStore().setDiagnosticLogging(enabled); }
 
   ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors) {
     return configStore().replace(explicitPath, errors);

@@ -18,9 +18,7 @@ namespace umbriel {
     ShaderReadResult result;
     const toml::node* node = section.take(key);
     const auto warn = [&](const toml::node& node, std::string message) {
-      recordDiagnostic(
-          diagnostics, makeDiagnostic(ConfigDiagnostic::Severity::Warning, node.source(), std::move(message))
-      );
+      diagnostics.push_back(makeDiagnostic(ConfigDiagnostic::Severity::Warning, node.source(), std::move(message)));
     };
     if (node == nullptr) {
       return result;

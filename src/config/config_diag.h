@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <format>
 #include <string>
-#include <vector>
 
 namespace umbriel {
 
@@ -57,14 +56,5 @@ namespace umbriel {
     diagnostic.message = std::move(message);
     return diagnostic;
   }
-
-  // Every configuration diagnostic goes through `recordDiagnostic`, which both stores it and hands it to the
-  // process-wide observer. The section readers, the shader reader and the include merger all record this way.
-  using DiagnosticObserver = void (*)(const ConfigDiagnostic&);
-
-  // Installed once by the compositor, which owns the log; the CLI leaves it unset and prints from the vector instead.
-  void setDiagnosticObserver(DiagnosticObserver observer);
-
-  void recordDiagnostic(std::vector<ConfigDiagnostic>& sink, ConfigDiagnostic diagnostic);
 
 } // namespace umbriel

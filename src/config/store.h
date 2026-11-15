@@ -51,10 +51,14 @@ namespace umbriel {
     uint64_t workspaceLayoutGeneration() const { return m_workspaceLayoutGeneration; }
     bool missingIncludes() const { return m_missingIncludes; }
 
+    // Whether `logDiagnostics` writes to the log at all. The compositor switches this on once it owns a log;
+    // `umbriel config validate` leaves it off and prints from `diagnostics()` instead.
+    void setDiagnosticLogging(bool enabled) { m_logDiagnosticsEnabled = enabled; }
+
     // Loader-only writers follow. The read-only API remains above.
     // Keep the active config when a reload fails.
     void beginLoad(const std::vector<std::filesystem::path>& watchPaths);
-    // For merge results the include walker already recorded through `recordDiagnostic`; a new producer records instead.
+    // For diagnostics a producer already built, such as a merge result.
     void addDiagnostic(ConfigDiagnostic diagnostic);
     // The sink the section readers append to directly.
     std::vector<ConfigDiagnostic>& mutableDiagnostics() { return m_diagnostics; }
@@ -85,6 +89,11 @@ namespace umbriel {
     bool m_missingIncludes = false;
     uint64_t m_generation = 0;
     uint64_t m_workspaceLayoutGeneration = 0;
+    bool m_logDiagnosticsEnabled = false;
+
+    // Write one load's diagnostics to the log. Called where the load's outcome is decided, never while parsing: the
+    // set about to be committed, or on a failed reload the rejected attempt's, which is what explains the refusal.
+    void logDiagnostics(const std::vector<ConfigDiagnostic>& diagnostics) const;
   };
 
   // The process-wide store, read by consumers below Server on render paths. The layout and parsing layers take their

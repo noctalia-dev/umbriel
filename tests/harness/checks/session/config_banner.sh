@@ -72,5 +72,12 @@ if ! grep -q "config reload failed; keeping previous configuration" "$UMBRIEL_LO
   echo "the error banner appeared for a configuration that was still applied"
   exit 1
 fi
+# A rejected reload keeps the previous configuration, so its diagnostics describe a file that was never applied. They
+# are still logged: without them the refusal leaves no record once the panel goes.
+if ! tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | grep -q "workspace\[0\] must set exactly one of name or index"; then
+  echo "a rejected reload logged nothing about why the file was refused:"
+  tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | tail -n 5 | sed "s/^/    /"
+  exit 1
+fi
 
 echo "the diagnostics banner draws a bordered panel and its border follows severity"

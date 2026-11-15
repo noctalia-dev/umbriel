@@ -19,7 +19,7 @@ namespace umbriel::configmerge {
 
     void
     report(MergeResult& result, ConfigDiagnostic::Severity severity, const toml::source_region* src, std::string msg) {
-      recordDiagnostic(result.diagnostics, makeDiagnostic(severity, src, std::move(msg)));
+      result.diagnostics.push_back(makeDiagnostic(severity, src, std::move(msg)));
     }
 
     // Like report, but an Error also sets hadError, which fails the load even at startup.

@@ -704,7 +704,6 @@ pure_sources = files(
   'src/config/resolve.cpp',
   'src/config/keybind_parse.cpp',
   'src/config/value_parse.cpp',
-  'src/config/config_diag.cpp',
   'src/config/section.cpp',
   'src/config/effects.cpp',
   'src/input/lid_state.cpp',
