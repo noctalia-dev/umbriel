@@ -318,6 +318,18 @@ namespace {
     return umbriel::config();
   }
 
+  // A field of the expected type, or a default for a reply that carries a different one. `value` throws on a
+  // mismatched type, and a completion must degrade to the compiled-in vocabulary rather than abort a keystroke.
+  std::string stringField(const nlohmann::json& entry, std::string_view key) {
+    const auto it = entry.find(std::string(key));
+    return it != entry.end() && it->is_string() ? it->get<std::string>() : std::string{};
+  }
+
+  bool boolField(const nlohmann::json& entry, std::string_view key) {
+    const auto it = entry.find(std::string(key));
+    return it != entry.end() && it->is_boolean() && it->get<bool>();
+  }
+
   // `section` names the array to read when the reply is an object, as `effects` wraps its presets and pools in keys;
   // `requiresTrue` names a boolean field an entry must carry to be collected.
   void collectLiveNames(
@@ -347,12 +359,12 @@ namespace {
       if (!entry.is_object()) {
         continue;
       }
-      if (!requiresTrue.empty() && !entry.value(requiresTrue, false)) {
+      if (!requiresTrue.empty() && !boolField(entry, requiresTrue)) {
         continue;
       }
-      const auto it = entry.find(key);
-      if (it != entry.end() && it->is_string()) {
-        addUnique(target, it->get<std::string>());
+      const std::string name = stringField(entry, key);
+      if (!name.empty()) {
+        addUnique(target, name);
       }
     }
   }
@@ -430,21 +442,22 @@ namespace {
       if (!reply) {
         return;
       }
-      const auto kindName = umbriel::effectKindName(kind);
+      // The running compositor answers from its own configuration, which need not be the file this process discovers
+      // (it may have started with `-c`, or hold a last-good config a broken file replaced). Its entry's own `kind` and
+      // the section it sits in are the only claims that hold, so they decide rather than this process's tables.
+      if (!reply->is_object()) {
+        return;
+      }
       for (const char* section : {"pools", "presets"}) {
-        if (!reply->is_object() || !reply->contains(section) || !(*reply)[section].is_array()) {
+        const auto it = reply->find(section);
+        if (it == reply->end() || !it->is_array()) {
           continue;
         }
-        for (const auto& entry : (*reply)[section]) {
-          if (!entry.is_object() || entry.value("kind", "") != kindName) {
+        for (const auto& entry : *it) {
+          if (!entry.is_object() || stringField(entry, "kind") != umbriel::effectKindName(kind)) {
             continue;
           }
-          const std::string name = entry.value("name", "");
-          if (umbriel::effectReferenceAccepted(
-                  effects, name, kind, false, umbriel::EffectReferenceConstraint::PresetOrPool
-              )) {
-            addUnique(std::string_view(section) == "pools" ? pools : presets, name);
-          }
+          addUnique(std::string_view(section) == "pools" ? pools : presets, stringField(entry, "name"));
         }
       }
     });

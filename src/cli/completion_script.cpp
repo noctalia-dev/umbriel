@@ -39,9 +39,8 @@ _umbriel_words() {
 }
 
 _umbriel() {
-  local -a candidates=()
   local -a words=()
-  local output code=0 value description spaced=0
+  local output code=0 value description current prefix
   mapfile -t words < <(_umbriel_words "${COMP_LINE:0:COMP_POINT}")
   output=$(umbriel complete -- "${words[@]:1}" 2>/dev/null) || code=$?
   if ((code == 2)); then
@@ -53,16 +52,17 @@ _umbriel() {
     return 0
   fi
   COMPREPLY=()
+  # readline replaces only what follows the last `COMP_WORDBREAKS` character, which includes `:`, so the part the line
+  # already holds is dropped from a candidate before it is quoted for re-entry. Quoting is readline's own job the
+  # filenames option does for files; done here it also covers a value with no whitespace, and it never appends a slash
+  # to a value that happens to name a directory.
+  current=${words[-1]}
+  prefix=${current%"${current##*:}"}
   while IFS=$'\t' read -r value description; do
     [[ -n $value ]] || continue
-    candidates+=("$value")
-    [[ $value == *[[:space:]\\]* ]] && spaced=1
+    [[ -n $prefix && $value == "$prefix"* ]] && value=${value#"$prefix"}
+    COMPREPLY+=("$(printf '%q' "$value")")
   done <<<"$output"
-  ((${#candidates[@]} > 0)) || return 0
-  COMPREPLY=("${candidates[@]}")
-  # A value with a space or a quote needs readline's quoting; without such a candidate the filenames option would
-  # append a slash to a name that happens to match a directory instead of ending the word.
-  ((spaced)) && compopt -o filenames 2>/dev/null
   return 0
 }
 complete -F _umbriel umbriel
@@ -90,10 +90,9 @@ _umbriel() {
     value=${line%%$'\t'*}
     description=''
     [[ $line == *$'\t'* ]] && description=${line#*$'\t'}
-    values+=("$value")
-    # `_describe` reads each entry of its first array as `completion:description` and takes the second array as the
-    # completions to add, so the value stays the match and the description is only how the menu annotates it. A colon
-    # in the value is escaped because it separates the two.
+    # `_describe` splits both arrays on an unescaped `:`, so a value that carries one (every window id is
+    # `app_id:title`) is escaped in the match array as well as in the description entry.
+    values+=("${value//:/\\:}")
     displays+=("${value//:/\\:}:$description")
   done
   ((${#values})) || return
