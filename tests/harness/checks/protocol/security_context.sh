@@ -20,6 +20,7 @@ readonly -a NORMAL_GLOBALS=(
   wl_data_device_manager
   wp_viewporter
   wp_fractional_scale_manager_v1
+  wp_alpha_modifier_v1
   wp_presentation
   wp_tearing_control_manager_v1
   wp_content_type_manager_v1
