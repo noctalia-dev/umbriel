@@ -267,8 +267,6 @@ namespace umbriel {
       // `--name` alone.
       auto emitWorkspace = [&](const std::vector<std::string>& list) {
         for (const std::string& value : list) {
-          // A positional word of digits is an index, so a workspace whose name is all digits is reachable through
-          // `--name` alone.
           if (!value.starts_with("--") && !allDigits(value)) {
             emit(value, "workspace");
           }
