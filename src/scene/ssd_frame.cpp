@@ -17,14 +17,16 @@ namespace umbriel {
   } // namespace
 
   SsdFrame::SsdFrame(wlr_scene_tree* parent, std::shared_ptr<TabLabelCache> labels, wlr_scene_tree* inputParent)
-      : m_tree(wlr_scene_tree_create(parent)),
+      : m_backgroundTree(wlr_scene_tree_create(parent)), m_tree(wlr_scene_tree_create(parent)),
         m_gripTree(wlr_scene_tree_create(inputParent != nullptr ? inputParent : parent)), m_labels(std::move(labels)) {
     if (inputParent != nullptr && parent->node.parent == inputParent) {
       // Client surfaces and popups keep input priority over invisible resize grips.
       wlr_scene_node_place_below(&m_gripTree->node, &parent->node);
     }
+    // The fill continues beneath the border's antialiased inner edge.
+    wlr_scene_node_lower_to_bottom(&m_backgroundTree->node);
     const float clear[4]{};
-    m_background = wlr_scene_rect_create(m_tree, 1, 1, clear);
+    m_background = wlr_scene_rect_create(m_backgroundTree, 1, 1, clear);
     m_close = wlr_scene_rect_create(m_tree, 1, 1, clear);
     m_maximize = wlr_scene_rect_create(m_tree, 1, 1, clear);
     m_minimize = wlr_scene_rect_create(m_tree, 1, 1, clear);
@@ -32,6 +34,7 @@ namespace umbriel {
       grip = wlr_scene_rect_create(m_gripTree, 1, 1, clear);
     }
     wlr_scene_node_set_enabled(&m_tree->node, false);
+    wlr_scene_node_set_enabled(&m_backgroundTree->node, false);
     wlr_scene_node_set_enabled(&m_gripTree->node, false);
   }
 
@@ -41,6 +44,7 @@ namespace umbriel {
     }
     wlr_scene_node_destroy(&m_gripTree->node);
     wlr_scene_node_destroy(&m_tree->node);
+    wlr_scene_node_destroy(&m_backgroundTree->node);
     for (auto* buffer : m_iconBuffers) {
       if (buffer != nullptr) {
         wlr_buffer_unlock(buffer);
@@ -166,15 +170,17 @@ namespace umbriel {
 
   int SsdFrame::zoomed(int value) const { return static_cast<int>(std::lround(value * m_geometry.zoom)); }
 
-  clipped_region SsdFrame::frameClip(int x, int y) const {
-    const int radius = zoomed(nestedRadius(m_geometry.cornerRadius, m_geometry.borderInset));
+  clipped_region SsdFrame::frameClip(int x, int y, bool underBorder) const {
+    const int outset = underBorder ? m_geometry.borderInset : 0;
+    const int radius = zoomed(nestedRadius(m_geometry.cornerRadius, m_geometry.borderInset - outset));
     if (radius <= 0) {
       return {};
     }
     return {
         .area =
-            {-x, zoomed(-m_geometry.titleBarHeight) - y, zoomed(m_geometry.contentWidth),
-             zoomed(m_geometry.contentHeight + m_geometry.titleBarHeight)},
+            {zoomed(-outset) - x, zoomed(-m_geometry.titleBarHeight - outset) - y,
+             zoomed(m_geometry.contentWidth + 2 * outset),
+             zoomed(m_geometry.contentHeight + m_geometry.titleBarHeight + 2 * outset)},
         .corners = corner_radii_all(radius),
         .inside = true,
     };
@@ -302,12 +308,14 @@ namespace umbriel {
     const bool available = !g.suppressed && g.contentWidth > 0 && g.contentHeight > 0;
     const bool shown = available && h > 0;
     wlr_scene_node_set_enabled(&m_tree->node, shown);
+    wlr_scene_node_set_enabled(&m_backgroundTree->node, shown);
     wlr_scene_node_set_enabled(&m_gripTree->node, available && m_resizable && !m_preview);
     if (!available) {
       updateBlur();
       return;
     }
     wlr_scene_node_set_position(&m_tree->node, zoomed(g.contentX), zoomed(g.contentY));
+    wlr_scene_node_set_position(&m_backgroundTree->node, zoomed(g.contentX), zoomed(g.contentY));
     wlr_scene_node_set_position(&m_gripTree->node, zoomed(g.contentX), zoomed(g.contentY));
     const auto place = [&](wlr_scene_rect* rect, const wlr_box& box) {
       wlr_scene_node_set_position(&rect->node, zoomed(box.x), zoomed(box.y));
@@ -333,7 +341,7 @@ namespace umbriel {
       return;
     }
     place(m_background, {0, -h, g.contentWidth, h});
-    wlr_scene_rect_set_clipped_region(m_background, frameClip(m_background->node.x, m_background->node.y));
+    wlr_scene_rect_set_clipped_region(m_background, frameClip(m_background->node.x, m_background->node.y, true));
     const auto& style = config().appearance.titleBar;
     const int radius = nestedRadius(g.cornerRadius, g.borderInset);
     TitleBarLayout parts =
@@ -382,7 +390,7 @@ namespace umbriel {
       if (m_label == nullptr) {
         m_label = wlr_scene_buffer_create(m_tree, label->buffer);
         m_label->point_accepts_input = rejectInput;
-        wlr_scene_node_place_above(&m_label->node, &m_background->node);
+        wlr_scene_node_lower_to_bottom(&m_label->node);
       } else {
         wlr_scene_buffer_set_buffer(m_label, label->buffer);
       }
@@ -397,7 +405,7 @@ namespace umbriel {
   bool SsdFrame::contains(const wlr_scene_node* node) const {
     for (const wlr_scene_node* current = node; current != nullptr;
          current = current->parent != nullptr ? &current->parent->node : nullptr) {
-      if (current == &m_tree->node || current == &m_gripTree->node) {
+      if (current == &m_tree->node || current == &m_backgroundTree->node || current == &m_gripTree->node) {
         return true;
       }
     }
@@ -420,8 +428,10 @@ namespace umbriel {
       return;
     }
     auto* tree = parent;
+    auto* backgroundTree = wlr_scene_tree_create(parent);
+    wlr_scene_node_lower_to_bottom(&backgroundTree->node);
     if (m_blur != nullptr && m_blur->node.enabled) {
-      auto* copy = wlr_scene_blur_create(tree, m_blur->width, m_blur->height);
+      auto* copy = wlr_scene_blur_create(backgroundTree, m_blur->width, m_blur->height);
       if (copy != nullptr) {
         wlr_scene_node_lower_to_bottom(&copy->node);
         wlr_scene_blur_set_corner_radii(copy, m_blur->corners);
@@ -435,7 +445,9 @@ namespace umbriel {
       if (!source->node.enabled) {
         continue;
       }
-      auto* copy = wlr_scene_rect_create(tree, source->width, source->height, source->color);
+      auto* copy = wlr_scene_rect_create(
+          source == m_background ? backgroundTree : tree, source->width, source->height, source->color
+      );
       copy->accepts_input = false;
       wlr_scene_rect_set_corner_radii(copy, source->corners);
       wlr_scene_rect_set_clipped_region(copy, source->clipped_region);
