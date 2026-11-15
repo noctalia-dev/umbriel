@@ -9,6 +9,9 @@
 
 namespace umbriel {
 
+  // The id both revokes read as "every grant", in place of one hex id.
+  inline constexpr std::string_view kRevokeAllWord = "all";
+
   struct InputCapturePermission {
     std::string id;
     std::string application;
