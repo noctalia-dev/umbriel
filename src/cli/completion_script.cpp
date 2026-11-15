@@ -121,8 +121,14 @@ _umbriel() {
   # space or a colon continues from where it left off and a cursor moved back completes the word it is on.
   args=("${(@Q)words[2,CURRENT]}")
   # `(Q)` cannot dequote a word whose quote is still open at the cursor, and the binary matches on the word as the
-  # shell reads it, so a quote character it leaves behind is dropped.
-  args[-1]=${args[-1]//[\"\']/}
+  # shell reads it, so the one quote it leaves open is dropped; a quote the value carries inside stays.
+  if [[ -n $compstate[quote] ]]; then
+    if [[ $args[-1] == $compstate[quote]* ]]; then
+      args[-1]=${args[-1]#$compstate[quote]}
+    else
+      args[-1]=${args[-1]%$compstate[quote]}
+    fi
+  fi
   lines=("${(@f)$(umbriel complete -- "${args[@]}" 2>/dev/null)}") || code=$?
   if ((code == 2)); then
     _path_files
