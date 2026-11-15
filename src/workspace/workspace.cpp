@@ -392,7 +392,15 @@ namespace umbriel {
   }
 
   bool Workspace::liftedAboveFullscreen(const View* view) const {
-    if (m_layoutMode != LayoutMode::Scrolling || view != m_focusedView || view->scheduledFullscreen()) {
+    if (view != m_focusedView || !view->tiled() || view->scheduledFullscreen()) {
+      return false;
+    }
+    if (std::ranges::any_of(m_views, [](const View* member) {
+          return member->mapped() && member->floating() && !member->pinned() && member->scheduledFullscreen();
+        })) {
+      return true;
+    }
+    if (m_layoutMode != LayoutMode::Scrolling) {
       return false;
     }
     const int column = m_layout->columnOf(view);
@@ -432,6 +440,9 @@ namespace umbriel {
       if (view != nullptr && view->workspace() == this && view->floating()) {
         view->raiseToTop();
       }
+    }
+    if (m_focusedView != nullptr && liftedAboveFullscreen(m_focusedView)) {
+      m_focusedView->raiseToTop();
     }
     raiseFloatingLayer();
   }
@@ -1016,7 +1027,7 @@ namespace umbriel {
       }
     } heldRelease{*this};
     refreshAloneRuleStates();
-    // Whether the focused tile is lifted above a fullscreen window depends on its column.
+    // Column membership and floating fullscreen windows determine whether the focused tile is lifted.
     if (m_focusedView != nullptr) {
       m_focusedView->syncTransientSceneParent();
     }
