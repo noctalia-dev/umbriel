@@ -1622,13 +1622,16 @@ namespace umbriel {
     if (launchToken != nullptr) {
       trackActivationToken(launchToken, true, pid);
     }
-    // A program that starts nothing leaves no other trace the compositor can vouch for, so this record stands alone.
-    // The pid and unit come before the command: a long command is truncated at the line cap, the anchors are not.
+    // The label and command are bounded so a long one cannot push the pid and unit past the log line cap; those
+    // two are the only trace a program that starts nothing leaves.
+    constexpr std::size_t kMaxLabelLength = 1024;
     const char* label = description == nullptr ? command : description;
-    const std::string commandField = description == nullptr ? std::string() : std::format(", command '{}'", command);
+    const std::string boundedLabel = std::format("{:.{}}", label, kMaxLabelLength);
+    const std::string commandField =
+        description == nullptr ? std::string() : std::format(", command '{:.{}}'", command, kMaxLabelLength);
     const std::string ownerUnit = scopeRequired ? std::format(", unit {}", scopeUnitName) : std::string();
     kLog.info(
-        "launch requested for '{}' (pid {}{}{}) on WAYLAND_DISPLAY={}", label, pid, ownerUnit, commandField,
+        "launch requested for '{}' (pid {}{}{}) on WAYLAND_DISPLAY={}", boundedLabel, pid, ownerUnit, commandField,
         m_socketName
     );
   }

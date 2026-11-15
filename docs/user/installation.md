@@ -350,7 +350,7 @@ launch requested for 'events.lid_close' (pid 4211, unit app-umbriel-1180-4.scope
 
 The command appears in the record when Umbriel launched it on behalf of something else with a name of its own, such as a lid-close event or a scratchpad's `spawn_when_empty`. A session that does not run applications in their own scopes has no unit.
 
-`journalctl --user -u umbriel.service | grep 'launch requested'` lists every launch the compositor performed: it writes that record from its own process, so it appears whether or not the program does anything.
+`journalctl --user -u umbriel.service | grep 'launch requested'` lists every launch the compositor performed in a session started through `start-umbriel`: it writes that record from its own process, so it appears whether or not the program does anything. A session started any other way has no journal entry, and its record is in `umbriel.log`.
 
 What the program itself wrote is reachable with the identifier query, including a shell diagnostic for a name that resolves to nothing:
 
