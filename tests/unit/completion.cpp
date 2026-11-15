@@ -398,8 +398,9 @@ UMBRIEL_TEST(valuesTheWordGrammarRefusesAreNotOffered) {
 UMBRIEL_TEST(digitOnlyWorkspaceNamesCompleteOnlyByName) {
   CompletionValues values;
   values.workspaces = {"0", "2", "web", "--flag"};
-  // `0` is not a usable index and `--flag` is a flag word, so neither can stand where the grammar expects a selector.
-  CHECK_EQ(complete({"msg", "workspace-switch", ""}, values), (std::vector<std::string>{"2", "web"}));
+  // A positional word of digits is an index, never the name of the workspace at that index, and `--flag` is a flag
+  // word, so neither can stand where the grammar expects a selector.
+  CHECK_EQ(complete({"msg", "workspace-switch", ""}, values), std::vector<std::string>{"web"});
   // Ones given after `--name` are taken verbatim, so every name there is a candidate.
   CHECK_EQ(
       complete({"msg", "workspace-switch", "--name", ""}, values), (std::vector<std::string>{"0", "2", "web", "--flag"})
@@ -777,6 +778,23 @@ UMBRIEL_TEST(bashScriptReplacesOnlyWhatReadlineDoes) {
   CHECK_EQ(
       joined(bash.complete({"umbriel msg window-focus 'kitty:Don", "kitty:Don't\ttitle"}).candidates),
       "[kitty:Don'\\''t]"
+  );
+  // The word has to end closed: readline closes only a match that lacks a closing quote, and then ends the word, so a
+  // value whose last character leaves the quote open would take the space readline appends with it.
+  CHECK_EQ(
+      joined(bash.complete({"umbriel msg window-focus \"kitty:hel", "kitty:hello!\ttitle"}).candidates),
+      "[kitty:hello\"'!'\"\"]"
+  );
+  CHECK_EQ(
+      joined(bash.complete({"umbriel msg window-focus 'kitty:Don", "kitty:Don'\ttitle"}).candidates),
+      "[kitty:Don'\\''']"
+  );
+  // A second TAB reads the quotes the first one inserted, so the value continues after them.
+  CHECK_EQ(
+      joined(bash.complete({"umbriel msg window-focus \"kitty:hello\"'!'\"",
+                            "kitty:hello!world\ttitle\nkitty:hello!there\ttitle"})
+                 .candidates),
+      "[world][there]"
   );
 
   // Exit 2 leaves paths to readline, exit 3 takes the command names from the shell's own list.

@@ -28,12 +28,14 @@ _umbriel_words() {
     elif [[ -n $quote ]]; then
       if [[ $char == "$quote" ]]; then
         quote=
+        kept=
       else
         word+=$char
         kept+=$char
       fi
     elif [[ $char == "'" || $char == '"' ]]; then
       quote=$char
+      kept=
     elif [[ $char == ' ' || $char == $'\t' ]]; then
       if [[ -n $word ]]; then
         words+=("$word")
@@ -56,7 +58,8 @@ _umbriel_words() {
 
 # A value as the shell must re-read it: `%q` where the word is unquoted, the quote's own escapes inside an open
 # double quote where a backslash is literal, and single quotes spliced in for the two characters the open quote
-# cannot carry.
+# cannot carry. The word ends closed, because readline adds its own closing quote only to a match that lacks one and
+# then treats the word as finished.
 _umbriel_escape() {
   local value=$1
   case "$_umbriel_quote" in
@@ -67,11 +70,13 @@ _umbriel_escape() {
       value=${value//\`/\\\`}
       # `!` starts history expansion even inside double quotes, and `\!` would keep its backslash.
       value=${value//!/\"\'!\'\"}
+      [[ $value == *'"' ]] && value+='"'
       printf '%s' "$value"
       ;;
     "'")
       # An apostrophe would otherwise close the word before its end.
       value=${value//\'/\'\\\'\'}
+      [[ $value == *"'" ]] && value+="'"
       printf '%s' "$value"
       ;;
     *) printf '%q' "$value" ;;
@@ -110,11 +115,15 @@ complete -F _umbriel umbriel
 # zsh completion for umbriel: installed by `meson install`, or load it with
 #   eval "$(umbriel completions zsh)"
 _umbriel() {
-  local -a lines values displays
+  local -a lines values displays args
   local line value description code=0
   # `(Q)` removes the quoting zsh keeps in `words`, and `CURRENT` is the word the cursor is on, so a value with a
   # space or a colon continues from where it left off and a cursor moved back completes the word it is on.
-  lines=("${(@f)$(umbriel complete -- "${(@Q)words[2,CURRENT]}" 2>/dev/null)}") || code=$?
+  args=("${(@Q)words[2,CURRENT]}")
+  # `(Q)` cannot dequote a word whose quote is still open at the cursor, and the binary matches on the word as the
+  # shell reads it, so a quote character it leaves behind is dropped.
+  args[-1]=${args[-1]//[\"\']/}
+  lines=("${(@f)$(umbriel complete -- "${args[@]}" 2>/dev/null)}") || code=$?
   if ((code == 2)); then
     _path_files
     return
