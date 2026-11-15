@@ -159,7 +159,7 @@ namespace umbriel {
     // An override-redirect window sets X input focus itself; a managed one waits for the window manager. The
     // activated window reclaims it when it takes the seat back.
     if (!m_xsurface->override_redirect) {
-      wlr_xwayland_surface_activate(m_xsurface, true);
+      m_server.xwayland()->activateSurface(m_xsurface, true);
     }
   }
 
