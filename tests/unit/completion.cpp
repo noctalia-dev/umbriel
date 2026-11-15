@@ -768,6 +768,16 @@ UMBRIEL_TEST(bashScriptReplacesOnlyWhatReadlineDoes) {
       joined(bash.complete({"umbriel msg window-focus foot:s", "foot:shell one\ttitle"}).candidates), "[shell\\ one]"
   );
   CHECK_EQ(joined(bash.complete({"umbriel msg window-focus \"a", "a\"b$c\ttitle"}).candidates), "[a\\\"b\\$c]");
+  // Neither character can be carried by the quote that is open: `!` because it starts history expansion inside
+  // double quotes, and an apostrophe because it would close a single-quoted word early.
+  CHECK_EQ(
+      joined(bash.complete({"umbriel msg window-focus \"kitty:hello", "kitty:hello!world\ttitle"}).candidates),
+      "[kitty:hello\"'!'\"world]"
+  );
+  CHECK_EQ(
+      joined(bash.complete({"umbriel msg window-focus 'kitty:Don", "kitty:Don't\ttitle"}).candidates),
+      "[kitty:Don'\\''t]"
+  );
 
   // Exit 2 leaves paths to readline, exit 3 takes the command names from the shell's own list.
   CHECK(bash.complete({"umbriel config-replace /e", "", 2}).candidates.empty());

@@ -54,8 +54,9 @@ _umbriel_words() {
   _umbriel_words=("${words[@]}")
 }
 
-# A value as the shell must re-read it: `%q` where the word is unquoted, and the quote's own escapes inside an open
-# one, where a backslash is literal.
+# A value as the shell must re-read it: `%q` where the word is unquoted, the quote's own escapes inside an open
+# double quote where a backslash is literal, and single quotes spliced in for the two characters the open quote
+# cannot carry.
 _umbriel_escape() {
   local value=$1
   case "$_umbriel_quote" in
@@ -64,9 +65,15 @@ _umbriel_escape() {
       value=${value//\"/\\\"}
       value=${value//\$/\\$}
       value=${value//\`/\\\`}
+      # `!` starts history expansion even inside double quotes, and `\!` would keep its backslash.
+      value=${value//!/\"\'!\'\"}
       printf '%s' "$value"
       ;;
-    "'") printf '%s' "$value" ;;
+    "'")
+      # An apostrophe would otherwise close the word before its end.
+      value=${value//\'/\'\\\'\'}
+      printf '%s' "$value"
+      ;;
     *) printf '%q' "$value" ;;
   esac
 }
