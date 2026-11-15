@@ -841,7 +841,7 @@ namespace umbriel {
   bool InputCapture::revokePermission(std::string_view id) {
     const bool forgotten = m_impl->permissionStore.revoke(id);
     for (const auto& state : m_impl->sessions) {
-      if (!state->grantId.empty() && (id == "all" || state->grantId == id)) {
+      if (!state->grantId.empty() && (id == kRevokeAllWord || state->grantId == id)) {
         state->close();
       }
     }

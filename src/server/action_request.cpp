@@ -472,7 +472,7 @@ namespace umbriel {
             if (arg.mode) {
               request["layout"] = layoutModeName(*arg.mode);
             } else {
-              request["layout"] = "toggle";
+              request["layout"] = kLayoutModeToggleWord;
               if (!arg.toggleSequence.empty()) {
                 nlohmann::json cycle = nlohmann::json::array();
                 for (const LayoutMode mode : arg.toggleSequence) {
@@ -482,7 +482,7 @@ namespace umbriel {
               }
             }
           } else if constexpr (std::is_same_v<Arg, ColumnDisplayArg>) {
-            request["display"] = arg.display == ColumnDisplay::Tabbed ? "tabbed" : "normal";
+            request["display"] = columnDisplayNames()[static_cast<size_t>(arg.display)];
           } else if constexpr (std::is_same_v<Arg, TabIndexArg>) {
             request["index"] = arg.index;
           } else if constexpr (std::is_same_v<Arg, QuitArg>) {

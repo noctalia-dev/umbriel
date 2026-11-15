@@ -318,32 +318,36 @@ namespace {
     return umbriel::config();
   }
 
-  // `section` names the array to read when the reply is an object, as `effects` wraps its presets and pools in keys.
+  // `section` names the array to read when the reply is an object, as `effects` wraps its presets and pools in keys;
+  // `requiresTrue` names a boolean field an entry must carry to be collected.
   void collectLiveNames(
       std::vector<std::string>& target, std::string_view command, std::string_view key, const LiveBudget& budget,
-      std::string_view section = {}
+      std::string_view section = {}, std::string_view requiresTrue = {}
   ) {
     // The query measures what the shared deadline has left for each system call, and issues none once it is spent.
-    const std::optional<std::string> payload = umbriel::queryIpcJson(command, budget.deadline());
-    if (!payload) {
+    const std::optional<nlohmann::json> reply = umbriel::queryIpcJson(command, budget.deadline());
+    if (!reply) {
       return;
     }
-    nlohmann::json json = nlohmann::json::parse(*payload, nullptr, false);
+    const nlohmann::json* json = &*reply;
     if (!section.empty()) {
-      if (!json.is_object()) {
+      if (!json->is_object()) {
         return;
       }
-      const auto it = json.find(std::string(section));
-      if (it == json.end()) {
+      const auto it = json->find(std::string(section));
+      if (it == json->end()) {
         return;
       }
-      json = *it;
+      json = &*it;
     }
-    if (!json.is_array()) {
+    if (!json->is_array()) {
       return;
     }
-    for (const auto& entry : json) {
+    for (const auto& entry : *json) {
       if (!entry.is_object()) {
+        continue;
+      }
+      if (!requiresTrue.empty() && !entry.value(requiresTrue, false)) {
         continue;
       }
       const auto it = entry.find(key);
@@ -378,19 +382,70 @@ namespace {
         collectLiveNames(target, "windows", "id", *budget);
       }
     });
+    // A workspace is named either by a `[[workspace]]` rule or by a string inventory on an output; a numeric
+    // inventory creates anonymous members, which only `--name` and live state can address.
     values.workspaces = umbriel::CompletionList([=](std::vector<std::string>& target) {
-      configNames(target, [](const umbriel::Config& config) -> const auto& { return config.workspaceRules; });
+      const umbriel::Config& config = completionConfig(*loaded);
+      configNames(target, [](const umbriel::Config& loadedConfig) -> const auto& {
+        return loadedConfig.workspaceRules;
+      });
+      for (const umbriel::OutputRule& output : config.outputs) {
+        if (!output.workspaces) {
+          continue;
+        }
+        if (const auto* names = std::get_if<std::vector<std::string>>(&*output.workspaces)) {
+          for (const std::string& name : *names) {
+            addUnique(target, name);
+          }
+        }
+      }
       if (live) {
-        collectLiveNames(target, "workspaces", "name", *budget);
+        // A live reply lists every member, and an anonymous one carries its index as a name, which `--name` refuses.
+        collectLiveNames(target, "workspaces", "name", *budget, {}, "named");
       }
     });
-    values.effectPresets = umbriel::CompletionList([=](std::vector<std::string>& target) {
-      configNames(target, [](const umbriel::Config& config) -> const auto& { return config.effects.presets; });
-    });
-    values.effectPools = umbriel::CompletionList([=](std::vector<std::string>& target) {
-      configNames(target, [](const umbriel::Config& config) -> const auto& { return config.effects.pools; });
-      if (live) {
-        collectLiveNames(target, "effects", "name", *budget, "pools");
+    // A slot accepts only names of its own kind, and only a cycle demands a pool, so the kind is asked for here and
+    // the filter is the validator's own predicate rather than a second copy of the rule.
+    values.effects = umbriel::EffectCandidates([=](std::vector<std::string>& presets, std::vector<std::string>& pools,
+                                                   umbriel::EffectKind kind) {
+      const umbriel::Effects& effects = completionConfig(*loaded).effects;
+      for (const umbriel::EffectPreset& preset : effects.presets) {
+        if (umbriel::effectReferenceAccepted(
+                effects, preset.name, kind, false, umbriel::EffectReferenceConstraint::PresetOrPool
+            )) {
+          addUnique(presets, preset.name);
+        }
+      }
+      for (const umbriel::EffectPool& pool : effects.pools) {
+        if (umbriel::effectReferenceAccepted(
+                effects, pool.name, kind, false, umbriel::EffectReferenceConstraint::PoolRequired
+            )) {
+          addUnique(pools, pool.name);
+        }
+      }
+      if (!live) {
+        return;
+      }
+      const std::optional<nlohmann::json> reply = umbriel::queryIpcJson("effects", budget->deadline());
+      if (!reply) {
+        return;
+      }
+      const auto kindName = umbriel::effectKindName(kind);
+      for (const char* section : {"pools", "presets"}) {
+        if (!reply->is_object() || !reply->contains(section) || !(*reply)[section].is_array()) {
+          continue;
+        }
+        for (const auto& entry : (*reply)[section]) {
+          if (!entry.is_object() || entry.value("kind", "") != kindName) {
+            continue;
+          }
+          const std::string name = entry.value("name", "");
+          if (umbriel::effectReferenceAccepted(
+                  effects, name, kind, false, umbriel::EffectReferenceConstraint::PresetOrPool
+              )) {
+            addUnique(std::string_view(section) == "pools" ? pools : presets, name);
+          }
+        }
       }
     });
     values.scratchpads = umbriel::CompletionList([=](std::vector<std::string>& target) {

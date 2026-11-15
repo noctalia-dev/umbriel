@@ -11,6 +11,9 @@ struct wlr_keyboard;
 
 namespace umbriel {
 
+  // `revokePermission`'s id that forgets every grant rather than one.
+  inline constexpr std::string_view kRevokeAllWord = "all";
+
   class Server;
 
   // The compositor owns capture permission and event routing. The private

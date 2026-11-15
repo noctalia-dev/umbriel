@@ -119,5 +119,11 @@ namespace umbriel {
       const Effects& effects, std::string_view name, EffectKind kind, bool allowOff,
       EffectReferenceConstraint constraint = EffectReferenceConstraint::PresetOnly
   );
+  // Whether `name` can stand where a reference of `kind` under `constraint` is expected. The names completion offers
+  // are filtered with this, so it offers exactly what `effectReferenceError` accepts.
+  bool effectReferenceAccepted(
+      const Effects& effects, std::string_view name, EffectKind kind, bool allowOff,
+      EffectReferenceConstraint constraint
+  );
 
 } // namespace umbriel

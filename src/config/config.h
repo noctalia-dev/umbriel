@@ -138,6 +138,10 @@ namespace umbriel {
     bool operator==(const WorkspaceConfig&) const = default;
   };
 
+  // The scratchpad Umbriel provides when the configuration defines none; a wordless scratchpad action addresses it
+  // too.
+  inline constexpr std::string_view kImplicitScratchpad = "default";
+
   // A user-defined scratchpad. An empty list means Umbriel provides the implicit scratchpad
   // `kImplicitScratchpad` instead.
   struct ScratchpadConfig {

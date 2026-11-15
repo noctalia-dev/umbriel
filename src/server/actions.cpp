@@ -1670,11 +1670,8 @@ namespace umbriel {
       if (arg == nullptr) {
         return true;
       }
-      static constexpr std::array kFullCycle{
-          LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master, LayoutMode::Stacking
-      };
       const std::span<const LayoutMode> cycle = arg->toggleSequence.empty()
-          ? std::span<const LayoutMode>(kFullCycle)
+          ? std::span<const LayoutMode>(umbriel::kFullLayoutCycle)
           : std::span<const LayoutMode>(arg->toggleSequence);
       // A mode outside the cycle, or its last mode, toggles to the first.
       const auto current = std::ranges::find(cycle, workspace->layoutMode());

@@ -1,6 +1,7 @@
 #include "cli/complete.h"
 
 #include "cli/cli_words.h"
+#include "config/config.h"
 #include "config/effects.h"
 #include "config/keybind_parse.h"
 #include "config/window_position.h"
@@ -83,10 +84,16 @@ namespace umbriel {
       size_t argBase = 0;
       // `config`'s subcommand, which its flags may follow in any order.
       std::string_view configSub;
+      // The startup flags whose value is already on the line. A value may spell a flag, so the walk records them
+      // rather than testing the words for membership.
+      unsigned startupFlags = 0;
       ArgState args;
     };
 
     bool isFlagWord(std::string_view word) { return word.starts_with('-'); }
+
+    constexpr unsigned kStartupConfigFlag = 1U << 0;
+    constexpr unsigned kStartupSpawnFlag = 1U << 1;
     bool isJsonFlagWord(std::string_view word) { return word == kCliJsonFlag || word == kCliJsonShortFlag; }
 
     // `-j` and `--json` are one option under two spellings, so both are offered from here.
@@ -186,16 +193,27 @@ namespace umbriel {
         return analysis;
       }
       // The compositor's startup flags each take a value and come in either order; their values are the only
-      // positions the line has. Any other first word leaves no position the line accepts.
+      // positions the line has. The walk consumes them in pairs, as the dispatch does, so a value that happens to
+      // spell `-c` or `-s` stays a value.
       if (first == kCliConfigFlag || first == kCliSpawnFlag) {
-        const std::string_view previous{words[position - 1]};
-        if (previous == kCliConfigFlag) {
-          analysis.form = Form::ConfigPath;
-        } else if (previous == kCliSpawnFlag) {
-          analysis.form = Form::CommandLine;
-        } else {
-          analysis.form = Form::StartupFlag;
+        size_t index = 0;
+        while (index < position) {
+          const std::string_view word{words[index]};
+          const bool isConfig = word == kCliConfigFlag;
+          if (!isConfig && word != kCliSpawnFlag) {
+            // A word the dispatch refuses leaves no position; an empty one is the value being typed.
+            analysis.form = word.empty() ? Form::StartupFlag : Form::Nothing;
+            return analysis;
+          }
+          if (index + 1 == position) {
+            // The flag just typed has no value yet.
+            analysis.form = isConfig ? Form::ConfigPath : Form::CommandLine;
+            return analysis;
+          }
+          analysis.startupFlags |= isConfig ? kStartupConfigFlag : kStartupSpawnFlag;
+          index += 2;
         }
+        analysis.form = Form::StartupFlag;
         return analysis;
       }
       analysis.form = Form::Nothing;
@@ -260,8 +278,10 @@ namespace umbriel {
       const std::optional<size_t> workspaceIndex = workspacePositionalIndex(spec.argKind);
       const bool workspaceByName = (args.seenFlags & kActionFlagName) != 0;
       const bool workspaceByPosition = workspaceIndex.has_value() && args.positional.size() > *workspaceIndex;
-      // A workspace kind holds one positional per selector and nothing after it, so a surplus word rejects the line.
-      const bool tooManyPositionals = workspaceIndex.has_value() && args.positional.size() > *workspaceIndex + 1;
+      // One word past what the kind reads leaves the grammar with nothing, so a surplus positional rejects the line
+      // and no flag is offered behind it. `spawn` reads an unbounded tail and is exempt.
+      const std::optional<size_t> arity = actionPositionalArity(spec.argKind);
+      const bool tooManyPositionals = arity.has_value() && args.positional.size() > *arity;
       // Two workspace selectors are a line the parser refuses, so nothing after them completes.
       const bool bothSelectors = workspaceByPosition && workspaceByName;
 
@@ -284,7 +304,11 @@ namespace umbriel {
         }
         if (isFlagWord(partial)) {
           const unsigned flags = actionAllowedFlags(spec.argKind);
-          if ((flags & kActionFlagOutput) != 0 && (args.seenFlags & kActionFlagOutput) == 0) {
+          // `parseActionPayload` only reaches a workspace selector through `--output` when one is already there, so the
+          // transfer target completes after the destination and the selector rather than before them.
+          const bool outputReachable =
+              spec.argKind != ActionArgKind::WorkspaceMoveToOutput || workspaceByPosition || workspaceByName;
+          if ((flags & kActionFlagOutput) != 0 && (args.seenFlags & kActionFlagOutput) == 0 && outputReachable) {
             emit(kActionFlagOutputWord, "target output");
           }
           if ((flags & kActionFlagWindow) != 0 && (args.seenFlags & kActionFlagWindow) == 0) {
@@ -400,23 +424,28 @@ namespace umbriel {
           emitWorkspace(values.workspaces.items());
         }
         return CompletionOutcome::Candidates;
+      // Both slots read names of their own kind only, and a cycle needs a pool: `effectReferenceError` refuses
+      // everything else, so the lists the values carry are already filtered that way.
       case ActionArgKind::WindowEffectSet:
       case ActionArgKind::ScreenEffectSet:
-      case ActionArgKind::CursorEffectSet:
+      case ActionArgKind::CursorEffectSet: {
         if (index == 0) {
-          emitPositional(values.effectPresets.items(), "preset");
-          emitPositional(values.effectPools.items(), "pool");
+          const EffectKind kind = effectSlotKind(spec.action).value_or(EffectKind::Window);
+          emitPositional(values.effects.presets(kind), "preset");
+          emitPositional(values.effects.pools(kind), "pool");
           emit(kEffectOff, "suppress the slot");
         }
         return CompletionOutcome::Candidates;
+      }
       case ActionArgKind::WindowEffectCycle:
       case ActionArgKind::ScreenEffectCycle:
-      case ActionArgKind::CursorEffectCycle:
+      case ActionArgKind::CursorEffectCycle: {
         if (index == 0) {
-          emitPositional(values.effectPresets.items(), "preset");
-          emitPositional(values.effectPools.items(), "pool");
+          const EffectKind kind = effectSlotKind(spec.action).value_or(EffectKind::Window);
+          emitPositional(values.effects.pools(kind), "pool");
         }
         return CompletionOutcome::Candidates;
+      }
       }
       return CompletionOutcome::Candidates;
     }
@@ -461,6 +490,10 @@ namespace umbriel {
     }
 
     void emitEvents(std::string_view word, const CompletionSink& sink) {
+      if (isFlagWord(word)) {
+        emitJsonFlags(word, sink);
+        return;
+      }
       const size_t comma = word.rfind(',');
       const std::string_view prefix = comma == std::string_view::npos ? std::string_view{} : word.substr(0, comma + 1);
       const std::string_view partial = comma == std::string_view::npos ? word : word.substr(comma + 1);
@@ -473,10 +506,10 @@ namespace umbriel {
 
     void emitConfigWords(std::string_view sub, std::string_view partial, const CompletionSink& sink) {
       if (sub.empty()) {
-        if (partial.empty() || kCliConfigValidate.starts_with(partial)) {
+        if (kCliConfigValidate.starts_with(partial)) {
           sink(kCliConfigValidate, "check a configuration");
         }
-        if (partial.empty() || kCliConfigSchema.starts_with(partial)) {
+        if (kCliConfigSchema.starts_with(partial)) {
           sink(kCliConfigSchema, "list every configuration key");
         }
         // The Config group's commands, offered under the subcommand words the dispatch accepts.
@@ -485,14 +518,14 @@ namespace umbriel {
             continue;
           }
           const std::string_view word = spec.name.substr(kConfigCommandPrefix.size());
-          if (partial.empty() || word.starts_with(partial)) {
+          if (word.starts_with(partial)) {
             sink(word, spec.description);
           }
         }
         return;
       }
       if (sub == kCliConfigValidate) {
-        if (partial.empty() || kCliConfigFlag.starts_with(partial)) {
+        if (kCliConfigFlag.starts_with(partial)) {
           sink(kCliConfigFlag, "path to the configuration file");
         }
         emitJsonFlags(partial, sink);
@@ -501,40 +534,49 @@ namespace umbriel {
       }
     }
 
-    // A startup line holds one `-c` and one `-s`, each with its value, so the flag still missing is what completes.
-    void emitStartupFlags(std::span<const std::string> words, std::string_view partial, const CompletionSink& sink) {
-      const auto used = [&words](std::string_view flag) { return std::ranges::find(words, flag) != words.end(); };
-      if (!used(kCliSpawnFlag) && kCliSpawnFlag.starts_with(partial)) {
+    // A startup line takes one `-c` and one `-s`, each with its value, so what completes is whatever the line still
+    // lacks.
+    void emitStartupFlags(unsigned seen, std::string_view partial, const CompletionSink& sink) {
+      if ((seen & kStartupSpawnFlag) == 0 && kCliSpawnFlag.starts_with(partial)) {
         sink(kCliSpawnFlag, "command to run once the session is up");
       }
-      if (!used(kCliConfigFlag) && kCliConfigFlag.starts_with(partial)) {
+      if ((seen & kStartupConfigFlag) == 0 && kCliConfigFlag.starts_with(partial)) {
         sink(kCliConfigFlag, "path to the configuration file");
       }
     }
 
+    // `arguments` is how many argument words already reach the command, after its own spelling and `--json`/`-j` are
+    // taken out; the word being completed is not counted. A command that takes none refuses the line as soon as one
+    // arrives, and one that takes an argument offers nothing past its first.
     void emitCommandWords(
-        const IpcCommandSpec& spec, size_t position, std::string_view partial, const CompletionSink& sink
+        const IpcCommandSpec& spec, size_t arguments, std::string_view partial, const CompletionValues& values,
+        const CompletionSink& sink
     ) {
+      if (arguments > 0) {
+        return;
+      }
       const IpcArgCompletion& completion = spec.completion;
-      const bool isChoice = position == 1 && completion.kind() == IpcArgCompletion::Kind::Choice;
-      // A dash-prefixed choice, such as `config unset --all`, is a flag the command accepts, so it completes with the
-      // JSON flags rather than among the positional values.
+      // The JSON flags are options of every command that takes arguments, so they are offered beside them; a value
+      // the command reads is offered whatever the word begins with, because the dispatch takes it verbatim.
       if (isFlagWord(partial)) {
         emitJsonFlags(partial, sink);
-        if (isChoice) {
-          for (const std::string_view choice : completion.choices()) {
-            if (isFlagWord(choice) && choice.starts_with(partial)) {
-              sink(choice, completion.description());
-            }
+      }
+      if (completion.kind() == IpcArgCompletion::Kind::Output) {
+        for (const std::string& name : values.outputs.items()) {
+          if (!name.starts_with("--") && name.starts_with(partial)) {
+            sink(name, "output");
           }
         }
         return;
       }
-      if (isChoice) {
-        for (const std::string_view choice : completion.choices()) {
-          if (!isFlagWord(choice) && choice.starts_with(partial)) {
-            sink(choice, completion.description());
-          }
+      if (completion.kind() != IpcArgCompletion::Kind::Choice) {
+        return;
+      }
+      // A dash-prefixed choice, such as `config unset --all`, is an argument the command takes rather than one of its
+      // options, so it is offered on an empty word and not only once a dash is typed.
+      for (const std::string_view choice : completion.choices()) {
+        if (choice.starts_with(partial)) {
+          sink(choice, completion.description());
         }
       }
     }
@@ -563,7 +605,7 @@ namespace umbriel {
     case Form::CommandLine:
       return CompletionOutcome::DelegateCommand;
     case Form::StartupFlag:
-      emitStartupFlags(words, analysis.partial, sink);
+      emitStartupFlags(analysis.startupFlags, analysis.partial, sink);
       return CompletionOutcome::Candidates;
     case Form::CompletionsShell:
       for (const CompletionShellName& shell : completionShellNames()) {
@@ -578,7 +620,9 @@ namespace umbriel {
       const std::span<const std::string> consumed = words.first(words.size() - 1);
       const auto reaching =
           std::ranges::count_if(consumed, [](const std::string& word) { return !isJsonFlagWord(word); });
-      emitCommandWords(*analysis.command, static_cast<size_t>(reaching) - analysis.argBase, analysis.partial, sink);
+      // The command's own spelling is one word, plus `config`'s extra one; everything else is an argument.
+      const size_t arguments = static_cast<size_t>(reaching) - 1 - analysis.argBase;
+      emitCommandWords(*analysis.command, arguments, analysis.partial, values, sink);
       return CompletionOutcome::Candidates;
     }
     case Form::Nothing:
@@ -589,7 +633,30 @@ namespace umbriel {
 
   CompletionList::CompletionList(std::initializer_list<std::string> items) : m_items(items), m_filled(true) {}
 
-  CompletionList::CompletionList(std::vector<std::string> items) : m_items(std::move(items)), m_filled(true) {}
+  EffectCandidates::EffectCandidates(Filler filler) : m_filler(std::move(filler)) {}
+
+  void EffectCandidates::fill(EffectKind kind) const {
+    const auto slot = static_cast<size_t>(kind);
+    if (m_filled[slot]) {
+      return;
+    }
+    m_filled[slot] = true;
+    if (m_filler) {
+      m_filler(m_byKind[slot].presets, m_byKind[slot].pools, kind);
+    }
+    std::ranges::sort(m_byKind[slot].presets);
+    std::ranges::sort(m_byKind[slot].pools);
+  }
+
+  const std::vector<std::string>& EffectCandidates::presets(EffectKind kind) const {
+    fill(kind);
+    return m_byKind[static_cast<size_t>(kind)].presets;
+  }
+
+  const std::vector<std::string>& EffectCandidates::pools(EffectKind kind) const {
+    fill(kind);
+    return m_byKind[static_cast<size_t>(kind)].pools;
+  }
 
   CompletionList::CompletionList(Filler filler) : m_filler(std::move(filler)) {}
 

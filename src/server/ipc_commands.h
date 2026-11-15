@@ -79,6 +79,7 @@ namespace umbriel {
     enum class Kind : uint8_t {
       None,
       Path,   // the shell completes a filesystem path
+      Output, // an output name, live or configured
       Choice, // one of `choices`
     };
 
@@ -118,6 +119,8 @@ namespace umbriel {
   const IpcCommandSpec* findConfigCommand(std::string_view sub);
   // The Config group's request names carry this prefix and the CLI spells them as two words; `cliName` splits on it.
   inline constexpr std::string_view kConfigCommandPrefix = "config-";
+  // `config unset`'s argument that drops every override.
+  inline constexpr std::string_view kUnsetAllWord = "--all";
   // How the command line spells a command: `config set` for `config-set`, the request name otherwise.
   std::string cliName(const IpcCommandSpec& spec);
 

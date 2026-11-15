@@ -45,8 +45,13 @@ namespace {
     values.outputs = {"DP-1", "HDMI-A-1"};
     values.windows = {"kitty:htop", "foot:shell"};
     values.workspaces = {"2", "web"};
-    values.effectPresets = {"cinema", "glow"};
-    values.effectPools = {"cinema", "motion"};
+    values.effects = umbriel::EffectCandidates([](std::vector<std::string>& presets, std::vector<std::string>& pools,
+                                                  umbriel::EffectKind kind) {
+      if (kind == umbriel::EffectKind::Window) {
+        presets = {"cinema", "glow"};
+        pools = {"cinema", "motion"};
+      }
+    });
     values.scratchpads = {"music"};
     values.submaps = {"resize"};
     return values;
@@ -211,13 +216,41 @@ UMBRIEL_TEST(effectSetOffersPresetsPoolsAndOffWithoutDuplicates) {
   CHECK_EQ(std::ranges::count(candidates, "cinema"), 1);
 }
 
-UMBRIEL_TEST(effectCycleOffersTheNamesItCanCycleThrough) {
+UMBRIEL_TEST(effectCycleOffersOnlyThePoolsItCanCycleThrough) {
   const CompletionValues values = sampleValues();
   const std::vector<std::string> candidates = complete({"msg", "effect-window-cycle", ""}, values);
   CHECK(contains(candidates, "motion"));
-  CHECK(contains(candidates, "glow"));
-  // `off` suppresses a slot, which a cycle cannot select.
+  // A cycle resolves a pool, so a preset would be refused; `off` suppresses a slot, which a cycle cannot select.
+  CHECK(!contains(candidates, "glow"));
   CHECK(!contains(candidates, "off"));
+}
+
+UMBRIEL_TEST(effectPositionsReadTheSlotKind) {
+  std::vector<umbriel::EffectKind> asked;
+  CompletionValues values;
+  values.effects = umbriel::EffectCandidates(
+      [&asked](std::vector<std::string>& presets, std::vector<std::string>& pools, umbriel::EffectKind kind) {
+        asked.push_back(kind);
+        presets = {std::string{umbriel::effectKindName(kind)}};
+        pools = {std::string{umbriel::effectKindName(kind)}};
+      }
+  );
+  // Each slot reads names of its own kind, and the border slot is its own kind rather than the window one.
+  const auto first = [&values](const char* action) {
+    const std::vector<std::string> names = complete({"msg", action, ""}, values);
+    return names.empty() ? std::string{} : names.front();
+  };
+  CHECK_EQ(first("effect-window-set"), std::string{"window"});
+  CHECK_EQ(first("effect-border-set"), std::string{"border"});
+  CHECK_EQ(first("effect-screen-set"), std::string{"screen"});
+  CHECK_EQ(first("effect-cursor-set"), std::string{"cursor"});
+  CHECK(!asked.empty());
+  for (const umbriel::EffectKind kind : asked) {
+    CHECK(kind != umbriel::EffectKind::Animation);
+  }
+  // Each kind is filled once, however many positions ask for it.
+  const auto count = std::ranges::count(asked, umbriel::EffectKind::Window);
+  CHECK_EQ(count, 1);
 }
 
 UMBRIEL_TEST(flagsFollowTheGrammar) {
@@ -434,8 +467,14 @@ UMBRIEL_TEST(valuesLoadOnlyWhenAPositionReadsThem) {
   values.outputs = recording(reads, "output");
   values.windows = recording(reads, "window");
   values.workspaces = recording(reads, "workspace");
-  values.effectPresets = recording(reads, "preset");
-  values.effectPools = recording(reads, "pool");
+  values.effects = umbriel::EffectCandidates(
+      [&reads](std::vector<std::string>& presets, std::vector<std::string>& pools, umbriel::EffectKind) {
+        reads.push_back("effect preset");
+        reads.push_back("effect pool");
+        presets.push_back("preset:1");
+        pools.push_back("pool:1");
+      }
+  );
   values.scratchpads = recording(reads, "scratchpad");
   values.submaps = recording(reads, "submap");
 

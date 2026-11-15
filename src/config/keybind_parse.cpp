@@ -1099,50 +1099,108 @@ namespace umbriel {
     return words.has_value() && parseActionWords(*words, output);
   }
 
+  std::optional<EffectKind> effectSlotKind(KeybindAction action) {
+    switch (action) {
+    case KeybindAction::EffectWindowSet:
+    case KeybindAction::EffectWindowCycle:
+      return EffectKind::Window;
+    case KeybindAction::EffectBorderSet:
+    case KeybindAction::EffectBorderCycle:
+      return EffectKind::Border;
+    case KeybindAction::EffectScreenSet:
+    case KeybindAction::EffectScreenCycle:
+      return EffectKind::Screen;
+    case KeybindAction::EffectCursorSet:
+    case KeybindAction::EffectCursorCycle:
+      return EffectKind::Cursor;
+    default:
+      return std::nullopt;
+    }
+  }
+
+  std::optional<size_t> actionPositionalArity(ActionArgKind kind) {
+    switch (kind) {
+    case ActionArgKind::None:
+      return 0;
+    case ActionArgKind::Command:
+      // `spawn` hands its whole tail to a shell, so no word count is surplus.
+      return std::nullopt;
+    case ActionArgKind::LayoutMode:
+      // A mode, or `toggle` followed by the modes it cycles through, so the count varies with the list.
+      return std::nullopt;
+    case ActionArgKind::WindowMoveBy:
+      return 2;
+    case ActionArgKind::WindowMoveTo:
+      return 3;
+    case ActionArgKind::WorkspaceMoveToOutput:
+      // A destination, then at most one workspace selector.
+      return 2;
+    case ActionArgKind::Submap:
+    case ActionArgKind::Fraction:
+    case ActionArgKind::FractionDelta:
+    case ActionArgKind::Workspace:
+    case ActionArgKind::Output:
+    case ActionArgKind::OptionalOutput:
+    case ActionArgKind::OptionalScratchpad:
+    case ActionArgKind::WindowId:
+    case ActionArgKind::OptionalWindowId:
+    case ActionArgKind::WindowRegion:
+    case ActionArgKind::ColumnDisplay:
+    case ActionArgKind::TabIndex:
+    case ActionArgKind::SkipConfirmation:
+    case ActionArgKind::WindowEffectSet:
+    case ActionArgKind::WindowEffectCycle:
+    case ActionArgKind::ScreenEffectSet:
+    case ActionArgKind::ScreenEffectCycle:
+    case ActionArgKind::CursorEffectSet:
+    case ActionArgKind::CursorEffectCycle:
+    case ActionArgKind::SdrWhite:
+      return 1;
+    }
+    return std::nullopt;
+  }
+
+  bool effectSlotRequiresPool(KeybindAction action) {
+    return action == KeybindAction::EffectWindowCycle
+        || action == KeybindAction::EffectBorderCycle
+        || action == KeybindAction::EffectScreenCycle
+        || action == KeybindAction::EffectCursorCycle;
+  }
+
   std::optional<EffectActionReference> effectActionReference(const Keybind& bind) {
+    const std::optional<EffectKind> kind = effectSlotKind(bind.action);
+    if (!kind) {
+      return std::nullopt;
+    }
     std::string_view name;
-    EffectKind kind = EffectKind::Window;
-    bool poolRequired = false;
     switch (bind.action) {
     case KeybindAction::EffectWindowSet:
     case KeybindAction::EffectWindowCycle:
-      if (const auto* arg = payloadIf<EffectWindowArg>(bind)) {
-        name = arg->name;
-      }
-      kind = EffectKind::Window;
-      poolRequired = bind.action == KeybindAction::EffectWindowCycle;
-      break;
     case KeybindAction::EffectBorderSet:
     case KeybindAction::EffectBorderCycle:
       if (const auto* arg = payloadIf<EffectWindowArg>(bind)) {
         name = arg->name;
       }
-      kind = EffectKind::Border;
-      poolRequired = bind.action == KeybindAction::EffectBorderCycle;
       break;
     case KeybindAction::EffectScreenSet:
     case KeybindAction::EffectScreenCycle:
       if (const auto* arg = payloadIf<EffectScreenArg>(bind)) {
         name = arg->name;
       }
-      kind = EffectKind::Screen;
-      poolRequired = bind.action == KeybindAction::EffectScreenCycle;
       break;
     case KeybindAction::EffectCursorSet:
     case KeybindAction::EffectCursorCycle:
       if (const auto* arg = payloadIf<EffectCursorArg>(bind)) {
         name = arg->name;
       }
-      kind = EffectKind::Cursor;
-      poolRequired = bind.action == KeybindAction::EffectCursorCycle;
       break;
     default:
-      return std::nullopt;
+      break;
     }
     if (name.empty() || name == kEffectOff) {
       return std::nullopt;
     }
-    return EffectActionReference{.name = name, .kind = kind, .poolRequired = poolRequired};
+    return EffectActionReference{.name = name, .kind = *kind, .poolRequired = effectSlotRequiresPool(bind.action)};
   }
 
   std::vector<Keybind> defaultKeybinds() {
