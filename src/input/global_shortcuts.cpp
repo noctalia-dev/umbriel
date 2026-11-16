@@ -1,6 +1,7 @@
 #include "input/global_shortcuts.h"
 
 #include "config/keybind_parse.h"
+#include "input/shortcut_keysym.h"
 
 #include <cmath>
 extern "C" {
@@ -409,6 +410,43 @@ namespace umbriel {
   std::optional<GlobalShortcutSession> GlobalShortcutsRegistry::session(GlobalShortcutSessionId id) const {
     const auto found = m_sessions.find(id);
     return found != m_sessions.end() ? std::optional{found->second.state} : std::nullopt;
+  }
+
+  std::optional<GlobalShortcutBinding> GlobalShortcutsRegistry::match(
+      std::span<const xkb_keysym_t> keysyms, xkb_keysym_t rawKeysym, uint32_t modifiers
+  ) const {
+    const Session* first = nullptr;
+    const GlobalShortcutRegistration* matched = nullptr;
+    for (const auto& [id, session] : m_sessions) {
+      (void)id;
+      if (!session.state.bound || (first != nullptr && session.order >= first->order)) {
+        continue;
+      }
+      for (const auto& shortcut : session.state.shortcuts) {
+        if (shortcut.trigger && std::ranges::any_of(keysyms, [&](xkb_keysym_t keysym) {
+              return matchesShortcutKeysym(
+                  shortcut.trigger->modifiers, shortcut.trigger->keysym, modifiers, keysym, rawKeysym
+              );
+            })) {
+          first = &session;
+          matched = &shortcut;
+          break;
+        }
+      }
+    }
+    if (matched == nullptr) {
+      return std::nullopt;
+    }
+    return GlobalShortcutBinding{first->state.id, matched->id, *matched->trigger};
+  }
+
+  bool GlobalShortcutsRegistry::owns(const GlobalShortcutBinding& binding) const {
+    const auto found = m_sessions.find(binding.session);
+    return found != m_sessions.end()
+        && found->second.state.bound
+        && std::ranges::any_of(found->second.state.shortcuts, [&](const auto& shortcut) {
+             return shortcut.id == binding.id && shortcut.trigger == binding.trigger;
+           });
   }
 
   std::optional<std::vector<GlobalShortcut>> GlobalShortcutsRegistry::list(GlobalShortcutSessionId id) {

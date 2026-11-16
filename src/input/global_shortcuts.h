@@ -61,6 +61,13 @@ namespace umbriel {
   using GlobalShortcutSessionId = uint64_t;
   using GlobalShortcutOverrides = std::map<std::string, std::map<std::string, std::string>>;
 
+  struct GlobalShortcutBinding {
+    GlobalShortcutSessionId session;
+    std::string id;
+    GlobalShortcutTrigger trigger;
+    bool operator==(const GlobalShortcutBinding&) const = default;
+  };
+
   struct GlobalShortcutSession {
     GlobalShortcutSessionId id = 0;
     std::string application;
@@ -99,6 +106,9 @@ namespace umbriel {
         const GlobalShortcutOverrides& overrides, std::span<const GlobalShortcutTrigger> reserved, uint32_t modKey
     );
     std::optional<GlobalShortcutSession> session(GlobalShortcutSessionId id) const;
+    std::optional<GlobalShortcutBinding>
+    match(std::span<const xkb_keysym_t> keysyms, xkb_keysym_t rawKeysym, uint32_t modifiers) const;
+    bool owns(const GlobalShortcutBinding& binding) const;
     // Listing closes the restore phase, including an empty result.
     std::optional<std::vector<GlobalShortcut>> list(GlobalShortcutSessionId id);
     GlobalShortcutChanges takeChanges();

@@ -4,6 +4,7 @@
 #include "input/keyboard.h"
 #include "input/modifier_tap.h"
 #include "input/seat.h"
+#include "input/shortcut_keysym.h"
 #include "input/text_input.h"
 #include "layer/layer_surface.h"
 #include "output/output.h"
@@ -304,8 +305,6 @@ namespace umbriel {
   }
 
   const Keybind* Server::matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers, bool onRelease) const {
-    const uint32_t effective = modifiers & ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
-    const uint32_t lowered = xkb_keysym_to_lower(keysym);
     const std::string_view currentSubmap = m_activeSubmaps.empty() ? std::string_view{} : m_activeSubmaps.back();
 
     for (const Keybind& bind : config().keybinds) {
@@ -331,7 +330,7 @@ namespace umbriel {
         continue;
       }
       const uint32_t expected = bind.modifiers | (bind.useMod ? modKey() : 0);
-      if (effective != expected || (lowered != bind.keysym && rawKeysym != bind.keysym)) {
+      if (!matchesShortcutKeysym(expected, bind.keysym, modifiers, keysym, rawKeysym)) {
         continue;
       }
       return &bind;

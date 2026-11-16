@@ -2,6 +2,7 @@
 
 #include "check.h"
 #include "core/private_state_file.h"
+#include "input/global_shortcuts_input.h"
 #include "input/global_shortcuts_store.h"
 
 #include <algorithm>
@@ -269,6 +270,11 @@ namespace {
       });
     }
     void approveLast() { bridge->authorizeSession(approvals.back().id, Authorization::Approved); }
+    bool press(uint32_t time, xkb_keysym_t keysym = XKB_KEY_m) {
+      bridge->input().observeKey(this, 50, time, true);
+      const uint32_t modifiers = parseGlobalShortcutTrigger("CTRL+m")->modifiers;
+      return bridge->input().handlePress(this, 50, time, std::array{keysym}, keysym, modifiers);
+    }
     GlobalShortcutCredential seed(const char* application = "org.test.App") {
       const GlobalShortcut shortcut{"talk", "Remembered", parseGlobalShortcutTrigger("CTRL+m")};
       const auto credential = store->approve(application, std::array{shortcut}).value();
@@ -722,6 +728,122 @@ UMBRIEL_TEST(revocationAndBridgeTeardownCloseSessionsWithoutDanglingResourceOwne
   CHECK(other.result("bound", 4, 2));
   CHECK_EQ(inert.count("closed"), size_t{1});
   CHECK(inert.result("restored", 3, 2));
+}
+
+UMBRIEL_TEST(activationEventsReachOnlyTheOwningSessionAndPreserveKeyTimestamps) {
+  Fixture fixture;
+  fixture.acceptRequests();
+  auto& peer = fixture.peer();
+  auto& first = peer.create();
+  first.add();
+  first.bind();
+  peer.sync();
+  fixture.approveLast();
+  peer.sync();
+  auto& other = peer.create("org.test.Other");
+  other.add("other", "F16");
+  other.bind();
+  peer.sync();
+  fixture.approveLast();
+  peer.sync();
+  first.events.clear();
+  other.events.clear();
+  CHECK(fixture.press(123));
+  CHECK(fixture.press(124));
+  CHECK(!fixture.bridge->input().observeKey(&fixture, 29, 125, false));
+  CHECK(fixture.bridge->input().observeKey(&fixture, 50, 130, false));
+  CHECK(!fixture.bridge->input().observeKey(&fixture, 50, 131, false));
+  peer.sync();
+  CHECK(first.kinds() == std::vector<std::string>({"activated", "deactivated"}));
+  CHECK_EQ(first.events.at(0).id, "talk");
+  CHECK_EQ(first.events.at(0).request, uint32_t{123});
+  CHECK_EQ(first.events.at(1).request, uint32_t{130});
+  CHECK(other.events.empty());
+}
+
+UMBRIEL_TEST(bindingChangesAndRevocationDeactivateBeforeReplacementSnapshotsOrClosure) {
+  Fixture fixture;
+  fixture.acceptRequests();
+  auto& peer = fixture.peer();
+  auto& session = peer.create();
+  session.add();
+  session.bind();
+  peer.sync();
+  fixture.approveLast();
+  peer.sync();
+  CHECK(fixture.press(1));
+  peer.sync();
+  session.events.clear();
+  CHECK(fixture.registry.configure({{"org.test.App", {{"talk", "CTRL+n"}}}}, {}, 0));
+  fixture.bridge->dispatchChanges();
+  peer.sync();
+  CHECK(session.kinds() == std::vector<std::string>({"deactivated", "changed", "changes-done"}));
+  CHECK_EQ(session.events.at(1).trigger, "Ctrl+N");
+  session.events.clear();
+  CHECK(fixture.press(2, XKB_KEY_n));
+  CHECK(fixture.bridge->input().observeKey(&fixture, 50, 3, false));
+  peer.sync();
+  CHECK(session.events.empty());
+  CHECK(fixture.press(4, XKB_KEY_n));
+  peer.sync();
+  CHECK(session.kinds() == std::vector<std::string>{"activated"});
+  session.events.clear();
+  (void)fixture.registry.revokeApplication("org.test.App");
+  fixture.bridge->dispatchChanges();
+  CHECK(fixture.bridge->input().observeKey(&fixture, 50, 5, false));
+  peer.sync();
+  CHECK(session.kinds() == std::vector<std::string>({"deactivated", "closed"}));
+}
+
+UMBRIEL_TEST(destroyingAnActiveOwnerPromotesItsWaiterWithoutActivatingAHeldKey) {
+  Fixture fixture;
+  fixture.acceptRequests();
+  auto& peer = fixture.peer();
+  auto& owner = peer.create();
+  owner.add();
+  owner.bind();
+  peer.sync();
+  fixture.approveLast();
+  peer.sync();
+  auto& waiter = peer.create("org.test.Other");
+  waiter.add();
+  waiter.bind();
+  peer.sync();
+  fixture.approveLast();
+  peer.sync();
+  CHECK(fixture.press(1));
+  peer.sync();
+  waiter.events.clear();
+  owner.destroy();
+  peer.sync();
+  CHECK(waiter.kinds() == std::vector<std::string>({"changed", "changes-done"}));
+  waiter.events.clear();
+  CHECK(fixture.press(2));
+  CHECK(fixture.bridge->input().observeKey(&fixture, 50, 3, false));
+  peer.sync();
+  CHECK(waiter.events.empty());
+  CHECK(fixture.press(4));
+  peer.sync();
+  CHECK(waiter.kinds() == std::vector<std::string>{"activated"});
+  CHECK_EQ(waiter.events.front().request, uint32_t{4});
+}
+
+UMBRIEL_TEST(bridgeTeardownDeactivatesBeforeClosingTheActiveSession) {
+  Fixture fixture;
+  fixture.acceptRequests();
+  auto& peer = fixture.peer();
+  auto& session = peer.create();
+  session.add();
+  session.bind();
+  peer.sync();
+  fixture.approveLast();
+  peer.sync();
+  CHECK(fixture.press(1));
+  peer.sync();
+  session.events.clear();
+  fixture.bridge.reset();
+  peer.sync();
+  CHECK(session.kinds() == std::vector<std::string>({"deactivated", "closed"}));
 }
 
 int main() { return RUN_TESTS(); }

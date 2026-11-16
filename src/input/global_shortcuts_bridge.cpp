@@ -1,8 +1,10 @@
 #include "input/global_shortcuts_bridge.h"
 
+#include "input/global_shortcuts_input.h"
 #include "input/global_shortcuts_store.h"
 
 #include <algorithm>
+#include <chrono>
 #include <map>
 #include <optional>
 #include <stdexcept>
@@ -17,6 +19,13 @@ namespace umbriel {
     constexpr uint32_t kSuccess = 0;
     constexpr uint32_t kCancelled = 1;
     constexpr uint32_t kFailure = 2;
+
+    uint32_t timeMsec() {
+      return static_cast<uint32_t>(
+          std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+              .count()
+      );
+    }
   } // namespace
 
   struct GlobalShortcutsBridge::Impl {
@@ -40,11 +49,22 @@ namespace umbriel {
     std::vector<wl_resource*> managers;
     AuthorizationRequest authorize;
     AuthorizationCancelled cancelled;
+    GlobalShortcutsInput input;
     bool tearingDown = false;
     bool dispatching = false;
 
     Impl(wl_display* display, GlobalShortcutsRegistry& registry, GlobalShortcutsStore& store)
-        : registry(registry), store(store) {
+        : registry(registry), store(store),
+          input(registry, [this](const GlobalShortcutBinding& binding, bool pressed, uint32_t time) {
+            const auto found = sessions.find(binding.session);
+            if (found != sessions.end()) {
+              if (pressed) {
+                umbriel_global_shortcuts_session_v1_send_activated(found->second->resource, binding.id.c_str(), time);
+              } else {
+                umbriel_global_shortcuts_session_v1_send_deactivated(found->second->resource, binding.id.c_str(), time);
+              }
+            }
+          }) {
       global = wl_global_create(
           display, &umbriel_global_shortcuts_manager_v1_interface, 1, this,
           [](wl_client* client, void* data, uint32_t version, uint32_t id) {
@@ -70,6 +90,7 @@ namespace umbriel {
 
     ~Impl() {
       tearingDown = true;
+      input.suspend(timeMsec());
       wl_global_destroy(global);
       while (!sessions.empty()) {
         close(sessions.begin()->first);
@@ -144,8 +165,9 @@ namespace umbriel {
       }
       auto* resource = found->second->resource;
       const auto request = found->second->pending;
-      wl_resource_set_user_data(resource, nullptr);
       (void)registry.closeSession(id);
+      input.reconcile(timeMsec());
+      wl_resource_set_user_data(resource, nullptr);
       sessions.erase(found);
       if (sendClosed) {
         if (request) {
@@ -288,6 +310,7 @@ namespace umbriel {
       }
       dispatching = true;
       for (;;) {
+        input.reconcile(timeMsec());
         std::vector<GlobalShortcutSessionId> removed;
         for (const auto& [id, state] : sessions) {
           (void)state;
@@ -410,5 +433,7 @@ namespace umbriel {
   }
 
   void GlobalShortcutsBridge::dispatchChanges() { m_impl->dispatchChanges(); }
+
+  GlobalShortcutsInput& GlobalShortcutsBridge::input() { return m_impl->input; }
 
 } // namespace umbriel

@@ -11,6 +11,7 @@ struct wl_display;
 namespace umbriel {
 
   class GlobalShortcutsStore;
+  class GlobalShortcutsInput;
 
   class GlobalShortcutsBridge {
   public:
@@ -29,6 +30,7 @@ namespace umbriel {
     void setAuthorizationCancelled(AuthorizationCancelled cancelled);
     // Only the compositor's physical approval path may supply Approved.
     void authorizeSession(GlobalShortcutSessionId id, Authorization authorization);
+    GlobalShortcutsInput& input();
     // Flush registry changes after configuration or revocation.
     void dispatchChanges();
 
