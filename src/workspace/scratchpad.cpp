@@ -56,6 +56,14 @@ namespace umbriel {
       const auto definition = std::ranges::find(config().scratchpads, name, &ScratchpadConfig::name);
       return definition != config().scratchpads.end() ? &*definition : nullptr;
     }
+
+    // The step `offset` places from `view`, wrapping at the ends; counted from the first step when `view` is not one.
+    View* stepFrom(const std::vector<View*>& steps, const View* view, int offset) {
+      const auto count = static_cast<std::ptrdiff_t>(steps.size());
+      const auto current = std::ranges::find(steps, view);
+      const std::ptrdiff_t index = current == steps.end() ? 0 : current - steps.begin();
+      return steps[static_cast<size_t>((index + offset + count) % count)];
+    }
   } // namespace
 
   ScratchpadManager::ScratchpadManager(Server& server, wlr_scene_tree* root) : m_server(&server), m_root(root) {
@@ -182,13 +190,17 @@ namespace umbriel {
     return view;
   }
 
+  bool ScratchpadManager::isMember(const Entry& entry, std::string_view name) const {
+    return entry.scratchpad == name
+        && entry.view != nullptr
+        && entry.view->mapped()
+        && !ridesWithParent(entry.view, name);
+  }
+
   std::vector<View*> ScratchpadManager::members(std::string_view name) const {
     std::vector<View*> views;
     for (const Entry& entry : m_entries) {
-      if (entry.scratchpad == name
-          && entry.view != nullptr
-          && entry.view->mapped()
-          && !ridesWithParent(entry.view, name)) {
+      if (isMember(entry, name)) {
         views.push_back(entry.view);
       }
     }
@@ -205,10 +217,7 @@ namespace umbriel {
     const std::ptrdiff_t start = position - m_entries.begin();
     for (std::ptrdiff_t offset = 1; offset < count; ++offset) {
       const Entry& entry = m_entries[static_cast<size_t>((((start + direction * offset) % count) + count) % count)];
-      if (entry.scratchpad == name
-          && entry.view != nullptr
-          && entry.view->mapped()
-          && !ridesWithParent(entry.view, name)) {
+      if (isMember(entry, name)) {
         return entry.view;
       }
     }
@@ -1185,10 +1194,7 @@ namespace umbriel {
     View* target = nullptr;
     if (scratchpad->visible && scratchpad->output == invokingOutput) {
       // Step from the window on show, or from the focused one when every window shows.
-      const auto current = findMember(focused(name));
-      const auto count = static_cast<std::ptrdiff_t>(steps.size());
-      const std::ptrdiff_t index = current == steps.end() ? 0 : current - steps.begin();
-      target = steps[static_cast<size_t>((index + direction + count) % count)];
+      target = stepFrom(steps, memberFor(focused(name), name), direction);
     } else {
       const auto remembered = findMember(scratchpad->lastFocused);
       target = remembered != steps.end() ? *remembered : steps.front();
@@ -1205,10 +1211,11 @@ namespace umbriel {
       return toggle(name, invokingOutput);
     }
     if (scratchpad->visible) {
-      if (focus != nullptr && nameFor(focus) == name) {
-        Output* output = scratchpad->output;
+      // With no window holding the keyboard, as under a layer surface or the lock, there is nothing to take focus back
+      // from, so a pad shown here hides as toggle does.
+      if (focus != nullptr ? nameFor(focus) == name : scratchpad->output == invokingOutput) {
         setVisible(name, false);
-        m_server->refocus(output);
+        m_server->refocus(scratchpad->output);
         return true;
       }
       // Shown without focus, here or on another output: bring it here as it is and focus its window.
@@ -1224,16 +1231,12 @@ namespace umbriel {
       return false;
     }
     const auto isStep = [&](const View* view) { return std::ranges::find(steps, view) != steps.end(); };
-    const auto beside = [&](View* view, int offset) {
-      View* other = memberBeside(name, view, offset);
-      return other != nullptr ? other : view;
-    };
     View* target = nullptr;
     if (View* last = memberFor(scratchpad->lastFocused, name); isStep(last)) {
-      target = beside(last, direction);
+      target = stepFrom(steps, last, direction);
     } else if (isStep(scratchpad->resumeAt)) {
-      // resumeAt took the place of the window that left, so the one before it is the window before that one.
-      target = direction > 0 ? scratchpad->resumeAt : beside(scratchpad->resumeAt, -1);
+      // resumeAt is the window after the one that left, so one step back from it is the window before that one.
+      target = direction > 0 ? scratchpad->resumeAt : stepFrom(steps, scratchpad->resumeAt, -1);
     } else {
       target = direction > 0 ? steps.front() : steps.back();
     }

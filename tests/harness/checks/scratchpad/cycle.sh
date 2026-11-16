@@ -129,4 +129,12 @@ done
 }
 expect scratchpad-window-cycle blue
 
+# With a layer surface holding the keyboard there is no window to focus, so it hides the pad as toggle does.
+"$UMBRIEL_LAYER_CLIENT" HEADLESS-1 40 keyboard=exclusive > "$UMBRIEL_RUNTIME_DIR/layer.log" 2>&1 &
+for _ in $(seq 80); do
+  "$UMBRIEL" layers --json | jq -e 'any(.[]; .mapped and .keyboard_interactivity == "exclusive")' > /dev/null && break
+  sleep 0.025
+done
+expect scratchpad-window-cycle ""
+
 echo "scratchpad-window-cycle showed and hid one window at a time on one key"

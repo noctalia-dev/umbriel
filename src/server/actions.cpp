@@ -2135,7 +2135,7 @@ namespace umbriel {
         return false;
       }
       ScratchpadManager* scratchpad = server.scratchpadManager();
-      return scratchpad != nullptr && scratchpad->cycle(*name, Direction, output, focusedScratchpadWindow(server));
+      return scratchpad != nullptr && scratchpad->cycle(*name, Direction, output, seatFocusedWindow(server));
     }
 
     bool actionRestoreFromScratchpad(Server& server, const Keybind& bind, std::string* error) {
