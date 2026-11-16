@@ -4087,6 +4087,9 @@ region_to_buffer_box(const pixman_region32_t* bounds, int expand, const struct r
   return box;
 }
 
+// Capture allocations round to 128 px blocks, so a moving margin keeps reusing them.
+static int round_capture_extent(int extent) { return (extent + 127) / 128 * 128; }
+
 // Clamps `box` to the target buffer and rounds its extent up to 128 px
 // within the target before edge clamping so sliding across an edge keeps size constant.
 static struct wlr_box quantize_capture_box(struct wlr_box box, int target_w, int target_h) {
@@ -4095,8 +4098,8 @@ static struct wlr_box quantize_capture_box(struct wlr_box box, int target_w, int
   if (!wlr_box_intersection(&clipped, &box, &target)) {
     return (struct wlr_box){0};
   }
-  int w = (box.width + 127) / 128 * 128;
-  int h = (box.height + 127) / 128 * 128;
+  int w = round_capture_extent(box.width);
+  int h = round_capture_extent(box.height);
   if (w > target_w) {
     w = target_w;
   }
@@ -4221,9 +4224,8 @@ static bool drag_offscreen_capture_box(
     return false;
   }
   *capture_box = region_to_buffer_box(bounds, scene_node_drawn_expand(animation->node), data);
-  // Reuse the allocation across small changes in the spring's margin.
-  capture_box->width = (capture_box->width + 127) / 128 * 128;
-  capture_box->height = (capture_box->height + 127) / 128 * 128;
+  capture_box->width = round_capture_extent(capture_box->width);
+  capture_box->height = round_capture_extent(capture_box->height);
   return true;
 }
 
