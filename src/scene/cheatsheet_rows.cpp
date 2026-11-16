@@ -485,6 +485,8 @@ namespace {
     case A::ScratchpadFocusNext:
     case A::ScratchpadWindowShowNext:
     case A::ScratchpadWindowShowPrevious:
+    case A::ScratchpadWindowCycle:
+    case A::ScratchpadWindowCyclePrevious:
       return Group::Scratchpad;
     case A::WorkspaceSwitch:
     case A::WorkspaceToggleShowDesktop:
