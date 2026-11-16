@@ -147,15 +147,26 @@ Omit `position` to place outputs automatically from left to right. Explicitly po
 
 `render_scale` separates what things look like from what Wayland clients render at, the way macOS handles HiDPI. With `scale = 1.35` and `render_scale = 2.0`, clients are asked to render at 2.0 and the compositor samples their buffers down to the output's `scale` raster, which smooths text and fine detail on low-ppi and non-RGB-subpixel panels. Logical geometry is unchanged: windows keep their `scale` sizes, and the output still advertises `scale` so client interfaces size as before.
 
-Native-resolution X11 applications use the physical output scale by default. To opt them into `render_scale`, see [`force_x11_supersample`](configuration.md#general).
+Which windows render at `render_scale`:
 
-Fullscreen windows and windows whose [content type](window-rules.md) is `game` or `video` are asked to render at `scale` instead, so a fullscreen buffer matches the output's physical mode and stays eligible for direct scanout. Supersampling a game or a video only costs GPU time, since both draw at a resolution of their own. The `supersample` window rule overrides this in either direction, for example to exempt a game that sends no content type:
+| Window                                                                    | Renders at                                                          |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Wayland window                                                            | `render_scale`                                                      |
+| Fullscreen Wayland window                                                 | `scale`, so its buffer matches the mode and direct scanout can work |
+| Wayland window whose [content type](window-rules.md) is `game` or `video` | `scale`                                                             |
+| X11 window, default                                                       | unchanged: X11 applications ignore the scale hints                  |
+| X11 window with [`force_x11_supersample`](configuration.md#general)       | `render_scale`, fullscreen included; no window rule exempts it      |
+| Wayland window with a `supersample` [window rule](window-rules.md)        | `render_scale` with `true`, `scale` with `false`                    |
+
+Supersampling a game or a video only costs GPU time, since both draw at a resolution of their own. Games therefore need attention only as Wayland windows that are neither fullscreen nor tagged `game`, such as a game in windowed mode. Exempt those by app ID; a list covers several at once:
 
 ```toml
 [[window_rule]]
-match.app_id = "^my-game$"
+match.app_id = ["^my-game$", "^my-other-game$"]
 supersample = false
 ```
+
+Games that run through Xwayland need no rule while `force_x11_supersample` is off.
 
 Layer surfaces supersample too, with no exemption of their own. A `supersample = false` [layer rule](layer-rules.md) keeps a surface and its popups at `scale`, for example a screenshot overlay that shows a frozen capture of the output, which supersampling would scale up and back down:
 
