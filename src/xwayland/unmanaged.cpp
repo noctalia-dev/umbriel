@@ -28,31 +28,31 @@ namespace umbriel {
           && !wlr_xwayland_surface_has_window_type(xsurface, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DND);
     }
 
-    // Where an unmanaged window is shown, in X coordinates. A window that pokes out of its output only partly is moved
-    // inside, so its edge is not cut off: Steam places its toasts with the unscaled toast size when its UI is scaled
-    // (STEAM_FORCE_DESKTOPUI_SCALING with native-resolution Xwayland), which leaves them hanging off the corner. A
-    // window wholly outside stays there (clients park hidden windows off screen and slide toasts in from beyond the
-    // edge), as does one larger than the output and a drag icon, which has to stay under the pointer. Only the shown
+    // Where an unmanaged window is shown, in X coordinates. A window that pokes out of the outputs only partly is
+    // moved inside its own output, so its edge is not cut off: Steam places its toasts with the unscaled toast size
+    // when its UI is scaled (STEAM_FORCE_DESKTOPUI_SCALING with native-resolution Xwayland). A window fully on the
+    // outputs stays where it is, even across two of them, as does one wholly off screen (clients park hidden windows
+    // there and slide toasts in from beyond the edge), one larger than its output, and a drag icon. Only the shown
     // position moves; the X window keeps the geometry its client chose.
-    std::pair<int, int> shownOrigin(const wlr_xwayland_surface* xsurface, const wlr_box& output) {
-      const int x = xsurface->x;
-      const int y = xsurface->y;
-      const int width = xsurface->width;
-      const int height = xsurface->height;
+    std::pair<int, int>
+    shownOrigin(const wlr_xwayland_surface* xsurface, const XwaylandOutputs& outputs, const wlr_box& output) {
+      const wlr_box window{.x = xsurface->x, .y = xsurface->y, .width = xsurface->width, .height = xsurface->height};
       const int right = output.x + output.width;
       const int bottom = output.y + output.height;
-      if (width <= 0
-          || height <= 0
-          || width > output.width
-          || height > output.height
-          || x >= right
-          || y >= bottom
-          || x + width <= output.x
-          || y + height <= output.y
-          || wlr_xwayland_surface_has_window_type(xsurface, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DND)) {
-        return {x, y};
+      if (wlr_box_empty(&window)
+          || window.width > output.width
+          || window.height > output.height
+          || window.x >= right
+          || window.y >= bottom
+          || window.x + window.width <= output.x
+          || window.y + window.height <= output.y
+          || wlr_xwayland_surface_has_window_type(xsurface, WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DND)
+          || outputs.coversX(window)) {
+        return {window.x, window.y};
       }
-      return {std::clamp(x, output.x, right - width), std::clamp(y, output.y, bottom - height)};
+      return {
+          std::clamp(window.x, output.x, right - window.width), std::clamp(window.y, output.y, bottom - window.height)
+      };
     }
 
   } // namespace
@@ -219,8 +219,9 @@ namespace umbriel {
   void XwaylandUnmanaged::handleSetGeometry() { syncPosition(); }
 
   void XwaylandUnmanaged::syncPosition() {
-    const XwaylandRegion region = m_server.xwayland()->outputs().regionAtX(m_xsurface->x, m_xsurface->y);
-    const auto [x, y] = shownOrigin(m_xsurface, region.x);
+    const XwaylandOutputs& outputs = m_server.xwayland()->outputs();
+    const XwaylandRegion region = outputs.regionAtX(m_xsurface->x, m_xsurface->y);
+    const auto [x, y] = shownOrigin(m_xsurface, outputs, region.x);
     wlr_scene_node_set_position(&m_tree->node, region.toLayoutX(x), region.toLayoutY(y));
     if (region.scale != m_scale) {
       m_scale = region.scale;
