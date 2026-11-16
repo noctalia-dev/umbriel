@@ -58,6 +58,7 @@ void fx_effect_shader_bind_uniform_data(
 void fx_effect_shader_bind_parameters(
     struct fx_effect_shader* shader, const struct fx_animation_parameters* parameters
 );
+bool fx_effect_shader_uses_history(const struct fx_effect_shader* shader);
 
 // Border node geometry in logical px, relative to the composite's logical_box origin.
 struct fx_effect_geometry {

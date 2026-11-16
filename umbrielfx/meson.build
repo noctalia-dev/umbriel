@@ -301,6 +301,8 @@ if build_tests
     'move-margin-damage',
     'offscreen-margin',
     'drag-onscreen-capture',
+    'animation-box-capture',
+    'animation-shadow-reuse',
     'animation-backdrop-reuse',
     'bounded-drag-confinement',
     'effect-bounds',

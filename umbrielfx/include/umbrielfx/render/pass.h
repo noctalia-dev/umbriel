@@ -84,6 +84,9 @@ struct fx_gles_render_pass {
 };
 
 bool fx_render_pass_begin_animation(struct fx_gles_render_pass* pass);
+// Opens a node-scoped capture over `box` in parent buffer pixels; callers must
+// translate subtree draws and damage by (-box->x, -box->y).
+bool fx_render_pass_begin_animation_box(struct fx_gles_render_pass* pass, const struct wlr_box* box);
 bool fx_render_pass_begin_isolation(struct fx_gles_render_pass* pass);
 void fx_render_pass_cancel_isolation(struct fx_gles_render_pass* pass);
 // Opens the pass's single group capture. box is in parent pixels; translate
@@ -101,10 +104,12 @@ void fx_render_pass_end_animation(
 );
 
 // Consume the current capture as a shadow caster. Always restores the parent
-// target, including on allocation failure. False requests the analytic fallback.
+// target, including on allocation failure. When `out_caster` is non-NULL and
+// the shadow renders, ownership of the caster texture transfers to `*out_caster`
+// instead of destroying it. False requests the analytic fallback.
 bool fx_render_pass_end_animation_shadow(
     struct fx_gles_render_pass* pass, float softness, float offset_x, float offset_y, const float color[4],
-    const pixman_region32_t* clip
+    const pixman_region32_t* clip, struct wlr_texture** out_caster
 );
 
 struct fx_gradient {

@@ -277,6 +277,10 @@ bool fx_effect_shader_reads(const struct fx_effect_shader* shader, const char* u
   return shader != NULL && fx_effect_shader_uniform(shader, uniform) != NULL;
 }
 
+bool fx_effect_shader_uses_history(const struct fx_effect_shader* shader) {
+  return shader != NULL && shader->previous_tex >= 0;
+}
+
 static GLenum gl_type(enum fx_uniform_type type) {
   switch (type) {
   case FX_UNIFORM_FLOAT:

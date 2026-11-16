@@ -72,6 +72,7 @@ static void clear_animation_buffers(struct fx_target_buffers* buffers) {
     drop_framebuffer(&buffers->animation_buffers[i]);
   }
   drop_framebuffer(&buffers->animation_backdrop);
+  drop_framebuffer(&buffers->animation_shadow_blur);
   drop_framebuffer(&buffers->in_place_source);
 }
 

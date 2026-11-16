@@ -705,18 +705,22 @@ static void set_tex_matrix(GLint loc, enum wl_output_transform trans, const stru
   glUniformMatrix3fv(loc, 1, GL_FALSE, tex_matrix);
 }
 
-static bool push_capture(struct fx_gles_render_pass* pass, const struct wlr_box* box, bool group) {
+static bool
+push_capture_slot(struct fx_gles_render_pass* pass, const struct wlr_box* box, bool group, bool shadow_blur) {
   if (pass->fx_offscreen_buffers == NULL
       || pass->animation_depth == FX_ANIMATION_DEPTH
       || (group && pass->group_depth != 0)
-      || pass->buffer->renderer->fail_animation_capture_for_test) {
+      || pass->buffer->renderer->fail_animation_capture_for_test
+      || box->width <= 0
+      || box->height <= 0) {
     pass->animation_failed = true;
     return false;
   }
   struct fx_target_buffers* buffers = group ? &pass->fx_offscreen_buffers->group : target_buffers(pass);
+  struct fx_framebuffer** slot =
+      shadow_blur ? &buffers->animation_shadow_blur : &buffers->animation_buffers[pass->animation_depth];
   const int width = box->width, height = box->height;
-  struct fx_framebuffer* target =
-      ensure_offscreen_buffer_size(pass, &buffers->animation_buffers[pass->animation_depth], true, width, height);
+  struct fx_framebuffer* target = ensure_offscreen_buffer_size(pass, slot, true, width, height);
   if (target == NULL) {
     return false;
   }
@@ -751,6 +755,10 @@ static bool push_capture(struct fx_gles_render_pass* pass, const struct wlr_box*
   return true;
 }
 
+static bool push_capture(struct fx_gles_render_pass* pass, const struct wlr_box* box, bool group) {
+  return push_capture_slot(pass, box, group, false);
+}
+
 bool fx_render_pass_begin_capture(struct fx_gles_render_pass* pass, const struct wlr_box* box) {
   return push_capture(pass, box, true);
 }
@@ -758,6 +766,10 @@ bool fx_render_pass_begin_capture(struct fx_gles_render_pass* pass, const struct
 bool fx_render_pass_begin_animation(struct fx_gles_render_pass* pass) {
   const struct wlr_box box = {.width = pass->buffer->buffer->width, .height = pass->buffer->buffer->height};
   return push_capture(pass, &box, false);
+}
+
+bool fx_render_pass_begin_animation_box(struct fx_gles_render_pass* pass, const struct wlr_box* box) {
+  return push_capture(pass, box, false);
 }
 
 bool fx_render_pass_begin_isolation(struct fx_gles_render_pass* pass) {
@@ -1463,11 +1475,15 @@ void fx_render_pass_end_workspace(struct fx_gles_render_pass* pass, const struct
 void fx_render_pass_end_effect(struct fx_gles_render_pass* pass, const struct fx_effect_composite* composite) {
   struct fx_effect_composite drawn = *composite;
   expand_animation_boxes(&drawn.box, &drawn.logical_box, composite->expand);
+  const struct wlr_box capture_box = pass->animation_boxes[pass->animation_depth - 1];
   struct wlr_texture* texture = pop_animation_capture(pass);
   if (pass->isolation_content && pass->animation_depth == pass->isolation_depth) {
     fx_render_pass_cancel_isolation(pass);
   }
-  effect_composite(pass, &drawn, texture, &drawn.box);
+  struct wlr_box source_box = drawn.box;
+  source_box.x -= capture_box.x;
+  source_box.y -= capture_box.y;
+  effect_composite(pass, &drawn, texture, &source_box);
   wlr_texture_destroy(texture);
 }
 
@@ -1554,8 +1570,11 @@ static float sdr_to_linear(const struct fx_gles_render_pass* pass, float electri
 
 bool fx_render_pass_end_animation_shadow(
     struct fx_gles_render_pass* pass, float softness, float offset_x, float offset_y, const float color[4],
-    const pixman_region32_t* clip
+    const pixman_region32_t* clip, struct wlr_texture** out_caster
 ) {
+  if (out_caster != NULL) {
+    *out_caster = NULL;
+  }
   struct fx_renderer* renderer = pass->buffer->renderer;
   if (!renderer->animation_shadow_attempted) {
     renderer->animation_shadow_attempted = true;
@@ -1612,21 +1631,21 @@ bool fx_render_pass_end_animation_shadow(
   struct fx_effect_shader* vertical = renderer->animation_shadow_vertical;
   // Keep the caster's framebuffer reserved while allocating the horizontal
   // pass, otherwise the depth-indexed pool would clear the texture we sample.
+  const struct wlr_box caster_box = pass->animation_boxes[pass->animation_depth - 1];
   struct wlr_texture* caster = pass->animation_textures[pass->animation_depth - 1];
-  if (horizontal == NULL || vertical == NULL || !fx_render_pass_begin_animation(pass)) {
-    wlr_texture_destroy(pop_animation_capture(pass));
-    return false;
-  }
   const struct wlr_box full = {.width = caster->width, .height = caster->height};
   // Render the horizontal result on a grid matching the kernel spacing.
   // Linear reconstruction then interpolates between taps instead of leaving
-  // visible bands at large softness. The existing full-sized pooled target
-  // holds this smaller rectangle, so no additional buffer allocation is needed.
+  // visible bands at large softness.
   const float reduction = fmaxf(1.0F, softness / 8.0F);
   const struct wlr_box reduced = {
       .width = (int)ceilf(full.width / reduction),
       .height = (int)ceilf(full.height / reduction),
   };
+  if (horizontal == NULL || vertical == NULL || !push_capture_slot(pass, &reduced, false, true)) {
+    wlr_texture_destroy(pop_animation_capture(pass));
+    return false;
+  }
   const struct fx_animation_parameters params = {0};
   glUseProgram(horizontal->program);
   glUniform2f(glGetUniformLocation(horizontal->program, "shadow_step"), softness / (8.0F * full.width), 0);
@@ -1652,14 +1671,18 @@ bool fx_render_pass_end_animation_shadow(
   glBindTexture(GL_TEXTURE_2D, fx_get_texture(caster)->tex);
   glUniform1i(glGetUniformLocation(vertical->program, "shadow_mask"), 1);
   draw_animation_texture(
-      pass, blurred, vertical, &params, &full, &reduced, &reduced, 0, NULL, NULL, NULL, NULL, NULL,
+      pass, blurred, vertical, &params, &caster_box, &reduced, &reduced, 0, NULL, NULL, NULL, NULL, NULL,
       WL_OUTPUT_TRANSFORM_NORMAL, clip, NULL, NULL, pass->projection_matrix, true, true
   );
   glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_2D, 0);
   glActiveTexture(GL_TEXTURE0);
   wlr_texture_destroy(blurred);
-  wlr_texture_destroy(caster);
+  if (out_caster != NULL) {
+    *out_caster = caster;
+  } else {
+    wlr_texture_destroy(caster);
+  }
   return true;
 }
 
@@ -2196,7 +2219,11 @@ static struct fx_framebuffer* animation_backdrop(
   if (pass->animation_depth == 1
       && pass->group_depth == 0
       && pass->isolation_depth == 0
-      && !pass->animation_has_draws[0]) {
+      && !pass->animation_has_draws[0]
+      && pass->animation_boxes[0].x == 0
+      && pass->animation_boxes[0].y == 0
+      && pass->animation_boxes[0].width == pass->animation_parents[0]->buffer->width
+      && pass->animation_boxes[0].height == pass->animation_parents[0]->buffer->height) {
     return pass->animation_parents[0];
   }
   struct fx_framebuffer* saved = pass->buffer;
