@@ -851,6 +851,7 @@ core_sources = files(
   'src/input/input_capture_permissions.cpp',
   'src/input/global_shortcuts.cpp',
   'src/input/global_shortcuts_bridge.cpp',
+  'src/input/global_shortcuts_controller.cpp',
   'src/input/global_shortcuts_input.cpp',
   'src/input/global_shortcuts_store.cpp',
   'src/input/eis_socket.cpp',

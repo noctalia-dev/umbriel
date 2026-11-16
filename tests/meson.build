@@ -553,10 +553,16 @@ input_capture_client = executable(
   ['harness/clients/input_capture_client.cpp', input_capture_client_h, input_capture_protocol_c],
   dependencies: [wayland_client_dep, dependency('libei-1.0', version: '>=1.3')],
 )
+global_shortcuts_client = executable(
+  'global-shortcuts-client',
+  ['harness/clients/global_shortcuts_client.cpp', global_shortcuts_client_h],
+  dependencies: [umbriel_core_dep],
+)
 
 harness_client_targets = [
   input_capture_compositor,
   input_capture_client,
+  global_shortcuts_client,
   color_feedback_client,
   pixel_probe,
   capture_client,

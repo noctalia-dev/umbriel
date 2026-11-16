@@ -65,7 +65,7 @@ A sandbox engine can create a restricted Wayland connection and label it with th
 Restricted clients retain the protocols needed for ordinary windows, rendering, focused input, clipboard use, output discovery, idle inhibition, and activation. Umbriel withholds compositor-wide authority, including:
 
 - Screen and window capture
-- Direct access to the input-capture bridge
+- Direct access to the input-capture and global-shortcut bridges
 - Virtual input and input-method ownership
 - Clipboard-manager access
 - Layer shell and session locking

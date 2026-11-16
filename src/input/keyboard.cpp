@@ -4,6 +4,7 @@
 #include "core/log.h"
 #include "input/cursor.h"
 #include "input/eis.h"
+#include "input/global_shortcuts_controller.h"
 #include "input/input_capture.h"
 #include "input/keyboard_layout.h"
 #include "input/keyboard_state.h"
@@ -207,6 +208,9 @@ namespace umbriel {
   }
 
   Keyboard::~Keyboard() {
+    if (GlobalShortcuts* shortcuts = m_server->globalShortcuts()) {
+      shortcuts->forgetSource(this);
+    }
     if (m_repeatTimer != nullptr) {
       wl_event_source_remove(m_repeatTimer);
       m_repeatTimer = nullptr;
@@ -346,6 +350,15 @@ namespace umbriel {
 
   void Keyboard::handleKey(void* data) {
     auto* event = static_cast<wlr_keyboard_key_event*>(data);
+    bool shortcutConsumed = false;
+    if (GlobalShortcuts* shortcuts = m_server->globalShortcuts()) {
+      shortcutConsumed =
+          shortcuts->observeKey(this, event->keycode, event->time_msec, event->state == WL_KEYBOARD_KEY_STATE_PRESSED);
+      if (shortcutConsumed && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        m_consumedKeycodes.insert(event->keycode);
+        return;
+      }
+    }
     if (InputCapture* capture = m_server->inputCapture();
         capture != nullptr && (capture->capabilities() & 1U) != 0 && m_virtual) {
       if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
@@ -474,6 +487,14 @@ namespace umbriel {
       if (matched.has_value()) {
         armRepeat(*matched, event->keycode);
       }
+      if (!handled && !m_server->inputMethodRelay()->ownsKeyboard(m_keyboard)) {
+        if (GlobalShortcuts* shortcuts = m_server->globalShortcuts()) {
+          handled = shortcuts->handlePress(
+              this, event->keycode, event->time_msec, std::span(syms, nsyms > 0 ? static_cast<size_t>(nsyms) : 0),
+              rawSym, modifiers
+          );
+        }
+      }
       // Unbound plain keys drive overview navigation instead of reaching clients, unless a layer surface (launcher,
       // panel) holds the keyboard: its Escape/arrows belong to it, not to the filmstrip.
       if (!handled && seat->keyboard_state.focused_surface == nullptr) {
@@ -506,7 +527,7 @@ namespace umbriel {
       if (m_repeatArmed && event->keycode == m_repeatKeycode) {
         cancelRepeat();
       }
-      handled = m_consumedKeycodes.contains(event->keycode);
+      handled = shortcutConsumed || m_consumedKeycodes.contains(event->keycode);
     }
 
     if (!handled) {
@@ -547,6 +568,9 @@ namespace umbriel {
     m_key.link.next = nullptr;
     m_destroy.link.next = nullptr;
     m_server->pendingReleases().forgetSource(this);
+    if (GlobalShortcuts* shortcuts = m_server->globalShortcuts()) {
+      shortcuts->forgetSource(this);
+    }
     m_server->removeKeyboard(this);
   }
 

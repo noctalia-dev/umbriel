@@ -192,6 +192,7 @@ export UMBRIEL_WAYLAND_CURSOR_CLIENT="$CLIENT_DIR/wayland-cursor-client"
 export UMBRIEL_OUTPUT_MANAGEMENT_CLIENT="$CLIENT_DIR/output-management-client"
 export UMBRIEL_PIXEL_PROBE="$CLIENT_DIR/pixel-probe"
 export UMBRIEL_CAPTURE_CLIENT="$CLIENT_DIR/capture-client"
+export UMBRIEL_GLOBAL_SHORTCUTS_CLIENT="$CLIENT_DIR/global-shortcuts-client"
 export UMBRIEL_HARNESS_LIB="$HARNESS_DIR/lib.sh"
 export UMBRIEL=$BINARY
 
@@ -552,6 +553,7 @@ start_instance() {
     "${xwayland_environment[@]}" \
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$RUNTIME_DIR/no-system-bus" \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+    XDG_STATE_HOME="$RUNTIME_DIR/state" \
     WLR_BACKENDS=headless \
     UMBRIEL_CONFIG_WATCH="$config_watch" \
     WLR_LIBINPUT_NO_DEVICES=1 \
@@ -692,6 +694,7 @@ run_check_body() {
   setsid env -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS "${display_environment[@]}" \
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$RUNTIME_DIR/no-system-bus" \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+    XDG_STATE_HOME="$RUNTIME_DIR/state" \
     WAYLAND_DISPLAY=wayland-0 \
     bash -c 'echo $$ > "$1"; shift; exec "$@"' _ "$pgid_file" \
     timeout -k 5 "$CHECK_TIMEOUT" bash "$CHECKS_DIR/$name.sh" > "$output_file" 2>&1 &

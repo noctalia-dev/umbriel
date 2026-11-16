@@ -12,6 +12,7 @@
 #include "input/cursor.h"
 #include "input/eis.h"
 #include "input/gestures.h"
+#include "input/global_shortcuts_controller.h"
 #include "input/input_capture.h"
 #include "input/keyboard.h"
 #include "input/keyboard_leds.h"
@@ -489,6 +490,9 @@ namespace umbriel {
     if (m_stopping) {
       return;
     }
+    if (active && m_globalShortcuts != nullptr) {
+      m_globalShortcuts->suspend();
+    }
     const uint32_t capabilities = active ? m_inputCapture->capabilities() : m_inputCaptureCapabilities;
     m_inputCaptureCapabilities = active ? capabilities : 0;
     m_pendingReleases.clearForCapture((capabilities & 1U) != 0, (capabilities & 2U) != 0);
@@ -532,6 +536,9 @@ namespace umbriel {
     self = wl_container_of(listener, self, m_sessionActive);
     self->updateDrmLeaseState();
     if (!self->m_session->active) {
+      if (self->m_globalShortcuts != nullptr) {
+        self->m_globalShortcuts->suspend();
+      }
       if (self->m_inputCapture != nullptr) {
         self->m_inputCapture->suspend();
       }
@@ -961,6 +968,10 @@ namespace umbriel {
   Server::~Server() {
     m_stopping = true;
     updateDrmLeaseState();
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts.reset();
+      wl_display_flush_clients(m_display);
+    }
     m_inputCapture.reset();
     if (m_sessionActive.link.next != nullptr) {
       wl_list_remove(&m_sessionActive.link);
@@ -1262,7 +1273,11 @@ namespace umbriel {
     });
     m_inputCapture->setAuthorizationCancelled([this](uint64_t id) { cancelInputCapture(id); });
     m_inputCapture->setActiveChanged([this](bool active) { inputCaptureStateChanged(active); });
+    m_globalShortcuts = std::make_unique<GlobalShortcuts>(*this);
     for (const auto& keyboard : m_keyboards) {
+      for (size_t index = 0; index < keyboard->wlr()->num_keycodes; ++index) {
+        m_globalShortcuts->observeKey(keyboard.get(), keyboard->wlr()->keycodes[index], 0, true);
+      }
       if (!keyboard->virtualDevice()) {
         m_inputCapture->addKeyboard(keyboard->wlr());
       }
@@ -1408,6 +1423,10 @@ namespace umbriel {
 
   void Server::stop() {
     m_stopping = true;
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts->suspend();
+      wl_display_flush_clients(m_display);
+    }
     updateDrmLeaseState();
     wl_display_terminate(m_display);
   }

@@ -134,6 +134,7 @@ namespace umbriel {
   class Cursor;
   class EisInput;
   class InputCapture;
+  class GlobalShortcuts;
   class BackendManager;
   class DrmLeaseManager;
   class FocusManager;
@@ -187,6 +188,7 @@ namespace umbriel {
     Xwayland* xwayland() const { return m_xwayland.get(); }
     EisInput* eisInput() const { return m_eisInput.get(); }
     InputCapture* inputCapture() const { return m_inputCapture.get(); }
+    GlobalShortcuts* globalShortcuts() const { return m_globalShortcuts.get(); }
     bool physicalInputDevice(const wlr_input_device* device) const;
     bool keyboardKeyConsumed(wlr_keyboard* keyboard, uint32_t keycode) const;
     wlr_backend* backend() const { return m_backend; }
@@ -963,6 +965,7 @@ namespace umbriel {
     std::unique_ptr<Xwayland> m_xwayland;
     std::unique_ptr<EisInput> m_eisInput;
     std::unique_ptr<InputCapture> m_inputCapture;
+    std::unique_ptr<GlobalShortcuts> m_globalShortcuts;
     uint64_t m_pendingCaptureId = 0;
     uint32_t m_inputCaptureCapabilities = 0;
     uint64_t m_pendingInputId = 0;

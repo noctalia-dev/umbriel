@@ -1,5 +1,6 @@
 #include "config/config.h"
 #include "input/cursor.h"
+#include "input/global_shortcuts_controller.h"
 #include "input/input_capture.h"
 #include "input/keyboard.h"
 #include "input/modifier_tap.h"
@@ -64,6 +65,9 @@ namespace umbriel {
       return false;
     }
 
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts->suspend();
+    }
     if (m_inputCapture != nullptr) {
       m_inputCapture->suspend();
     }

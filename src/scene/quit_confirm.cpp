@@ -1,6 +1,7 @@
 #include "scene/quit_confirm.h"
 
 #include "config/config.h"
+#include "input/global_shortcuts_controller.h"
 #include "input/input_capture.h"
 #include "scene/border_rect.h"
 #include "scene/color.h"
@@ -31,6 +32,9 @@ namespace umbriel {
   QuitConfirm::~QuitConfirm() { hide(); }
 
   void QuitConfirm::show(Kind kind) {
+    if (GlobalShortcuts* shortcuts = m_server.globalShortcuts()) {
+      shortcuts->suspend();
+    }
     if (InputCapture* capture = m_server.inputCapture(); capture != nullptr && capture->active()) {
       capture->suspend();
     }
