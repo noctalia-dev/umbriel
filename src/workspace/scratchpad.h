@@ -84,8 +84,9 @@ namespace umbriel {
     // Show one window of the scratchpad at a time: the one after (`direction` > 0) or before the window on show,
     // wrapping at the ends. A hidden pad shows its most recently focused window.
     bool showStep(std::string_view name, int direction, Output* invokingOutput);
-    // Show and hide on one key: hide the pad while `focus` is one of its windows, bring it here and focus it while it
-    // shows without focus, and otherwise show only the window after (`direction` > 0) or before the one focused last.
+    // Show and hide on one key: hide the pad while `focus`, the seat's focused window, is one of its windows, bring it
+    // here and focus it while another window has focus, and otherwise show only the window after (`direction` > 0) or
+    // before the one focused last.
     bool cycle(std::string_view name, int direction, Output* invokingOutput, const View* focus);
     View* focused(std::string_view name) const;
     bool hasFocus(std::string_view name) const;
@@ -159,7 +160,9 @@ namespace umbriel {
     // The regular member of scratchpad `name` that `view` belongs to: `view` itself, or for a dialog the member it was
     // opened from.
     View* memberFor(View* view, std::string_view name) const;
-    // The regular members of scratchpad `name`, in the order they joined; dialogs show with their member.
+    // Whether `entry` is a mapped regular member of scratchpad `name`; dialogs show with their member instead.
+    bool isMember(const Entry& entry, std::string_view name) const;
+    // The regular members of scratchpad `name`, in the order they joined.
     std::vector<View*> members(std::string_view name) const;
     // The member of scratchpad `name` after (`direction` > 0) or before `view`, wrapping at the ends; null when there
     // is no other.
