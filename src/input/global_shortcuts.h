@@ -33,6 +33,8 @@ namespace umbriel {
   };
 
   bool validGlobalShortcutId(std::string_view value);
+  // An empty override disables the shortcut and is handled separately by callers.
+  std::optional<GlobalShortcutTrigger> parseGlobalShortcutOverride(std::string_view chord, uint32_t modKey);
   bool validGlobalShortcutList(
       std::span<const GlobalShortcut> shortcuts, bool boundOnly = false, size_t maxCount = kMaxGlobalShortcuts
   );

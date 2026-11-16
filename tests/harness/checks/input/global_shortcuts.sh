@@ -9,7 +9,6 @@ readonly LOCAL=$UMBRIEL_RUNTIME_DIR/local.log
 readonly TOKEN=$UMBRIEL_RUNTIME_DIR/grant
 readonly OTHER_TOKEN=$UMBRIEL_RUNTIME_DIR/other-grant
 readonly BINDS=$UMBRIEL_RUNTIME_DIR/binds.toml
-: > "$BINDS"
 cat >> "$UMBRIEL_CONFIG" <<EOF
 
 [include]
@@ -18,6 +17,10 @@ files = ["$BINDS"]
 "Ctrl+N" = "workspace-set-layout master"
 "Mod+F10" = "submap test"
 "submap[test],Escape" = "submap reset"
+EOF
+cat > "$BINDS" <<'EOF'
+[global_shortcuts."org.test.App"]
+talk = "Ctrl+M"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 "$CLIENT" seed "$TOKEN" org.test.App talk CTRL+m reserved CTRL+n
@@ -54,6 +57,15 @@ keys() {
 send 'new org.test.App' 'add talk CTRL+m' bind
 sync_bridge unapproved
 expect_count "$LOG" 'bound session=0 ' 0
+# A rejected config edit keeps the pending review alive.
+cat > "$BINDS" <<'EOF'
+[global_shortcuts."org.test.App"]
+talk = "Ctrl+MouseLeft"
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+sync_bridge rejected-review
+expect_count "$LOG" 'bound session=0 ' 0
+: > "$BINDS"
 "$UMBRIEL_POINTER_CLIENT" 1280 720 click 272
 sync_bridge cancelled
 expect_count "$LOG" 'bound session=0 .*status=1' 1
@@ -162,4 +174,58 @@ keys mod control tap 50
 await_events "$LOG" 'activated session=2 ' 4
 await_events "$LOG" 'deactivated session=2 ' 4
 
-echo "global shortcuts preserve key ownership through routing gates, reloads, promotion, and teardown"
+# Config overrides rebind live sessions and retire held keys before publishing their replacement.
+send 'select 2'
+changes=$(events "$LOG" 'changes-done session=2')
+releases=$(events "$LOCAL" 'keyboard-key code=50 state=released')
+pointer_hold 1280 720 keyboard-only mod control key-press 50 -- key-release 50 mod none tap 30
+await_events "$LOG" 'activated session=2 ' 5
+cat > "$BINDS" <<'EOF'
+[general]
+mod_key = "Super"
+[global_shortcuts."org.test.Other"]
+talk = "Mod+K"
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+await_events "$LOG" 'deactivated session=2 ' 5
+await_events "$LOG" 'changes-done session=2' "$((changes + 1))"
+expect_count "$LOG" 'changed session=2 id=talk trigger=Super+K$' 1
+pointer_release
+sync_bridge override-release
+expect_count "$LOCAL" 'keyboard-key code=50 state=released' "$releases"
+keys mod control tap 50
+expect_count "$LOG" 'activated session=2 ' 5
+keys mod super tap 37
+await_events "$LOG" 'activated session=2 ' 6
+await_events "$LOG" 'deactivated session=2 ' 6
+
+# Symbolic Mod resolves again when the configured modifier changes.
+sed -i 's/mod_key = "Super"/mod_key = "Alt"/' "$BINDS"
+"$UMBRIEL" msg config-reload > /dev/null
+await_events "$LOG" 'changed session=2 id=talk trigger=Alt+K$' 1
+keys mod super tap 37
+expect_count "$LOG" 'activated session=2 ' 6
+keys mod alt tap 37
+await_events "$LOG" 'activated session=2 ' 7
+await_events "$LOG" 'deactivated session=2 ' 7
+
+# Disabling publishes an empty replacement; removing the override restores the approved candidate.
+changes=$(events "$LOG" 'changes-done session=2')
+snapshots=$(events "$LOG" 'changed session=2 ')
+cat > "$BINDS" <<'EOF'
+[global_shortcuts."org.test.Other"]
+talk = ""
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+await_events "$LOG" 'changes-done session=2' "$((changes + 1))"
+expect_count "$LOG" 'changed session=2 ' "$snapshots"
+keys mod alt tap 37 mod control tap 50
+expect_count "$LOG" 'activated session=2 ' 7
+: > "$BINDS"
+"$UMBRIEL" msg config-reload > /dev/null
+await_events "$LOG" 'changed session=2 id=talk trigger=Ctrl+M$' 2
+keys mod control tap 50
+await_events "$LOG" 'activated session=2 ' 8
+await_events "$LOG" 'deactivated session=2 ' 8
+
+echo "global shortcuts preserve key ownership through routing gates, config overrides, reloads, promotion, and teardown"

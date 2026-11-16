@@ -10,6 +10,8 @@ The panel uses the preferred output's usable area. Geometry, scale, or output ch
 
 Only successful live bindings participate in matching. Configured default-submap keybinds, Ctrl+Alt+Escape, and VT-switch chords are reserved. Live ownership follows successful bind order, with request order breaking ties. Closing an owner promotes approved waiters and publishes complete replacement snapshots, including empty snapshots.
 
+The `global_shortcuts` configuration table maps exact application IDs and shortcut IDs to keyboard chords, with an empty string disabling an entry. Its loader shares override validation with the registry and rejects malformed tables, IDs, and chords before committing a configuration. Resolution uses configuration overrides, then approved stored candidates, then eligible preferred triggers for new IDs. Configuration does not alter stored approval scope or preferences. A successful reload re-resolves symbolic `Mod`, retires changed activations, and publishes complete replacement snapshots; a rejected reload leaves bindings and pending review intact.
+
 Every keyboard event is observed before capture or confirmation can return. Matching happens after configured press and release bindings. The configured bindings and global shortcuts share keysym matching, including the layout fallback and removal of Caps Lock and Num Lock masks. Input-method-owned keyboard echoes cannot activate a second shortcut.
 
 An activation belongs to a keyboard source and keycode. Releasing the trigger key retires it exactly once with the original event timestamp. Repeated presses cannot create another activation. Retiring an activation preserves consumption until release, so a changed binding or promoted waiter cannot steal an already-held key.

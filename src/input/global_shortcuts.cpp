@@ -71,6 +71,22 @@ namespace umbriel {
 
   bool validGlobalShortcutId(std::string_view value) { return !value.empty() && validText(value, 256); }
 
+  std::optional<GlobalShortcutTrigger> parseGlobalShortcutOverride(std::string_view chord, uint32_t modKey) {
+    Keybind bind;
+    if (!validText(chord, 256)
+        || (modKey & ~kTriggerModifiers) != 0
+        || !parseChord(chord, bind)
+        || bind.modifierOnly
+        || bind.mouseButton != 0
+        || bind.wheel != WheelDirection::None
+        || !bind.submap.empty()
+        || (bind.useMod && modKey == 0)) {
+      return std::nullopt;
+    }
+    const GlobalShortcutTrigger trigger{bind.modifiers | (bind.useMod ? modKey : 0), bind.keysym};
+    return validTrigger(trigger) ? std::optional{trigger} : std::nullopt;
+  }
+
   bool validGlobalShortcutRequest(const GlobalShortcutRequest& shortcut) {
     return validGlobalShortcutId(shortcut.id)
         && validText(shortcut.description, 1024)
@@ -327,27 +343,18 @@ namespace umbriel {
         return false;
       }
       for (const auto& [id, chord] : shortcuts) {
-        if (!validGlobalShortcutId(id) || !validText(chord, 256)) {
+        if (!validGlobalShortcutId(id)) {
           return false;
         }
         if (chord.empty()) {
           parsed[application][id] = std::nullopt;
           continue;
         }
-        Keybind bind;
-        if (!parseChord(chord, bind)
-            || bind.modifierOnly
-            || bind.mouseButton != 0
-            || bind.wheel != WheelDirection::None
-            || !bind.submap.empty()
-            || (bind.useMod && modKey == 0)) {
+        const auto trigger = parseGlobalShortcutOverride(chord, modKey);
+        if (!trigger) {
           return false;
         }
-        const GlobalShortcutTrigger trigger{bind.modifiers | (bind.useMod ? modKey : 0), bind.keysym};
-        if (!validTrigger(trigger)) {
-          return false;
-        }
-        parsed[application][id] = trigger;
+        parsed[application][id] = *trigger;
       }
     }
     std::vector<GlobalShortcutTrigger> reservedTriggers;

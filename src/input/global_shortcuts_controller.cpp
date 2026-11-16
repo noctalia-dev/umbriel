@@ -84,10 +84,10 @@ namespace umbriel {
         reserved.push_back({bind.modifiers | (bind.useMod ? m_impl->server.modKey() : 0), bind.keysym});
       }
     }
-    m_impl->configured = m_impl->registry.configure({}, reserved, m_impl->server.modKey());
+    m_impl->configured = m_impl->registry.configure(config().globalShortcuts, reserved, m_impl->server.modKey());
     if (!m_impl->configured) {
       suspend();
-      kLog.error("could not reserve configured keybinds for global shortcuts");
+      kLog.error("could not configure global shortcuts");
     }
     m_impl->bridge.dispatchChanges();
   }
