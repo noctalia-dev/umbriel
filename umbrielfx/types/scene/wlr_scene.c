@@ -277,7 +277,9 @@ static struct scene_effects* scene_effects_get(struct wlr_scene* scene, bool cre
 }
 
 static bool slot_bounded(unsigned slot, const struct fx_effect_shader* shader) {
-  return !fx_slot_persistent(slot) && !fx_slot_expands(slot) && shader != NULL && shader->shape_preserving;
+  return !fx_slot_persistent(slot)
+      && shader != NULL
+      && (shader->bounded || (!fx_slot_expands(slot) && shader->shape_preserving));
 }
 
 static void scene_animation_classify(struct scene_animation* animation) {
@@ -313,14 +315,37 @@ static void scene_effects_recount(struct scene_effects* effects) {
   }
 }
 
-static int animation_expand(const struct scene_animation* animation) {
+static bool animation_needs_full_damage_box(const struct scene_animation* animation) {
+  if (animation->persistent) {
+    return true;
+  }
+  if (!animation->bounded) {
+    return false;
+  }
+  for (unsigned slot = 0; slot < FX_ANIMATION_SLOTS; slot++) {
+    const struct fx_effect_shader* shader = animation->shaders[slot];
+    if (shader != NULL && (fx_slot_expands(slot) || !shader->shape_preserving)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static int animation_expand_excluding(const struct scene_animation* animation, unsigned excluded_slot) {
   int expand = 0;
   for (unsigned slot = 0; slot < FX_ANIMATION_SLOTS; slot++) {
-    if (animation->shaders[slot] != NULL && fx_slot_expands(slot) && animation->parameters[slot].expand > expand) {
+    if (slot != excluded_slot
+        && animation->shaders[slot] != NULL
+        && fx_slot_expands(slot)
+        && animation->parameters[slot].expand > expand) {
       expand = animation->parameters[slot].expand;
     }
   }
   return expand;
+}
+
+static int animation_expand(const struct scene_animation* animation) {
+  return animation_expand_excluding(animation, FX_ANIMATION_SLOTS);
 }
 
 struct animation_shadow {
@@ -1258,13 +1283,12 @@ static bool scene_node_update_iterator(
   struct wlr_box box = {.x = lx, .y = ly};
   scene_node_get_size(node, &box.width, &box.height);
 
-  // Occluders never cull a persistent effect's input, which its program may sample anywhere.
-  // A fully covered window with a persistent effect keeps its output membership and frame callbacks.
+  // Occluders never cull an effect input whose shader may sample covered texels.
   struct scene_animation* animation = NULL;
-  if (data->effects != NULL && data->effects->persistent > 0) {
+  if (data->effects != NULL && (data->effects->persistent > 0 || data->effects->bounded > 0)) {
     animation = effect_over_node(node);
   }
-  const bool keep_input = animation != NULL && animation->persistent;
+  const bool keep_input = animation != NULL && animation_needs_full_damage_box(animation);
   pixman_region32_subtract(&node->visible, &node->visible, data->update_region);
   pixman_region32_union(&node->visible, &node->visible, keep_input ? data->update_region : data->visible);
   pixman_region32_intersect_rect(&node->visible, &node->visible, lx, ly, box.width, box.height);
@@ -4259,14 +4283,14 @@ static void render_in_place_slots(
 }
 
 static bool
-persistent_effect_box(struct scene_animation* animation, const struct render_data* data, struct wlr_box* box);
+animation_effect_box(struct scene_animation* animation, const struct render_data* data, struct wlr_box* box);
 
 // Whether this frame's damage, within `clip` when set, reaches a persistent effect's drawn box.
 static bool persistent_effect_damaged(
     struct scene_animation* animation, const struct render_data* data, const pixman_region32_t* clip
 ) {
   struct wlr_box box;
-  if (!persistent_effect_box(animation, data, &box)) {
+  if (!animation->persistent || !animation_effect_box(animation, data, &box)) {
     return false;
   }
   pixman_region32_t damage;
@@ -4284,6 +4308,27 @@ static void render_background(
     struct wlr_render_pass* render_pass, const struct wlr_scene* scene, const struct wlr_buffer* buffer,
     const pixman_region32_t* clip, enum wlr_render_blend_mode blend_mode
 );
+
+static struct wlr_box
+region_to_buffer_box(const pixman_region32_t* bounds, int expand, const struct render_data* data) {
+  pixman_region32_t work;
+  pixman_region32_init(&work);
+  pixman_region32_copy(&work, bounds);
+  if (expand > 0) {
+    wlr_region_expand(&work, &work, expand);
+  }
+  pixman_region32_translate(&work, -data->logical.x, -data->logical.y);
+  logical_to_buffer_coords(&work, data, true);
+  const pixman_box32_t* extents = pixman_region32_extents(&work);
+  const struct wlr_box box = {
+      .x = extents->x1,
+      .y = extents->y1,
+      .width = extents->x2 - extents->x1,
+      .height = extents->y2 - extents->y1,
+  };
+  pixman_region32_fini(&work);
+  return box;
+}
 
 static void render_animated_range(
     struct render_list_entry* entries, int high, int low, struct wlr_scene_node* stop, const struct render_data* data
@@ -4310,26 +4355,26 @@ static void render_animated_range(
     int lx, ly;
     wlr_scene_node_coords(animation->node, &lx, &ly);
     // Keep off-output pixels until after deformation: they can bend back on screen.
+    // Test containment on the undeformed bounds (plus non-drag expand margins) so
+    // an on-screen node's deformation margin never forces a group capture.
     if (!data->full_capture && animation->shaders[FX_SLOT_DRAG] != NULL) {
       pixman_region32_t bounds;
       pixman_region32_init(&bounds);
       scene_node_bounds(animation->node, lx, ly, &bounds);
-      wlr_region_expand(&bounds, &bounds, scene_node_drawn_expand(animation->node));
-      pixman_region32_translate(&bounds, -data->logical.x, -data->logical.y);
-      logical_to_buffer_coords(&bounds, data, true);
-      const pixman_box32_t* extents = pixman_region32_extents(&bounds);
-      struct wlr_box capture_box = {
-          .x = extents->x1,
-          .y = extents->y1,
-          .width = extents->x2 - extents->x1,
-          .height = extents->y2 - extents->y1,
-      };
+      const int own_non_drag = animation_expand_excluding(animation, FX_SLOT_DRAG);
+      const int subtree_expand = scene_subtree_effect_expand(animation->node);
+      const int undeformed_expand = own_non_drag > subtree_expand ? own_non_drag : subtree_expand;
+      const struct wlr_box raw_box = region_to_buffer_box(&bounds, undeformed_expand, data);
       const struct wlr_box target = {.width = pass->buffer->buffer->width, .height = pass->buffer->buffer->height};
-      const bool needs_capture = !wlr_box_empty(&capture_box) && !wlr_box_contains_box(&target, &capture_box);
+      const bool needs_capture = !wlr_box_empty(&raw_box) && !wlr_box_contains_box(&target, &raw_box);
+      struct wlr_box capture_box = {0};
+      if (needs_capture) {
+        capture_box = region_to_buffer_box(&bounds, scene_node_drawn_expand(animation->node), data);
+        // Reuse the allocation across small changes in the spring's margin.
+        capture_box.width = (capture_box.width + 127) / 128 * 128;
+        capture_box.height = (capture_box.height + 127) / 128 * 128;
+      }
       pixman_region32_fini(&bounds);
-      // Reuse the allocation across small changes in the spring's margin.
-      capture_box.width = (capture_box.width + 127) / 128 * 128;
-      capture_box.height = (capture_box.height + 127) / 128 * 128;
       if (needs_capture && fx_render_pass_begin_capture(pass, &capture_box)) {
         struct render_data capture = *data;
         capture.capture_x -= capture_box.x;
@@ -6354,11 +6399,11 @@ static bool effect_buffer_box(struct wlr_box* box, const struct render_data* dat
   return wlr_box_intersection(box, box, &buffer_box);
 }
 
-// The drawn box of a persistent effect, in buffer coordinates: node bounds plus expand.
+// The drawn box of an effect in buffer coordinates: node bounds plus expand.
 static bool
-persistent_effect_box(struct scene_animation* animation, const struct render_data* data, struct wlr_box* box) {
+animation_effect_box(struct scene_animation* animation, const struct render_data* data, struct wlr_box* box) {
   int lx, ly;
-  if (!animation->persistent || !wlr_scene_node_coords(animation->node, &lx, &ly)) {
+  if (!wlr_scene_node_coords(animation->node, &lx, &ly)) {
     return false;
   }
   pixman_region32_t bounds;
@@ -6413,8 +6458,8 @@ static bool expand_damage_to_effects(
     const struct scene_output_effects* output_effects, const struct render_data* data, pixman_region32_t* damage,
     bool commit
 ) {
-  const bool persistent = effects != NULL && effects->persistent > 0;
-  if (!persistent && !output_effects_active(output_effects)) {
+  const bool box_effects = effects != NULL && (effects->persistent > 0 || effects->bounded > 0);
+  if (!box_effects && !output_effects_active(output_effects)) {
     return false;
   }
   struct wlr_box screen_box = {0}, cursor_box = {0};
@@ -6430,11 +6475,11 @@ static bool expand_damage_to_effects(
   bool grew;
   do {
     grew = false;
-    if (persistent) {
+    if (box_effects) {
       struct scene_animation* animation;
       wl_list_for_each(animation, &effects->animations, link) {
         struct wlr_box box;
-        if (persistent_effect_box(animation, data, &box)) {
+        if (animation_needs_full_damage_box(animation) && animation_effect_box(animation, data, &box)) {
           grew |= damage_grow_to_box(scene_output, damage, &box, commit);
         }
       }
