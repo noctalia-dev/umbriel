@@ -72,7 +72,7 @@ namespace umbriel {
     // Security-context clients only receive reviewed, ordinary application
     // protocols. New globals stay unavailable until they are classified here.
     // [[security_context_rule]] widens the set for matching clients.
-    constexpr std::array<std::string_view, 32> kAllowedSecurityContextGlobals{
+    constexpr std::array<std::string_view, 33> kAllowedSecurityContextGlobals{
         "wl_shm",
         "wl_drm",
         "zwp_linux_dmabuf_v1",
@@ -83,6 +83,7 @@ namespace umbriel {
         "zwp_primary_selection_device_manager_v1",
         "wp_viewporter",
         "wp_fractional_scale_manager_v1",
+        "wp_alpha_modifier_v1",
         "wp_presentation",
         "wp_tearing_control_manager_v1",
         "wp_content_type_manager_v1",
@@ -616,6 +617,9 @@ namespace umbriel {
     if (m_backendManager == nullptr) {
       throw std::runtime_error("failed to create wlr_backend");
     }
+    m_backendManager->setDrmBackendRemovedHandler([this](const wlr_backend* backend) {
+      m_connectorHdrState.forgetBackend(backend);
+    });
     m_backend = m_backendManager->backend();
     m_session = m_backendManager->session();
 
@@ -681,6 +685,7 @@ namespace umbriel {
     updateDrmLeaseState();
     wlr_viewporter_create(m_display);
     wlr_fractional_scale_manager_v1_create(m_display, 1);
+    wlr_alpha_modifier_v1_create(m_display);
     wlr_presentation_create(m_display, m_backend, 2);
     m_tearingControlManager = wlr_tearing_control_manager_v1_create(m_display, 1);
     if (m_tearingControlManager == nullptr) {
@@ -1115,19 +1120,19 @@ namespace umbriel {
     wl_display_destroy(m_display);
   }
 
-  const wlr_image_description_v1_data* Server::surfaceImageDescription(wlr_surface* surface) const {
+  const ColorDescription* Server::surfaceImageDescription(wlr_surface* surface) const {
     if (m_colorManager != nullptr) {
-      if (const wlr_image_description_v1_data* description = m_colorManager->surfaceDescription(surface)) {
+      if (const ColorDescription* description = m_colorManager->surfaceDescription(surface)) {
         return description;
       }
     }
     return nullptr;
   }
 
-  const wlr_image_description_v1_data* Server::surfaceTreeHdrDescription(wlr_surface* surface) const {
+  const ColorDescription* Server::surfaceTreeHdrDescription(wlr_surface* surface) const {
     struct Context {
       const Server* server;
-      const wlr_image_description_v1_data* description = nullptr;
+      const ColorDescription* description = nullptr;
     } context{.server = this};
 
     wlr_surface_for_each_surface(
@@ -1137,7 +1142,7 @@ namespace umbriel {
           if (context->description != nullptr) {
             return;
           }
-          const wlr_image_description_v1_data* description = context->server->surfaceImageDescription(candidate);
+          const ColorDescription* description = context->server->surfaceImageDescription(candidate);
           if (description == nullptr) {
             return;
           }
@@ -1281,6 +1286,10 @@ namespace umbriel {
       if (m_xwayland->available() && m_xwayland->setInputSocket(m_eisInput->socketFd())) {
         setenv("DISPLAY", m_xwayland->displayName(), 1);
       } else {
+        // A creation failure already logged itself in the Xwayland constructor; only this branch is otherwise silent.
+        if (m_xwayland->available()) {
+          kLog.error("Xwayland could not expose its EIS input socket; X11 applications will not work");
+        }
         m_xwayland.reset();
         m_eisInput.reset();
       }
@@ -1349,6 +1358,8 @@ namespace umbriel {
   void Server::showConfigDiagnostics() {
     std::vector<ConfigDiagnostic> diagnostics = configDiagnostics();
     if (config().general.xwayland && m_xwayland == nullptr) {
+      // Derived from runtime state rather than recorded while reading the configuration, so it is re-drawn on every
+      // reload; the failure itself is logged once, where it happens.
       ConfigDiagnostic diagnostic;
       diagnostic.severity = ConfigDiagnostic::Severity::Warning;
       diagnostic.message =

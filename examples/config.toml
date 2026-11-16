@@ -72,6 +72,8 @@ files = []
 # vrr = "fullscreen"
 # hdr = "auto"
 # sdr_transfer = "gamma22" # Or "srgb" for piecewise SDR decoding in HDR.
+# color_profile = "edid" # Or a factory ICC path; with sdr_gamut = "srgb" a characterized panel describes itself to tagged clients.
+# sdr_gamut = "srgb" # Map untagged SDR into the panel gamut; "native" stages no mapping.
 
 # ==============================================================================
 # Appearance
@@ -171,7 +173,7 @@ numlock_toggle = true
 # Focus can follow the pointer across tiled, floating, and pinned windows.
 #
 # [input.focus]
-# follows_mouse = true
+# follows_mouse = "sloppy" # "off", "sloppy", or "always"; always also refocuses after layout and workspace changes.
 # hover_raises = false # Hover focuses only; clicks and keybinds raise.
 
 # Confine touch input to one display.
@@ -288,9 +290,9 @@ numlock_toggle = true
 # mode = "scrolling" # "scrolling", "dwindle", "master", or "stacking".
 extent_presets = [0.333, 0.5, 0.667]
 
-# What a tiled window's own maximize button does: "column" fills the column,
-# "edges" fills the usable area without struts, gaps, or borders. The
-# window-toggle-maximize action is unaffected.
+# What a tiled or stacking window's own maximize button does: "column" uses
+# normal layout maximize; "edges" fills the usable area without struts, gaps,
+# or borders. The window-toggle-maximize action is unaffected.
 # client_maximize = "column"
 
 [layout.stacking]

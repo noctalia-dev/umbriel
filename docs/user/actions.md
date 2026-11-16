@@ -171,7 +171,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `column-toggle-tab-bar`                | Show or hide the focused tab group's bar                   |
 | `column-toggle-tabbed`                 | Tab the rows around the focused window, or stack its tabs  |
 | `window-close [<window-id>]`           | Close the focused window, or the given window              |
-| `window-kill [<window-id>]`            | Kill the process owning the focused or given window        |
+| `window-kill [<window-id>]`            | Forcefully close the focused or given window's client      |
 | `window-minimize [<window-id>]`        | Minimize the focused floating window, or the given window  |
 | `window-restore-minimized`             | Restore the latest minimized window on this workspace      |
 | `window-toggle-floating [<window-id>]` | Float or tile the focused window, or the given window      |
@@ -182,7 +182,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 
 Which windows minimize and how they come back is described in [Minimize](layout.md#minimize).
 
-`window-close` asks the application to close a window. `window-kill` sends `SIGKILL` to the process owning the window, even if it ignores close requests. This terminates all windows owned by that process and can lose unsaved work. If the client PID is unavailable, the action returns an error.
+`window-close` asks the application to close a window. `window-kill` forcefully closes its client, even if it ignores close requests, and can lose unsaved work. For native Wayland clients, it sends `SIGKILL` to the owning process and closes all windows owned by that process; an unavailable client PID returns an error. For Xwayland clients, it disconnects the owning X11 connection and destroys its windows and other X11 resources, including windows retained after the process exits. Other windows sharing that X11 connection also close; the process may continue running if it handles losing the connection.
 
 No window ID is needed: a bare `window-kill` targets the focused window, including a focused scratchpad window. For example:
 

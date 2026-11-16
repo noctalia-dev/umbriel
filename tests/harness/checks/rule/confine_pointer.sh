@@ -26,7 +26,7 @@ enabled = false
 default_extent_fraction = 0.5
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 
 [[window_rule]]
 match.title = "^confined$"
@@ -163,11 +163,11 @@ control l
 await_events "$LOG" pointer-locked "$((locked + 1))"
 assert_focus "$other"
 control u
-# Ordinary keyboard focus invalidation must now allow hover refocus without re-entry.
+# Without the rule, keyboard focus is an ordinary sloppy choice: motion within the game keeps it elsewhere.
 "$UMBRIEL" msg window-focus "$game" > /dev/null
 "$UMBRIEL" msg window-focus "$other" > /dev/null
 move relative 1 0
-assert_focus "$game"
+assert_focus "$other"
 move move "$ox" "$oy"
 assert_focus "$other"
 cat >> "$UMBRIEL_CONFIG" <<'CONFIG'

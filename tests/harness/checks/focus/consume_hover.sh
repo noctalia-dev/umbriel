@@ -13,7 +13,7 @@ center_focused = "never"
 [animation]
 enabled = false
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

@@ -37,6 +37,9 @@ namespace umbriel {
     static void onRequestStartDrag(wl_listener* listener, void* data);
     static void onStartDrag(wl_listener* listener, void* data);
     static void onDragDestroy(wl_listener* listener, void* data);
+    static void onDragFocus(wl_listener* listener, void* data);
+    static void onDragDrop(wl_listener* listener, void* data);
+    static void onDragModifierClientDestroy(wl_listener* listener, void* data);
 
     bool ownsPointerCursor(const wlr_seat_client* client) const;
     void handleRequestCursor(void* data);
@@ -47,7 +50,11 @@ namespace umbriel {
     void handleRequestStartDrag(void* data);
     void handleStartDrag(void* data);
     void handleDragDestroy();
+    void handleDragFocus();
+    void handleDragDrop();
+    void handleDragModifierClientDestroy();
     void sendPointerModifiers(wlr_seat_client* client, bool clear);
+    void updateDragModifierClient(wlr_seat_client* client);
 
     std::unique_ptr<ToplevelDragManager> m_toplevelDrags;
     Server* m_server = nullptr;
@@ -63,6 +70,10 @@ namespace umbriel {
     wl_listener m_requestStartDrag{};
     wl_listener m_startDrag{};
     wl_listener m_dragDestroy{};
+    wl_listener m_dragFocus{};
+    wl_listener m_dragDrop{};
+    wl_listener m_dragModifierClientDestroy{};
+    wlr_seat_client* m_dragModifierClient = nullptr;
   };
 
 } // namespace umbriel

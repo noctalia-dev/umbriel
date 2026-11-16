@@ -29,6 +29,7 @@ namespace umbriel {
     Directional,  // window-focus-* keybinds, focus-adjacent after close
     PointerPress, // plain click-to-focus
     PointerHover, // follows_mouse enter
+    PointerScene, // follows_mouse = "always": a scene change left another window under a stationary pointer
     Grab,         // Mod+drag / Mod+resize start
     DragDrop,     // tile/float drag finished
     Gesture,      // touchpad pan finished: the gesture already placed the strip

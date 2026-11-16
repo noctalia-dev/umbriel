@@ -25,6 +25,8 @@ Use `umbriel -c <path>` to select one exact file. Umbriel never creates or modif
 
 Configuration warnings and errors appear in a panel on the primary output. Errors keep the previous working configuration active. A warning-only panel closes after ten seconds; an error remains until the next successful reload.
 
+Every configuration diagnostic is also written to `umbriel.log` with the same file, line, and column, so a session started without a terminal still records what the panel showed after it closes. Diagnostics are logged where a load's outcome is decided: for the configuration about to be applied, and for a reload that was rejected. A refused `umbriel config set` or `config replace` writes nothing because its load is rolled back.
+
 Check a file without starting the compositor:
 
 ```sh
@@ -77,6 +79,24 @@ Included files are applied in list order. The including file is applied last:
 Every file must contain valid TOML. Duplicate device or workspace selectors, and an effect preset defined in two files, are errors even when they come from different files. At startup, any configuration error makes Umbriel use the default configuration and show an error banner; a reload keeps the previous configuration.
 
 If any included file defines `[drm]`, also declare `[drm]` in the main file. This prevents an incomplete GPU exclusion policy from loading when an include is unavailable.
+
+## Runtime overrides
+
+Change a value in the running session without editing the file, for example to turn a touchpad off for a while:
+
+```sh
+umbriel config set input.touchpad.enabled false
+umbriel config get input.touchpad.enabled
+umbriel config unset input.touchpad.enabled
+```
+
+`config set <key> <value>` takes a dotted key, as in `umbriel config schema --json`, and a TOML value: quote strings for the shell and for TOML, as in `umbriel config set appearance.title_bar.font "'Inter 10'"`. Quote a key segment that holds a dot or other punctuation, as in `'output."HDMI-A-1".scale'`. A table or array value replaces what the file holds at that key, so a rule list such as `[[window_rule]]` cannot be extended one entry at a time, and `include` cannot be set.
+
+Overrides live in memory only. They are never written to a file and last until the compositor exits. They stay on top of the file through reloads and `config-replace`, so saving the file never undoes them. A value that produces any new error or warning is refused and changes nothing; the reply lists why. Relative shader and profile paths need a file to resolve against, so give overrides absolute paths.
+
+`config get <key>` prints the active value: the override, else the file's value, else the built-in default. Strings print bare and other values as JSON. With `--json` the reply is `{"value": ..., "override": true|false}`. A table key prints the whole table.
+
+`config unset <key>` drops one override so the file or default applies again, and `config unset --all` drops every override.
 
 ## General
 

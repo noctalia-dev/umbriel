@@ -6,7 +6,7 @@ title_bar_config
 sed -i '/^\[appearance\]$/a drag_opacity = 1.0' "$UMBRIEL_CONFIG"
 cat >>"$UMBRIEL_CONFIG" <<'CONFIG'
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 [[window_rule]]
 match.title = "^drag-cursor-.*-client$"
 title_bar = "off"

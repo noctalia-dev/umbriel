@@ -15,6 +15,7 @@ Start with the user guide when a detail affects configuration or normal use. Use
 - [Border rendering](border-rendering.md)
 - [Render performance](render-performance.md)
 - [Automatic HDR color feedback](automatic-hdr.md)
+- [Color management](color-management.md)
 - [Xwayland input stability](xwayland-input-stability.md)
 - [Xwayland input emulation](input-emulation.md)
 - [Portal input capture](input-capture.md)

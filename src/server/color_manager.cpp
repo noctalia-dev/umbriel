@@ -1,6 +1,7 @@
 #include "server/color_manager.h"
 
 #include "color-management-v1-server-protocol.h"
+#include "core/log.h"
 #include "output/output.h"
 #include "server/color_description.h"
 #include "server/server.h"
@@ -9,9 +10,16 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
+#include <fcntl.h>
+#include <memory>
+#include <new>
 #include <string>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -27,6 +35,16 @@ namespace umbriel {
     constexpr uint32_t kProtocolVersion = 2;
 #endif
     constexpr uint32_t kDefaultSdrWhite = 203;
+    // A client's outstanding ICC payload — bytes staged for set_icc_file plus
+    // bytes retained on descriptions it created — is capped at one
+    // protocol-maximum profile, with four concurrent creators. Both are needed:
+    // neither bound alone stops create_icc_creator plus a sparse memfd from
+    // growing the compositor by gigabytes. One 32 MB profile is the most any
+    // client legitimately holds at once, and four creators bound object churn
+    // and staging buffers while leaving headroom for a burst of small profiles.
+    constexpr size_t kMaxIccBytesPerClient = kClientIccSizeLimit;
+    constexpr size_t kMaxIccCreatorsPerClient = 4;
+    constexpr Logger kLog("color");
 
     float decodeCoordinate(int32_t value) { return static_cast<float>(value) / 1'000'000.0F; }
     int32_t encodeCoordinate(float value) { return static_cast<int32_t>(std::lround(value * 1'000'000.0F)); }
@@ -80,8 +98,52 @@ namespace umbriel {
       Impl* manager = nullptr;
       wl_resource* resource = nullptr;
       ColorDescription description;
+      // set_tf_power exponent until create() canonicalizes it to a named curve
+      // or refuses the description; 0 when unset.
+      float tfPower = 0.0F;
       bool transferFunctionSet = false;
       bool primariesSet = false;
+    };
+
+    // Per-client ICC accounting behind the two caps above. A budget outlives
+    // its client while payloads it was charged for are still alive, but the
+    // map entry goes away with the client so a reused wl_client address starts
+    // empty instead of inheriting charges it never made.
+    struct IccBudget {
+      size_t creators = 0;
+      size_t bytes = 0;
+      Impl* manager = nullptr;
+      wl_client* client = nullptr;
+      wl_listener clientDestroy{};
+    };
+
+    // One staged or retained profile's charge. Released by its last owner: the
+    // creator while the bytes are only staged, the payload store afterwards.
+    // Holds the budget itself, not the client pointer, so a stale address
+    // cannot charge a later client.
+    struct IccCharge {
+      IccCharge(std::shared_ptr<IccBudget> budget_, size_t bytes_) : budget(std::move(budget_)), bytes(bytes_) {}
+      ~IccCharge() { budget->bytes -= std::min(budget->bytes, bytes); }
+      IccCharge(const IccCharge&) = delete;
+      IccCharge& operator=(const IccCharge&) = delete;
+      IccCharge(IccCharge&&) = delete;
+      IccCharge& operator=(IccCharge&&) = delete;
+      std::shared_ptr<IccBudget> budget;
+      size_t bytes = 0;
+    };
+
+    struct IccCreator {
+      Impl* manager = nullptr;
+      wl_resource* resource = nullptr;
+      std::shared_ptr<IccBudget> budget;
+      std::vector<uint8_t> iccBytes;
+      // The staged charge; create() hands it to the payload store.
+      std::shared_ptr<IccCharge> charge;
+      bool iccSet = false;
+      // An OS-level read failure rides to create() as
+      // wp_image_description_v1.failed('operating_system') (set_icc_file's
+      // contract), so it is remembered instead of posted immediately.
+      bool readFailed = false;
     };
 
     struct SurfaceState {
@@ -117,6 +179,9 @@ namespace umbriel {
       wl_resource* resource = nullptr;
       wlr_output* output = nullptr;
       ColorDescription description;
+      // Identity of the description record currently advertised, allocated on
+      // the first fetch so repeated fetches of one record share it.
+      uint64_t identity = 0;
       wl_listener commit{};
       wl_listener destroy{};
     };
@@ -176,6 +241,11 @@ namespace umbriel {
       while (!feedbacks.empty()) {
         auto* feedback = *feedbacks.begin();
         destroySurfaceFeedback(feedback, true);
+      }
+      // Payload charges outlive the client, so their budgets can still be in
+      // the map here; the listeners must not fire once this manager is gone.
+      for (auto& entry : iccBudgets) {
+        wl_list_remove(&entry.second->clientDestroy.link);
       }
     }
 
@@ -253,7 +323,15 @@ namespace umbriel {
       static const struct wp_color_management_surface_feedback_v1_interface implementation = {
           .destroy = handleResourceDestroy,
           .get_preferred = handleFeedbackGetPreferred,
-          .get_preferred_parametric = handleFeedbackGetPreferred,
+          .get_preferred_parametric = handleFeedbackGetPreferredParametric,
+      };
+      return implementation;
+    }
+
+    static const struct wp_image_description_creator_icc_v1_interface& iccCreatorImplementation() {
+      static const struct wp_image_description_creator_icc_v1_interface implementation = {
+          .create = handleIccCreate,
+          .set_icc_file = handleIccSetFile,
       };
       return implementation;
     }
@@ -294,9 +372,23 @@ namespace umbriel {
       }
       wl_resource_set_implementation(resource, &managerImplementation(), manager, nullptr);
 
+      // feature.icc_v2_v4 gates exactly create_icc_creator
+      // (color-management-v1.xml: "This request can be used when the
+      // compositor advertises wp_color_manager_v1.feature.icc_v2_v4") and is
+      // advertised only because the creator is fully implemented below.
+      // Without lcms2 the parser rejects every profile, so advertising the
+      // feature would promise an accept path that cannot exist.
+#if UMBRIEL_HAS_LCMS2
+      wp_color_manager_v1_send_supported_feature(resource, WP_COLOR_MANAGER_V1_FEATURE_ICC_V2_V4);
+#endif
       wp_color_manager_v1_send_supported_feature(resource, WP_COLOR_MANAGER_V1_FEATURE_PARAMETRIC);
       wp_color_manager_v1_send_supported_feature(resource, WP_COLOR_MANAGER_V1_FEATURE_SET_MASTERING_DISPLAY_PRIMARIES);
       wp_color_manager_v1_send_supported_feature(resource, WP_COLOR_MANAGER_V1_FEATURE_SET_PRIMARIES);
+      // feature.set_tf_power gates the parametric set_tf_power request
+      // (xml: "This request can be used when the compositor advertises
+      // wp_color_manager_v1.feature.set_tf_power"); advertised with the
+      // request's implementation, the same vocabulary the ICC TRC fit uses.
+      wp_color_manager_v1_send_supported_feature(resource, WP_COLOR_MANAGER_V1_FEATURE_SET_TF_POWER);
       wp_color_manager_v1_send_supported_feature(resource, WP_COLOR_MANAGER_V1_FEATURE_SET_LUMINANCES);
       wp_color_manager_v1_send_supported_feature(resource, WP_COLOR_MANAGER_V1_FEATURE_EXTENDED_TARGET_VOLUME);
       wp_color_manager_v1_send_supported_feature(resource, WP_COLOR_MANAGER_V1_FEATURE_WINDOWS_SCRGB);
@@ -356,8 +448,12 @@ namespace umbriel {
         createFailedImageDescription(resource, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_NO_OUTPUT, "output was destroyed");
         return;
       }
-      output->manager->createReadyImageDescription(
-          resource, id, output->manager->descriptionForOutput(output->output), true
+      auto* manager = output->manager;
+      if (output->identity == 0) {
+        output->identity = ++manager->lastIdentity;
+      }
+      manager->createReadyImageDescription(
+          resource, id, manager->descriptionForOutput(output->output), true, output->identity
       );
     }
 
@@ -406,11 +502,22 @@ namespace umbriel {
       auto* managed = new Surface{};
       managed->manager = manager;
       managed->surface = surface;
+      // The description owns its ICC payload through a shared_ptr, so every state copy has to be a real copy.
+      // wlroots memcpys a synchronized state when `move_state` is null (types/wlr_compositor.c, the cached-commit
+      // path) and frees cached states itself, so `finish_state` releases the payload without ending the object;
+      // pending and current are surface members whose destructors run afterwards.
+      //
+      // `move_state` copies rather than moves: wlroots reuses `surface->pending` across commits (it moves pending
+      // into current and never re-initializes the synced member), so emptying the source would drop the payload on
+      // the next commit. The copy's reference keeps both states owning valid bytes until finish_state releases one.
+      // Every owning member is released there: the states are placement-new'd and finish_state is the only hook
+      // wlroots runs before freeing the storage, so an unreleased member would never reach its destructor.
       static const wlr_surface_synced_impl syncedImplementation{
           .state_size = sizeof(SurfaceState),
-          .init_state = [](void* state) { *static_cast<SurfaceState*>(state) = {}; },
-          .finish_state = nullptr,
-          .move_state = nullptr,
+          .init_state = [](void* state) { new (state) SurfaceState{}; },
+          .finish_state = [](void* state) { static_cast<SurfaceState*>(state)->description = {}; },
+          .move_state = [](void* dst,
+                           void* src) { *static_cast<SurfaceState*>(dst) = *static_cast<const SurfaceState*>(src); },
           .commit = nullptr,
       };
       if (!wlr_surface_synced_init(
@@ -483,6 +590,10 @@ namespace umbriel {
         return;
       }
       surface->pending.set = false;
+      // Readers gate on `set`, but the payload would otherwise stay charged to
+      // the client's budget until something overwrote it: a client cycling
+      // set/unset would run out of budget with no bytes in use.
+      surface->pending.description = {};
     }
 
     static void handleSurfaceCommit(wl_listener* listener, void*) {
@@ -574,6 +685,34 @@ namespace umbriel {
       feedback->manager->createReadyImageDescription(resource, id, feedback->preferred, true, feedback->identity);
     }
 
+    // get_preferred_parametric promises a parametric description, and the info
+    // batch of a parametric description must carry tf_power or tf_named. A
+    // sampled panel curve that is not a power has neither, but the request
+    // still owes an immediate ready (color-management-v1.xml inherits
+    // get_preferred's contract): answer with the sRGB working encoding the
+    // compositor converts into the characterized output. The ICC-backed
+    // description remains available through get_preferred.
+    static void handleFeedbackGetPreferredParametric(wl_client*, wl_resource* resource, uint32_t id) {
+      auto* feedback = static_cast<SurfaceFeedback*>(wl_resource_get_user_data(resource));
+      if (feedback == nullptr) {
+        wl_resource_post_error(resource, WP_COLOR_MANAGEMENT_SURFACE_FEEDBACK_V1_ERROR_INERT, "surface is inert");
+        return;
+      }
+      auto* manager = feedback->manager;
+      if (parametricDescription(feedback->preferred)) {
+        manager->createReadyImageDescription(resource, id, feedback->preferred, true, feedback->identity);
+        return;
+      }
+      // The substituted working encoding is a different description record
+      // from the preferred one, so it cannot borrow that record's identity
+      // (ready2: two records cannot share an id at once). One lazily allocated
+      // id covers every answer that hands out this record.
+      if (manager->workingIdentity == 0) {
+        manager->workingIdentity = ++manager->lastIdentity;
+      }
+      manager->createReadyImageDescription(resource, id, manager->workingDescription(), true, manager->workingIdentity);
+    }
+
     static void handleFeedbackSurfaceDestroy(wl_listener* listener, void*) {
       SurfaceFeedback* feedback;
       feedback = wl_container_of(listener, feedback, destroy);
@@ -596,8 +735,195 @@ namespace umbriel {
       delete feedback;
     }
 
-    static void handleCreateIccCreator(wl_client*, wl_resource* resource, uint32_t) {
-      wl_resource_post_error(resource, WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE, "ICC profiles are unsupported");
+    static void handleCreateIccCreator(wl_client* client, wl_resource* managerResource, uint32_t id) {
+#if !UMBRIEL_HAS_LCMS2
+      // feature.icc_v2_v4 is advertised only with lcms2, and the XML pairs that
+      // advertisement with this request, so an unadvertised request owes its
+      // own error instead of a creator no profile can satisfy.
+      (void)client;
+      (void)id;
+      wl_resource_post_error(
+          managerResource, WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE,
+          "ICC profiles are unsupported (built without lcms2)"
+      );
+#else
+      auto* manager = static_cast<Impl*>(wl_resource_get_user_data(managerResource));
+      auto budget = manager->iccBudgetFor(client);
+      if (budget->creators >= kMaxIccCreatorsPerClient) {
+        // The error enum has no resource-limit entry, so the closest defined
+        // contract is this request's own "not supported" error; any protocol
+        // error disconnects the client, which is the sanction for trying to
+        // stage more concurrent profiles than the budget admits.
+        wl_resource_post_error(
+            managerResource, WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE, "too many concurrent ICC creators"
+        );
+        return;
+      }
+      auto* creator = new IccCreator{};
+      creator->manager = manager;
+      creator->budget = std::move(budget);
+      creator->resource = wl_resource_create(
+          client, &wp_image_description_creator_icc_v1_interface, wl_resource_get_version(managerResource), id
+      );
+      if (creator->resource == nullptr) {
+        delete creator;
+        wl_client_post_no_memory(client);
+        return;
+      }
+      ++creator->budget->creators;
+      wl_resource_set_implementation(
+          creator->resource, &iccCreatorImplementation(), creator, handleIccCreatorResourceDestroy
+      );
+#endif
+    }
+
+    static void handleIccCreatorResourceDestroy(wl_resource* resource) {
+      auto* creator = static_cast<IccCreator*>(wl_resource_get_user_data(resource));
+      if (creator != nullptr) {
+        if (creator->budget != nullptr) {
+          creator->budget->creators -= std::min<size_t>(creator->budget->creators, 1);
+        }
+        // Destroys a staged charge the payload store never took.
+        delete creator;
+      }
+    }
+
+    static void handleIccSetFile(wl_client*, wl_resource* resource, int32_t fd, uint32_t offset, uint32_t length) {
+      auto* creator = static_cast<IccCreator*>(wl_resource_get_user_data(resource));
+      // The fd is ours to close: libwayland hands received fds to the
+      // implementation and never closes them.
+      if (creator->iccSet) {
+        wl_resource_post_error(
+            resource, WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_ALREADY_SET, "ICC file is already set"
+        );
+        close(fd);
+        return;
+      }
+      // Request-contract errors are protocol errors by XML definition
+      // (set_icc_file: bad_fd / bad_size / out_of_file / already_set). Profile
+      // *content* problems deliberately are not: they ride create() to
+      // wp_image_description_v1.failed with cause 'unsupported'.
+      // The fd must be seekable, readable and a regular file: a directory fd
+      // lseeks fine but cannot be read, and a special device is not a file
+      // image, so both are request-contract violations (bad_fd).
+      const int flags = fcntl(fd, F_GETFL);
+      struct stat fdStat{};
+      const bool regular = fstat(fd, &fdStat) == 0 && S_ISREG(fdStat.st_mode);
+      const off_t fileSize = lseek(fd, 0, SEEK_END);
+      if (flags < 0 || (flags & O_ACCMODE) == O_WRONLY || fileSize < 0 || !regular) {
+        wl_resource_post_error(
+            resource, WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_FD,
+            "ICC profile fd is not a seekable, readable regular file"
+        );
+        close(fd);
+        return;
+      }
+      if (length == 0 || length > kClientIccSizeLimit) {
+        wl_resource_post_error(
+            resource, WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE, "ICC profile length must be within (0, 32 MB]"
+        );
+        close(fd);
+        return;
+      }
+      if (static_cast<uint64_t>(offset) + length > static_cast<uint64_t>(fileSize)) {
+        wl_resource_post_error(
+            resource, WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_OUT_OF_FILE, "ICC profile range exceeds the file size"
+        );
+        close(fd);
+        return;
+      }
+      // Every refusal above is a request-contract protocol error; past them the
+      // profile counts as set even if the read below fails, because create()
+      // must answer a read failure with 'operating_system', not incomplete_set.
+      const size_t outstanding = creator->budget->bytes;
+      if (outstanding + length > kMaxIccBytesPerClient) {
+        // bad_size is the enum's "too much data" contract. The XML scopes it
+        // to the 32 MB per-file ceiling; the same refusal covers the per-client
+        // budget, before any allocation, because that budget is what bounds the
+        // compositor's memory against staged and retained profiles.
+        wl_resource_post_error(
+            resource, WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_BAD_SIZE,
+            "the client's outstanding ICC profiles exceed the 32 MB budget"
+        );
+        close(fd);
+        return;
+      }
+      creator->iccSet = true;
+      std::vector<uint8_t> bytes(length);
+      size_t totalRead = 0;
+      if (lseek(fd, offset, SEEK_SET) < 0) {
+        creator->readFailed = true;
+      }
+      while (!creator->readFailed && totalRead < bytes.size()) {
+        const ssize_t count = ::read(fd, bytes.data() + totalRead, bytes.size() - totalRead);
+        if (count < 0 && errno == EINTR) {
+          continue;
+        }
+        if (count <= 0) {
+          creator->readFailed = true;
+          break;
+        }
+        totalRead += static_cast<size_t>(count);
+      }
+      close(fd);
+      if (!creator->readFailed) {
+        creator->iccBytes = std::move(bytes);
+        // Charge the staged bytes now; the charge moves into the payload store
+        // at create(), so the budget is held for as long as the bytes live.
+        creator->charge = std::make_shared<IccCharge>(creator->budget, creator->iccBytes.size());
+        creator->budget->bytes += creator->iccBytes.size();
+      }
+    }
+
+    static void handleIccCreate(wl_client*, wl_resource* resource, uint32_t id) {
+      auto* creator = static_cast<IccCreator*>(wl_resource_get_user_data(resource));
+      if (!creator->iccSet) {
+        wl_resource_post_error(
+            resource, WP_IMAGE_DESCRIPTION_CREATOR_ICC_V1_ERROR_INCOMPLETE_SET, "ICC file is required"
+        );
+        return;
+      }
+      if (creator->readFailed) {
+        // "If reading the data fails due to an error independent of the
+        // client" (set_icc_file) — a failed event, not a protocol error.
+        creator->manager->createFailedImageDescription(
+            resource, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_OPERATING_SYSTEM, "the ICC profile could not be read"
+        );
+        wl_resource_destroy(resource);
+        return;
+      }
+      // The payload store inherits the staged charge: the budget is released
+      // when the last copy of the bytes dies — surface states and cached
+      // commits copy the store — not when this resource does. If the profile is
+      // rejected, the release closure dies with the call and the charge drops
+      // here.
+      ClientIccDescription result =
+          clientIccDescription(creator->iccBytes, [charge = std::move(creator->charge)] { (void)charge; });
+      if (result.description
+          && result.description->data.primaries_named == 0
+          && !supportedPrimaries(result.description->customPrimaries)) {
+        result.description.reset();
+        result.error = "unsupported color primaries";
+      }
+      if (!result.description) {
+        // Unknown version, wrong class, LUT-based or truncated profiles: all
+        // take the graceful path (set_icc_file: "Violating these requirements
+        // will not result in a protocol error, but will eventually send the
+        // wp_image_description_v1.failed event ... with the 'unsupported'
+        // cause"), with information unavailable afterwards.
+        creator->manager->createFailedImageDescription(
+            resource, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_UNSUPPORTED, result.error.c_str()
+        );
+        wl_resource_destroy(resource);
+        return;
+      }
+      // The create contract forbids get_information on the resulting object
+      // ("does not allow get_information request"), matching the parametric
+      // creators; the client's bytes stay on the description for identity and
+      // change detection only. The info-side icc_file mandate applies to
+      // descriptions that do allow get_information (output/preferred).
+      creator->manager->createReadyImageDescription(resource, id, *result.description, false);
+      wl_resource_destroy(resource);
     }
 
     static void handleCreateParametricCreator(wl_client* client, wl_resource* managerResource, uint32_t id) {
@@ -633,12 +959,55 @@ namespace umbriel {
         );
         return;
       }
+      // Version 1 also bounds each content light level by the mastering
+      // luminance range; version 2 dropped that requirement (create, "In
+      // version 1, these following conditions also result in the
+      // invalid_luminance protocol error"). Without an explicit mastering
+      // range the target volume is the primary color volume.
+      if (wl_resource_get_version(resource) < WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4_SINCE_VERSION) {
+        const auto& data = creator->description.data;
+        const float minLuminance =
+            data.has_mastering_luminance ? data.mastering_luminance.min : creator->description.luminances.min;
+        const float maxLuminance =
+            data.has_mastering_luminance ? data.mastering_luminance.max : creator->description.luminances.max;
+        const auto outsideRange = [&](uint32_t level) {
+          const auto value = static_cast<float>(level);
+          return level != 0 && (value <= minLuminance || value > maxLuminance);
+        };
+        if (outsideRange(data.max_cll) || outsideRange(data.max_fall)) {
+          wl_resource_post_error(
+              resource, WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_LUMINANCE,
+              "MaxCLL and MaxFALL must lie within the mastering luminance range in version 1"
+          );
+          return;
+        }
+      }
       if (creator->description.data.primaries_named == 0 && !supportedPrimaries(creator->description.customPrimaries)) {
         creator->manager->createFailedImageDescription(
             resource, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_UNSUPPORTED, "unsupported color primaries"
         );
         wl_resource_destroy(resource);
         return;
+      }
+      if (creator->tfPower > 0.0F) {
+        // set_tf_power admits any exponent in [1, 10], but the renderer paints
+        // client content through named curves only. The two curves that are
+        // exactly a power (linear, gamma 2.2) are canonicalized to their named
+        // value; everything else is refused instead of being substituted by a
+        // neighbouring curve.
+        const uint32_t named = namedTransferForPower(creator->tfPower);
+        if (named == 0) {
+          creator->manager->createFailedImageDescription(
+              resource, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_UNSUPPORTED,
+              "the power transfer curve has no named equivalent"
+          );
+          wl_resource_destroy(resource);
+          return;
+        }
+        creator->description.data.tf_named = named;
+        if (!creator->description.customLuminances) {
+          creator->description.luminances = defaultColorLuminances(named);
+        }
       }
       if (creator->description.customLuminances
           && creator->description.data.tf_named == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ) {
@@ -679,11 +1048,27 @@ namespace umbriel {
       creator->transferFunctionSet = true;
     }
 
-    static void handleParametricSetTransferPower(wl_client*, wl_resource* resource, uint32_t) {
-      wl_resource_post_error(
-          resource, WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
-          "power transfer functions are unsupported"
-      );
+    static void handleParametricSetTransferPower(wl_client*, wl_resource* resource, uint32_t eexp) {
+      auto* creator = static_cast<ParametricCreator*>(wl_resource_get_user_data(resource));
+      if (creator->transferFunctionSet) {
+        wl_resource_post_error(
+            resource, WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET, "transfer function is already set"
+        );
+        return;
+      }
+      const float exponent = static_cast<float>(eexp) / 10000.0F;
+      if (exponent < 1.0F || exponent > 10.0F) {
+        wl_resource_post_error(
+            resource, WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_TF,
+            "power transfer exponent must be within [1.0, 10.0]"
+        );
+        return;
+      }
+      creator->tfPower = exponent;
+      if (!creator->description.customLuminances) {
+        creator->description.luminances = defaultColorLuminances(creator->description.data.tf_named);
+      }
+      creator->transferFunctionSet = true;
     }
 
     static void handleParametricSetPrimaries(wl_client*, wl_resource* resource, uint32_t namedPrimaries) {
@@ -840,18 +1225,21 @@ namespace umbriel {
       );
     }
 
-    void createReadyImageDescription(
+    ImageDescription* createReadyImageDescription(
         wl_resource* parent, uint32_t id, const ColorDescription& description, bool informationAllowed,
         uint64_t identity = 0
     ) {
+      // tf_named == 0 stays reserved for a description with no transfer
+      // characteristic to version-gate.
       const uint32_t version = wl_resource_get_version(parent);
-      if (!wp_color_manager_v1_transfer_function_is_valid(
+      if (description.data.tf_named != 0
+          && !wp_color_manager_v1_transfer_function_is_valid(
               colorTransferFunctionToWire(description.data.tf_named, version), version
           )) {
         createFailedImageDescription(
             parent, id, WP_IMAGE_DESCRIPTION_V1_CAUSE_LOW_VERSION, "transfer function requires a newer protocol version"
         );
-        return;
+        return nullptr;
       }
       auto* imageDescription = new ImageDescription{
           .description = description,
@@ -863,13 +1251,14 @@ namespace umbriel {
       if (imageDescription->resource == nullptr) {
         delete imageDescription;
         wl_resource_post_no_memory(parent);
-        return;
+        return nullptr;
       }
       wl_resource_set_implementation(
           imageDescription->resource, &imageDescriptionImplementation(), imageDescription,
           handleImageDescriptionResourceDestroy
       );
       sendReady(imageDescription->resource, identity != 0 ? identity : ++lastIdentity);
+      return imageDescription;
     }
 
     static void createFailedImageDescription(wl_resource* parent, uint32_t id, uint32_t cause, const char* message) {
@@ -926,9 +1315,15 @@ namespace umbriel {
         wp_image_description_info_v1_send_primaries_named(information, description.data.primaries_named);
       }
       sendPrimaries(information, primaryCoordinates);
-      wp_image_description_info_v1_send_tf_named(
-          information, colorTransferFunctionToWire(description.data.tf_named, wl_resource_get_version(information))
-      );
+      if (description.data.tf_named != 0) {
+        wp_image_description_info_v1_send_tf_named(
+            information, colorTransferFunctionToWire(description.data.tf_named, wl_resource_get_version(information))
+        );
+      } else if (description.tfPower > 0.0F) {
+        wp_image_description_info_v1_send_tf_power(
+            information, static_cast<uint32_t>(std::lround(description.tfPower * 10000.0F))
+        );
+      }
       wp_image_description_info_v1_send_luminances(
           information, static_cast<uint32_t>(std::lround(description.luminances.min * 10000.0F)),
           static_cast<uint32_t>(std::lround(description.luminances.max)),
@@ -957,8 +1352,63 @@ namespace umbriel {
       if (description.data.max_fall != 0) {
         wp_image_description_info_v1_send_target_max_fall(information, description.data.max_fall);
       }
+      if (description.iccProfile != nullptr) {
+        sendIccFile(information, *description.iccProfile);
+      }
       wp_image_description_info_v1_send_done(information);
       wl_resource_destroy(information);
+    }
+
+    // get_information's icc_file contract (color-management-v1.xml,
+    // wp_image_description_info_v1.icc_file): a read-only fd that exposes
+    // exactly the profile bytes from offset 0 plus the size in bytes ("Offset
+    // always 0, compositor must not expose unnecessary data"). A sealed memfd
+    // is that fd. libwayland dups descriptors while marshalling an fd argument
+    // and closes only that dup after the send, so the caller keeps ownership
+    // of `fd` and must close it — one memfd and one profile copy leak per
+    // get_information otherwise.
+    //
+    // The XML says an info object for a description with a profile "must send
+    // the icc_file event". When the memfd cannot be produced, the event is
+    // deliberately omitted rather than dropping the whole information batch or
+    // failing the client, and every such failure is logged here so the
+    // deviation is observable.
+    static void sendIccFile(wl_resource* information, const std::vector<uint8_t>& profile) {
+      if (profile.empty()) {
+        kLog.warn("cannot advertise the ICC profile (no profile bytes)");
+        return;
+      }
+      int fd = memfd_create("umbriel-icc-profile", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+      if (fd < 0) {
+        kLog.warn("cannot advertise the ICC profile (memfd_create failed)");
+        return;
+      }
+      size_t written = 0;
+      while (written < profile.size()) {
+        const ssize_t count = write(fd, profile.data() + written, profile.size() - written);
+        if (count < 0 && errno == EINTR) {
+          continue;
+        }
+        if (count <= 0) {
+          kLog.warn("cannot advertise the ICC profile (memfd write failed)");
+          close(fd);
+          return;
+        }
+        written += static_cast<size_t>(count);
+      }
+      if (lseek(fd, 0, SEEK_SET) < 0) {
+        kLog.warn("cannot advertise the ICC profile (memfd rewind failed)");
+        close(fd);
+        return;
+      }
+      // The protocol's fd is read-only: sealing out writes and growth keeps
+      // the client's view of the profile immutable. Best-effort — a failed
+      // seal leaves only the client able to scribble on its own private copy.
+      if (fcntl(fd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE) < 0) {
+        kLog.warn("the advertised ICC memfd could not be sealed read-only");
+      }
+      wp_image_description_info_v1_send_icc_file(information, fd, static_cast<uint32_t>(profile.size()));
+      close(fd);
     }
 
     static void sendPrimaries(wl_resource* information, const wlr_color_primaries& primaries) {
@@ -978,15 +1428,31 @@ namespace umbriel {
     }
 
     static void handleImageDescriptionResourceDestroy(wl_resource* resource) {
-      delete static_cast<ImageDescription*>(wl_resource_get_user_data(resource));
+      auto* imageDescription = static_cast<ImageDescription*>(wl_resource_get_user_data(resource));
+      delete imageDescription;
     }
 
     ColorDescription descriptionForOutput(wlr_output* output) const {
       const Output* managedOutput = server.outputFromWlr(output);
       const float sdrWhite = managedOutput != nullptr ? managedOutput->sdrWhite() : kDefaultSdrWhite;
       const bool automaticHdr = managedOutput != nullptr && managedOutput->automaticHdrAvailable();
-      return outputColorDescription(output->image_description, sdrWhite, automaticHdr);
+      // The description must name the encoding the frame is actually written
+      // in. Only a staged gamut mapping makes the panel that encoding:
+      // without one the renderer composes into sRGB and stages nothing, so the
+      // panel characterization stays out of the description — advertising it
+      // would make a client convert into an encoding we never produce.
+      const bool panelDestination = managedOutput != nullptr && managedOutput->stagedSdrGamutTransform() != nullptr;
+      return characterizedOutputDescription(
+          outputColorDescription(output->image_description, sdrWhite, automaticHdr),
+          panelDestination ? managedOutput->panelColorimetry() : nullptr,
+          panelDestination ? managedOutput->iccProfileStore() : IccProfileStore{},
+          panelDestination ? managedOutput->panelDecodeTransform() : SharedColorTransform{}
+      );
     }
+
+    // The compositor's working SDR encoding: every SDR frame is composed in it
+    // and converted into the characterized output, so it is always renderable.
+    static ColorDescription workingDescription() { return outputColorDescription(nullptr, kDefaultSdrWhite); }
 
     ColorDescription preferredDescription(wlr_surface* surface) const {
       wlr_output* preferred = nullptr;
@@ -1019,7 +1485,8 @@ namespace umbriel {
       if (colorDescriptionsEqual(description, output->description)) {
         return;
       }
-      output->description = description;
+      output->description = std::move(description);
+      output->identity = 0;
       wp_color_management_output_v1_send_image_description_changed(output->resource);
       wlr_output_schedule_done(output->output);
     }
@@ -1069,9 +1536,11 @@ namespace umbriel {
         return;
       }
       const ColorDescription& description = found->second->current.description;
-      state->transfer_function = wlr_color_manager_v1_transfer_function_to_wlr(
-          static_cast<wp_color_manager_v1_transfer_function>(description.data.tf_named)
-      );
+      state->transfer_function = bufferTransferFunction(description);
+      // The advertised curve decodes exactly: an exponent or sampled table
+      // replaces the named stage instead of being snapped to the nearest one.
+      state->transfer_function_power = description.tfPower;
+      state->decode_transform = description.decodeTransform.get();
       state->primaries = description.data.primaries_named != 0
           ? wlr_color_manager_v1_primaries_to_wlr(
                 static_cast<wp_color_manager_v1_primaries>(description.data.primaries_named)
@@ -1117,24 +1586,59 @@ namespace umbriel {
           .custom_primaries = nullptr,
           .luminances = {},
           .absolute_luminance = false,
+          .transfer_function_power = 0.0F,
+          .decode_transform = nullptr,
       };
       resolveSurfaceColor(surface, &state, const_cast<Impl*>(this));
       wlr_scene_buffer_set_transfer_function(buffer, state.transfer_function);
+      wlr_scene_buffer_set_transfer_function_power(buffer, state.transfer_function_power);
+      wlr_scene_buffer_set_decode_transform(buffer, state.decode_transform);
       wlr_scene_buffer_set_primaries(buffer, state.primaries);
       wlr_scene_buffer_set_custom_primaries(buffer, state.custom_primaries);
       wlr_scene_buffer_set_luminances(buffer, &state.luminances, state.absolute_luminance);
       wlr_scene_buffer_set_luminance_multiplier(buffer, state.luminance_multiplier);
     }
 
+    std::shared_ptr<IccBudget> iccBudgetFor(wl_client* client) {
+      const auto found = iccBudgets.find(client);
+      if (found != iccBudgets.end()) {
+        return found->second;
+      }
+      auto budget = std::make_shared<IccBudget>();
+      budget->manager = this;
+      budget->client = client;
+      budget->clientDestroy.notify = handleIccBudgetClientDestroy;
+      wl_client_add_destroy_listener(client, &budget->clientDestroy);
+      iccBudgets.emplace(client, budget);
+      return budget;
+    }
+
+    static void handleIccBudgetClientDestroy(wl_listener* listener, void*) {
+      IccBudget* budget;
+      budget = wl_container_of(listener, budget, clientDestroy);
+      wl_list_remove(&budget->clientDestroy.link);
+      // The map entry goes away with the client, so a later client at the same
+      // wl_client address starts with an empty budget. Charges still held by
+      // live payloads keep this budget alive through their shared_ptr and are
+      // released when those payloads die.
+      const auto found = budget->manager->iccBudgets.find(budget->client);
+      if (found != budget->manager->iccBudgets.end() && found->second.get() == budget) {
+        budget->manager->iccBudgets.erase(found);
+      }
+    }
+
     Server& server;
     wl_global* global = nullptr;
     uint64_t lastIdentity = 0;
+    // Identity of the working SDR encoding record (see the parametric answer).
+    uint64_t workingIdentity = 0;
     std::vector<wp_color_manager_v1_transfer_function> transferFunctions;
     std::vector<wp_color_manager_v1_primaries> primaries;
     std::unordered_map<wlr_surface*, Surface*> surfaces;
     std::unordered_set<SurfaceFeedback*> feedbacks;
     std::unordered_set<ManagedOutput*> outputs;
     std::unordered_map<wlr_scene*, std::unique_ptr<ManagedScene>> scenes;
+    std::unordered_map<wl_client*, std::shared_ptr<IccBudget>> iccBudgets;
   };
 
   ColorManager::ColorManager(Server& server) : m_impl(std::make_unique<Impl>(server)) {}
@@ -1143,9 +1647,9 @@ namespace umbriel {
   bool ColorManager::valid() const { return m_impl->global != nullptr; }
   wl_global* ColorManager::global() const { return m_impl->global; }
 
-  const wlr_image_description_v1_data* ColorManager::surfaceDescription(wlr_surface* surface) const {
+  const ColorDescription* ColorManager::surfaceDescription(wlr_surface* surface) const {
     const auto found = m_impl->surfaces.find(surface);
-    return found != m_impl->surfaces.end() && found->second->current.set ? &found->second->current.description.data
+    return found != m_impl->surfaces.end() && found->second->current.set ? &found->second->current.description
                                                                          : nullptr;
   }
 

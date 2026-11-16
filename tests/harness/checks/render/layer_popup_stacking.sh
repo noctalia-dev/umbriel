@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A layer popup crosses a later bar, follows its parent, and stays below higher shell layers.
+# A layer popup crosses a later bar, follows its parent, respects higher layers, and redraws after overlapping resizes.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -75,6 +75,42 @@ if ((visible != 6400)); then
   exit 1
 fi
 
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[output."HEADLESS-1"]
+scale = 1.5
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+
+resize_popup() {
+  local label=$1 width=$2 height=$3
+  local expected=$((width * 3 / 2 * (height * 3 / 2)))
+  printf 'popup-resize %s %s %s\n' "$label" "$width" "$height" >&"$panel_fd"
+  await_events "$PANEL_LOG" "done $label" 1 "redraw after overlapping popup repositions"
+  "$UMBRIEL" settle
+  grim "$IMAGE"
+  visible=$("$UMBRIEL_PIXEL_PROBE" "$IMAGE" count "$YELLOW")
+  if ((visible != expected)); then
+    echo "the resized popup did not redraw fully: expected $expected yellow pixels, got $visible"
+    exit 1
+  fi
+}
+
+resize_popup grown 188 392
+resize_popup shrunk 120 180
+replies=$(sed -n '/^popup-repositioned /p' "$PANEL_LOG")
+expected_replies=$(cat <<'EOF'
+popup-repositioned token=1 width=180 height=384
+popup-repositioned token=0 width=188 height=392
+popup-repositioned token=2 width=112 height=172
+popup-repositioned token=0 width=120 height=180
+EOF
+)
+if [[ $replies != "$expected_replies" ]]; then
+  echo "overlapping popup requests lost a token, changed placement, or replied out of order: $replies"
+  exit 1
+fi
+
 kill "$panel_pid"
 wait "$panel_pid" 2>/dev/null || true
 "$UMBRIEL" settle
@@ -84,4 +120,4 @@ if ((visible != 0)); then
   echo "the destroyed parent's popup remained visible: $visible yellow pixels"
   exit 1
 fi
-echo "layer popups cover sibling bars, follow their parent, respect higher layers, and close with their parent"
+echo "layer popups preserve stacking and redraw after every overlapping reposition request"

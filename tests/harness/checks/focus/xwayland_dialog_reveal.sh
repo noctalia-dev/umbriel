@@ -86,7 +86,7 @@ corner_radius = 0
 [appearance.shadow]
 enabled = false
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 
 [[window_rule]]
 match.app_id = "^UmbrielXwaylandDialog$"
@@ -139,19 +139,17 @@ pointer_release
 "$UMBRIEL" settle > /dev/null
 assert_active "$CHILD" 'completed dialog reveal'
 
-# An explicit strip scroll intentionally refreshes hover after it settles.
-# The pointer stays inside the same parent while the child owns the seat,
-# so this also distinguishes that refresh from map-time invalidation.
+# An explicit strip scroll that leaves the same parent under the pointer gives sloppy hover nothing new to focus:
+# motion inside that parent keeps the child's keyboard focus.
 "$UMBRIEL" msg layout-scroll-left > /dev/null
 assert_active "$CHILD" 'pending explicit strip scroll'
 "$UMBRIEL" clock-advance 2000 > /dev/null
 "$UMBRIEL" settle > /dev/null
 assert_pixel scrolled-parent 129 360 '48 96 144'
 "$UMBRIEL_POINTER_CLIENT" 1280 720 move 130 360 > /dev/null
-wait_active "$PARENT" 'hover refresh after explicit strip scroll'
-expect_x_focus "$PARENT" scrolled
-"$UMBRIEL" msg window-focus "$child_id" > /dev/null
-wait_active "$CHILD" 'child focus after explicit scroll control'
+"$UMBRIEL" settle > /dev/null
+assert_active "$CHILD" 'motion inside the same parent after explicit strip scroll'
+expect_x_focus "$CHILD" scrolled
 "$UMBRIEL" clock-advance 2000 > /dev/null
 "$UMBRIEL" settle > /dev/null
 

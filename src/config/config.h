@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -56,7 +57,7 @@ namespace umbriel {
     All = Tiled | Floating | Pinned,
   };
 
-  // Which maximize state a tiled window's own maximize request enters (client_maximize).
+  // Which maximize state a tiled or stacking window's own maximize request enters (client_maximize).
   enum class ClientMaximize : uint8_t {
     Column,
     Edges,
@@ -224,6 +225,8 @@ namespace umbriel {
     Disabled,
     Always,
     Fullscreen,
+    // Like Fullscreen, but counts fullscreen windows on every workspace of the output, not only the active one.
+    FullscreenAny,
   };
 
   // Whether a keyboard layout change applies to the whole session or only to the
@@ -231,6 +234,15 @@ namespace umbriel {
   enum class TrackLayout : uint8_t {
     Global,
     Window,
+  };
+
+  // How the pointer moves keyboard focus. Sloppy focuses the window under a moving pointer only when it differs from
+  // the window the pointer was last over, so focus given elsewhere stays until the pointer reaches another window.
+  // Always focuses the window under the pointer on every motion. Neither changes focus while the pointer is still.
+  enum class FollowsMouse : uint8_t {
+    Off,
+    Sloppy,
+    Always,
   };
 
   // How a touchpad device turns motion into scroll events: two fingers anywhere on the surface, or along
@@ -283,6 +295,13 @@ namespace umbriel {
     Gamma22,
     Srgb,
   };
+  // SDR content policy for a characterized panel. `Native` stages no SDR
+  // output transform at all (pixels stay as they are without a profile);
+  // `Srgb` maps untagged SDR from sRGB into the panel's colorimetry.
+  enum class SdrGamut {
+    Srgb,
+    Native,
+  };
   constexpr std::string_view hdrModeName(HdrMode mode) {
     switch (mode) {
     case HdrMode::Off:
@@ -297,7 +316,7 @@ namespace umbriel {
     return "off";
   }
   constexpr bool vrrEnabled(VrrMode mode, bool fullscreen) {
-    return mode == VrrMode::Always || (mode == VrrMode::Fullscreen && fullscreen);
+    return mode == VrrMode::Always || ((mode == VrrMode::Fullscreen || mode == VrrMode::FullscreenAny) && fullscreen);
   }
   constexpr bool hdrEnabled(HdrMode mode, bool fullscreen, bool autoEligible) {
     return mode == HdrMode::On
@@ -331,6 +350,14 @@ namespace umbriel {
     HdrMode hdr = HdrMode::Off;
     float sdrWhite = 203.0F;
     SdrTransfer sdrTransfer = SdrTransfer::Gamma22;
+    // Panel characterization for SDR gamut limiting: "none", "edid", or a path
+    // to an ICC matrix-shaper display profile. The bytes are parsed at apply
+    // time and an unreadable path falls back to "edid". The mtime stamps the
+    // rule so a reload of an edited profile re-reads it (change detection and
+    // the characterization cache both key on it).
+    std::string colorProfile = "none";
+    std::int64_t colorProfileMtime = 0;
+    SdrGamut sdrGamut = SdrGamut::Native;
     std::optional<std::string> screenEffect;     // "off" disables the default
     std::optional<std::string> screenCastEffect; // "off" disables effects.screen_cast here
     // Render bit depth for SDR output: 8 (default) or 10 for 10-bit SDR.
@@ -1258,7 +1285,8 @@ namespace umbriel {
       } dragEdgeScroll;
 
       struct Focus {
-        bool followsMouse = false;
+        FollowsMouse followsMouse = FollowsMouse::Off;
+        bool followsMouseEnabled() const { return followsMouse != FollowsMouse::Off; }
         std::optional<double> followsMouseMaxScroll;
         // false narrows hover to focus alone: raising is left to clicks, keybinds, and activation, so sweeping the
         // pointer across a larger window underneath cannot bury the window above it.
@@ -1346,6 +1374,9 @@ namespace umbriel {
   }
 
   const Config& config();
+  // Write each load's diagnostics to the log. The compositor switches this on before loading; the CLI leaves it off
+  // and prints from `configDiagnostics()`, and a refused override logs nothing because its load is rolled back.
+  void setConfigDiagnosticLogging(bool enabled);
   void loadConfig(const char* explicitPath);
   ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
   ConfigReloadResult reloadConfig();

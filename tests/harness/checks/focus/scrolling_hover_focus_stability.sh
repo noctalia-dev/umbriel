@@ -50,7 +50,7 @@ duration_ms = 1200
 curve = "linear"
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 

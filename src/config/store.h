@@ -2,6 +2,7 @@
 
 #include "config/change.h"
 #include "config/config.h"
+#include "core/toml.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -27,8 +28,16 @@ namespace umbriel {
     // Re-parse. On failure the previous configuration is kept and the generation
     // does not move: a config with a syntax error must not take the session down.
     ConfigReloadResult reload();
+    // Re-reads the current config file with `overrides` in place of the active runtime overrides and commits the
+    // result. A load that fails, or, when `rejectNewDiagnostics`, reports a diagnostic the active configuration did
+    // not, changes nothing and lists why in `errors`, one diagnostic per line.
+    ConfigReloadResult applyOverrides(toml::table overrides, bool rejectNewDiagnostics, std::string& errors);
 
     const Config& config() const { return m_config; }
+    // Values set by `umbriel config set`. Every load lays them over the file and its includes; `load` starts without.
+    const toml::table& overrides() const { return m_overrides; }
+    // The document the active configuration was read from: file, includes, and overrides merged.
+    const toml::table& effective() const { return m_effective; }
     const std::vector<ConfigDiagnostic>& diagnostics() const { return m_diagnostics; }
     // Every path whose change can affect the next reload: implicit lookup
     // candidates, the attempted root, and its includes.
@@ -42,9 +51,14 @@ namespace umbriel {
     uint64_t workspaceLayoutGeneration() const { return m_workspaceLayoutGeneration; }
     bool missingIncludes() const { return m_missingIncludes; }
 
+    // Whether `logDiagnostics` writes to the log at all. The compositor switches this on once it owns a log;
+    // `umbriel config validate` leaves it off and prints from `diagnostics()` instead.
+    void setDiagnosticLogging(bool enabled) { m_logDiagnosticsEnabled = enabled; }
+
     // Loader-only writers follow. The read-only API remains above.
     // Keep the active config when a reload fails.
     void beginLoad(const std::vector<std::filesystem::path>& watchPaths);
+    // For diagnostics a producer already built, such as a merge result.
     void addDiagnostic(ConfigDiagnostic diagnostic);
     // The sink the section readers append to directly.
     std::vector<ConfigDiagnostic>& mutableDiagnostics() { return m_diagnostics; }
@@ -53,13 +67,16 @@ namespace umbriel {
     // Put diagnostics back into source order. Readers emit in whatever order they run, and unknown-key reports come
     // last (after a section has finished), so without this the list jumps around the file.
     void sortDiagnostics();
-    // Adopt a successfully parsed config and bump the generation.
-    ConfigReloadResult commit(Config&& config, std::filesystem::path rootPath, bool fileMissing);
+    // Adopt a successfully parsed config and the document it was read from, and bump the generation.
+    ConfigReloadResult
+    commit(Config&& config, toml::table&& effective, std::filesystem::path rootPath, bool fileMissing);
     void setMissingIncludes(bool missing) { m_missingIncludes = missing; }
     void setRootPath(std::filesystem::path path, bool explicitPath);
 
   private:
     Config m_config;
+    toml::table m_overrides;
+    toml::table m_effective;
     std::vector<ConfigDiagnostic> m_diagnostics;
     std::vector<std::filesystem::path> m_watchPaths;
     // Captured before configured environment variables are applied. Reloads
@@ -72,6 +89,11 @@ namespace umbriel {
     bool m_missingIncludes = false;
     uint64_t m_generation = 0;
     uint64_t m_workspaceLayoutGeneration = 0;
+    bool m_logDiagnosticsEnabled = false;
+
+    // Write one load's diagnostics to the log. Called where the load's outcome is decided, never while parsing: the
+    // set about to be committed, or on a failed reload the rejected attempt's, which is what explains the refusal.
+    void logDiagnostics(const std::vector<ConfigDiagnostic>& diagnostics) const;
   };
 
   // The process-wide store, read by consumers below Server on render paths. The layout and parsing layers take their

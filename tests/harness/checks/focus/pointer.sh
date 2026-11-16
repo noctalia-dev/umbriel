@@ -157,7 +157,7 @@ wait_for_focus_at 10
 # window already there. The cursor must
 # follow the moved window, so a focus-only detour followed by an unmoved click
 # returns focus to it.
-printf '\n[input.focus]\nfollows_mouse = true\n' >> "$UMBRIEL_CONFIG"
+printf '\n[input.focus]\nfollows_mouse = "sloppy"\n' >> "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 destination_id=$("$UMBRIEL" windows --json | jq -r \
   --arg left "$left_id" --arg right "$right_id" '.[] | select(.id != $left and .id != $right) | .id')

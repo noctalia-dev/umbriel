@@ -44,7 +44,7 @@ cat >> "$UMBRIEL_CONFIG" <<'EOF'
 enabled = false
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 
 [[window_rule]]
 match.title = "^pinned-hover$"

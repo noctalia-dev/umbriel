@@ -40,7 +40,7 @@ duration_ms = 1
 curve = "linear"
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 
 [keybinds]
 "Mod+WheelDown" = "workspace-next"

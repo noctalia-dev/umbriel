@@ -22,7 +22,7 @@ enabled = false
 default_extent_fraction = 0.8
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 
 [keybinds]
 "Mod+MouseMiddle" = "layout-scroll-drag"

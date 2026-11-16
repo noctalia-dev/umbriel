@@ -119,9 +119,10 @@ namespace umbriel {
     const TabLabel*
     measureTitle(const std::array<float, 4>& color, float alpha, TitleBarLayout& parts, int radius) const;
     void updateBlur();
-    clipped_region frameClip(int x, int y) const;
+    clipped_region frameClip(int x, int y, bool underBorder = false) const;
     void clipBuffer(wlr_scene_buffer* buffer) const;
     int zoomed(int value) const;
+    wlr_scene_tree* m_backgroundTree = nullptr;
     wlr_scene_tree* m_tree = nullptr;
     // Invisible resize bands stay outside the window's animation capture bounds.
     wlr_scene_tree* m_gripTree = nullptr;

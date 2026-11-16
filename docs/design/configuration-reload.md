@@ -11,6 +11,7 @@ If a reload fails:
 - The last valid configuration remains active.
 - The live compositor state remains unchanged.
 - Diagnostics describe the failed attempt.
+- Every configuration diagnostic is logged as well as drawn, once per load. `ConfigStore::logDiagnostics` writes the set on load, on a reload that commits, and on the failed-reload path, where the diagnostics explain why the new file was not adopted; readers and mergers only store and never log, so nothing is written for a load that gets rolled back. Logging is gated by `setConfigDiagnosticLogging`, which the compositor turns on and `umbriel config validate` never does, so the CLI prints from the store instead. A refused `config set`/`config replace` is parsed and rolled back, so it writes nothing. A diagnostic derived from runtime state rather than from reading the file is not logged this way: the Xwayland startup failure is logged where it happens.
 - Watches follow the attempted include graph. Fixing a broken included file can therefore trigger recovery without another edit to the main file.
 
 A successful reload applies only the runtime effects caused by changed sections. Saving identical content is inert: it must not reset output state, move focus, close overlays, or otherwise disturb the session.
@@ -58,6 +59,7 @@ The relevant regression coverage is in:
 - [`tests/unit/config_change.cpp`](../../tests/unit/config_change.cpp), which checks change classification and runtime effects.
 - [`tests/unit/output_enable_overrides.cpp`](../../tests/unit/output_enable_overrides.cpp), which checks connector and display-identity matching for session-scoped output enablement.
 - [`tests/harness/checks/session/config_reload.sh`](../../tests/harness/checks/session/config_reload.sh), which checks inert reloads, selective layout updates, border dependencies, and recovery after an included file fails to parse.
+- [`tests/harness/checks/session/config_override.sh`](../../tests/harness/checks/session/config_override.sh), which checks that a refused `config set` reports its error without writing diagnostics for a configuration that never became active.
 - [`tests/harness/checks/rule/decoration.sh`](../../tests/harness/checks/rule/decoration.sh), which checks that a window rule's decoration keys reach the window on reload without moving it.
 - [`tests/harness/checks/effect/reload.sh`](../../tests/harness/checks/effect/reload.sh), which checks effect recovery after a missing shader appears, reference diagnostics, palette updates without recompilation, and light layer reloads.
 - [`tests/harness/checks/layout/output_scrolling_width.sh`](../../tests/harness/checks/layout/output_scrolling_width.sh), which checks per-output initial scrolling widths and preserves existing column widths when that default changes on reload.

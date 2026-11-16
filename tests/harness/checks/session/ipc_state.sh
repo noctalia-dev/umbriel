@@ -36,6 +36,10 @@ action() {
   "$UMBRIEL" msg "$@" > /dev/null
 }
 
+await_state workspaces 'length > 0 and all(.[]; .previous == false)' \
+  "an output with no workspace switches reported a previous workspace"
+first_workspace=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.focused) | .id')
+
 # A tiled parent, a tiled unrelated window, and a floating child of the parent.
 TRANSIENT_SUITE=1 "$CLIENT" state-child > "$UMBRIEL_RUNTIME_DIR/ipc-state-suite.log" 2>&1 &
 await_state windows 'length == 3' "the transient suite did not map"
@@ -89,11 +93,22 @@ await_state windows "
 " "a workspace switch did not update visibility"
 await_state workspaces ".[] | select(.focused) | .index == 2 and (.occupied | not) and .window_count == 0" \
   "the pinned window made the active workspace occupied"
+await_state workspaces "
+  ([.[] | select(.previous) | .id] == [\"$first_workspace\"])
+  and all(.[] | select(.previous); .active | not)
+" "the workspace switch did not report the previous workspace"
+second_workspace=$("$UMBRIEL" workspaces --json | jq -r '.[] | select(.focused) | .id')
 await_state windows ".[] | select(.id == \"$child\") | .workspace == \"$(
   "$UMBRIEL" workspaces --json | jq -r '.[] | select(.focused) | .id'
 )\"" "the pinned window did not follow the active workspace"
+await_state workspaces ". == $("$UMBRIEL" workspaces --json)" \
+  "the workspace listing differs from the pushed snapshot"
 action workspace-switch 1
 await_state windows 'all(.[]; .visible)' "returning to the workspace did not show its windows"
+await_state workspaces "
+  ([.[] | select(.previous) | .id] == [\"$second_workspace\"])
+  and ([.[] | select(.focused) | .id] == [\"$first_workspace\"])
+" "returning to the first workspace did not update the previous workspace"
 
 # The scrolling strip is the only layout with columns to report.
 action workspace-set-layout dwindle

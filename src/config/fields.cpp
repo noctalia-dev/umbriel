@@ -2,7 +2,6 @@
 
 #include "config/keybind_parse.h"
 #include "config/store.h"
-#include "core/log.h"
 
 #include <algorithm>
 #include <cctype>
@@ -15,30 +14,8 @@
 
 namespace umbriel {
 
-  namespace {
-
-    constexpr Logger kLog("config");
-
-  } // namespace
-
   void emitDiag(ConfigDiagnostic::Severity severity, const toml::source_region* src, std::string msg) {
-    ConfigDiagnostic diag;
-    diag.severity = severity;
-    diag.message = msg;
-    if (src != nullptr) {
-      diag.line = src->begin.line;
-      diag.column = src->begin.column;
-      if (src->path != nullptr) {
-        diag.file = *src->path;
-      }
-    }
-    const std::string loc = diag.location();
-    if (severity == ConfigDiagnostic::Severity::Error) {
-      kLog.error("{}{}", loc.empty() ? "" : loc + ": ", msg);
-    } else {
-      kLog.warn("{}{}", loc.empty() ? "" : loc + ": ", msg);
-    }
-    configStore().addDiagnostic(std::move(diag));
+    configStore().addDiagnostic(makeDiagnostic(severity, src, std::move(msg)));
   }
 
   std::string lowercase(std::string_view text) {
@@ -55,6 +32,15 @@ namespace umbriel {
         {.name = "always", .value = VrrMode::Always},
         {.name = "fullscreen", .value = VrrMode::Fullscreen},
     };
+    return choices;
+  }
+
+  const registry::Choices<VrrMode>& outputVrrModes() {
+    static const registry::Choices<VrrMode> choices = [] {
+      registry::Choices<VrrMode> modes = vrrModes();
+      modes.push_back({.name = "fullscreen_any", .value = VrrMode::FullscreenAny});
+      return modes;
+    }();
     return choices;
   }
 

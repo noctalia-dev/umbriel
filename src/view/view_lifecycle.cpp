@@ -452,13 +452,13 @@ namespace umbriel {
 
     // Opening state is compositor-owned. Clients may restore a saved maximized
     // flag during this transition; only an explicit window rule or an honored
-    // restore overrides the layout's initial size. A tiled restore under the
-    // workspace's client_maximize = "edges" lands in the edges, above any rule column.
+    // restore overrides the layout's initial size. Tiled and stacking restores
+    // follow client_maximize; a tile's rule-owned full-width column stays below the edges.
     const bool ruleMaximized = !openingParented() && rule.defaultMaximize && *rule.defaultMaximize;
     const bool restoredMaximized = config().general.honorRestoredMaximize && requestedMaximized();
     const bool restoreToEdges = restoredMaximized
-        && m_tiled
         && m_workspace != nullptr
+        && (m_tiled || m_workspace->layoutMode() == LayoutMode::Stacking)
         && m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges;
     if (placed && !assignedScratchpad && (ruleMaximized || (restoredMaximized && !restoreToEdges))) {
       setMaximized(true);
@@ -622,7 +622,7 @@ namespace umbriel {
         && closingWorkspace->active()
         && m_tiled
         && !shellParentRequested()
-        && config().input.focus.followsMouse
+        && config().input.focus.followsMouseEnabled()
         && !m_server->sessionLocked()
         && m_server->exclusiveKeyboardLayer() == nullptr
         && (overview == nullptr || !overview->active())
@@ -771,6 +771,9 @@ namespace umbriel {
     // The click pair outlives the grab machinery, so drop it here; the grab
     // reset below covers any deferred or promoted press.
     m_server->cursor()->forgetView(this);
+    if (m_onActiveWorkspace) {
+      m_server->cursor()->refocusAfterSceneChange();
+    }
     // Detaching a browser's last tab can unmap the origin while a different
     // toplevel is being carried by that same data drag.
     const View* carried = m_server->cursor()->toplevelDragView();

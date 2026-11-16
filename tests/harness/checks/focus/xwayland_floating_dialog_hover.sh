@@ -81,7 +81,7 @@ corner_radius = 0
 [appearance.shadow]
 enabled = false
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 hover_raises = true
 
 [[window_rule]]

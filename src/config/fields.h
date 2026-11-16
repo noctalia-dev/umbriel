@@ -43,7 +43,7 @@ namespace umbriel {
     const std::vector<configmerge::EffectDeclaration>& poolDeclarations;
   };
 
-  // Record a diagnostic in the store and log it.
+  // Record a diagnostic in the store; ConfigStore decides whether it also reaches the log.
   void emitDiag(ConfigDiagnostic::Severity severity, const toml::source_region* src, std::string msg);
 
   template <typename... A> void warnAt(const toml::source_region& src, std::format_string<A...> fmt, A&&... args) {
@@ -62,6 +62,9 @@ namespace umbriel {
 
   // Vocabularies outputs and window rules share.
   const registry::Choices<VrrMode>& vrrModes();
+  // Outputs only: vrrModes() plus "fullscreen_any", which looks at every workspace of the output and has no
+  // per-window meaning.
+  const registry::Choices<VrrMode>& outputVrrModes();
   const registry::Choices<HdrMode>& hdrModes();
   const registry::Choices<ContentType>& contentTypes();
   const registry::Choices<LayoutMode>& layoutModes();
@@ -164,8 +167,9 @@ namespace umbriel {
     Failed,
   };
 
-  // Merge `rootPath` with its includes and read every table into `out`, which is left alone unless the result is
-  // Loaded. The caller has already found the file and reset the store for this load.
-  ConfigParseOutcome parseConfig(Config& out, const std::filesystem::path& rootPath);
+  // Merge `rootPath` with its includes, lay the store's runtime overrides over the result, and read every table into
+  // `out`. A null `rootPath` reads the overrides alone. `out` and `effective` (the merged document) are left alone
+  // unless the result is Loaded. The caller has already found the file and reset the store for this load.
+  ConfigParseOutcome parseConfig(Config& out, toml::table& effective, const std::filesystem::path* rootPath);
 
 } // namespace umbriel

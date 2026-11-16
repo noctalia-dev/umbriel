@@ -18,7 +18,7 @@ mode = "1280x720"
 position = [1280, 0]
 
 [input.focus]
-follows_mouse = true
+follows_mouse = "sloppy"
 
 [colors]
 backdrop = "#000000FF"

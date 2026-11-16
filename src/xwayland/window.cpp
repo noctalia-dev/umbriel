@@ -128,7 +128,7 @@ namespace umbriel {
   void XwaylandWindow::handleDissociate() {
     destroyWrapper();
     // The XWM focus record outlives a Wayland association. Retire it so a reused X window can take real X focus again.
-    wlr_xwayland_surface_activate(m_xsurface, false);
+    m_owner.activateSurface(m_xsurface, false);
     // Retiring that record can restore PointerRoot after a native client already received its keyboard enter.
     m_owner.scheduleFocusClear();
   }

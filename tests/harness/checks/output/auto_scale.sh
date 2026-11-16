@@ -11,7 +11,7 @@ BASELINE=$(< "$UMBRIEL_CONFIG")
 write_config() {
   {
     printf '%s\n' "$BASELINE"
-    printf '\n[input.focus]\nfollows_mouse = true\n'
+    printf '\n[input.focus]\nfollows_mouse = "sloppy"\n'
     printf '\n[output.HEADLESS-1]\nposition = [0, 0]\n'
     [[ -n $1 ]] && printf 'scale = %s\n' "$1"
     printf '\n[[window_rule]]\nmatch.title = "^auto-scale-left$"\ndefault_output = "HEADLESS-1"\n'

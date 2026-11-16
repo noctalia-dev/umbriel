@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <vector>
 
 extern "C" {
 #include <wlr/types/wlr_output.h>
@@ -18,6 +19,14 @@ namespace umbriel {
     double maxFrameAverageLuminance = 0.0;
     bool operator==(const HdrStaticMetadata&) const = default;
   };
+
+  // True when the coordinates form a usable, non-degenerate gamut with a
+  // positive white point.
+  [[nodiscard]] bool validDisplayPrimaries(const wlr_color_primaries& primaries);
+
+  // The raw EDID blob attached to a native DRM output. Nested and headless
+  // outputs and unreadable EDIDs give an empty span.
+  [[nodiscard]] std::vector<uint8_t> edidBlobForOutput(wlr_output* output);
 
   // Parse the sink's CTA-861 HDR Static Metadata Data Block. Values are the
   // display's desired content luminances in cd/m², with unavailable fields left at zero.

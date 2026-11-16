@@ -376,6 +376,23 @@ UMBRIEL_TEST(excludedGpuRemainsUnopenedAfterNodeReuseAndReattachment) {
   CHECK_EQ(fixture.inventory.openedPci, (std::vector<std::string>{"0000:00:02.0", "0000:03:00.0", "0000:03:00.0"}));
 }
 
+UMBRIEL_TEST(removedSecondaryGpuIsReportedOnce) {
+  Fixture fixture;
+  fixture.inventory.addGpu(0, "0000:00:02.0");
+  auto& ignored = fixture.inventory.addGpu(1, "0000:01:00.0");
+  fixture.start({.ignoredDevices = {ignored.node}, .ignoredPciAddresses = {}});
+  std::vector<const wlr_backend*> removed;
+  fixture.manager->setDrmBackendRemovedHandler([&](const wlr_backend* backend) { removed.push_back(backend); });
+
+  auto& secondary = fixture.inventory.addGpu(2, "0000:03:00.0");
+  fixture.add(secondary);
+  CHECK(removed.empty());
+
+  fixture.remove(secondary);
+  CHECK_EQ(removed.size(), size_t{1});
+  CHECK(std::ranges::all_of(removed, [](const wlr_backend* backend) { return backend != nullptr; }));
+}
+
 UMBRIEL_TEST(pciExclusionCoversGpuThatStartsBoundToVfio) {
   Fixture fixture;
   fixture.inventory.addGpu(0, "0000:00:02.0");

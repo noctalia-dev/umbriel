@@ -11,6 +11,7 @@ struct wlr_surface;
 namespace umbriel {
 
   class Server;
+  struct ColorDescription;
 
   class ColorManager {
   public:
@@ -22,7 +23,9 @@ namespace umbriel {
 
     bool valid() const;
     wl_global* global() const;
-    const wlr_image_description_v1_data* surfaceDescription(wlr_surface* surface) const;
+    // The surface's whole committed description: its protocol data plus the
+    // custom primaries and ICC payload the bare data cannot carry.
+    const ColorDescription* surfaceDescription(wlr_surface* surface) const;
     bool surfaceRequiresHdrOutput(wlr_surface* surface) const;
     // Register before adding surfaces. Scene destruction removes the registration.
     [[nodiscard]] bool registerScene(wlr_scene* scene);

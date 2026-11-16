@@ -399,6 +399,21 @@ UMBRIEL_TEST(sdr10CommitFailureFallsThroughToSdr8) {
   CHECK_EQ(m.count(Kind::Test), size_t{2});
 }
 
+UMBRIEL_TEST(staleHdrIsClearedWhenHdrIsNotRequested) {
+  MockOps m;
+  m.testResults = {true};
+
+  FormatSequenceParams p = sdr8Params();
+  p.hdrWasActive = true;
+
+  const FormatSequenceResult r = runFormatSequence(p, m.ops());
+
+  CHECK(r.committed);
+  CHECK(r.committedTier == FormatTier::Sdr8);
+  CHECK(m.imageDescCleared);
+  CHECK_EQ(m.count(Kind::StageHdr), size_t{0});
+}
+
 // HDR commit failure drops to SDR10 without committing the other HDR format.
 UMBRIEL_TEST(hdrCommitFailureFallsThroughToSdr10) {
   MockOps m;

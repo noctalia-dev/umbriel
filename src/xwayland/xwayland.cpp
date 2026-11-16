@@ -195,7 +195,33 @@ namespace umbriel {
 
   void Xwayland::forget(XwaylandWindow* window) {
     m_shapes->remove(window->xsurface());
+    if (m_focusRecord == window->xsurface()) {
+      // wlroots retires the focus record of a destroyed surface itself.
+      m_focusRecord = nullptr;
+      scheduleFocusClear();
+    }
     std::erase_if(m_windows, [window](const std::unique_ptr<XwaylandWindow>& entry) { return entry.get() == window; });
+  }
+
+  bool Xwayland::killClient(const wlr_xwayland_surface* xsurface) {
+    xcb_connection_t* connection = m_wlr != nullptr ? wlr_xwayland_get_xwm_connection(m_wlr) : nullptr;
+    // A zero resource ID targets every client's temporary retained resources.
+    if (connection == nullptr
+        || xsurface == nullptr
+        || xsurface->xwm != m_wlr->xwm
+        || xsurface->window_id == XCB_WINDOW_NONE
+        || xcb_connection_has_error(connection) != 0) {
+      return false;
+    }
+    // Keep the resource ID bound to its original client across both requests.
+    xcb_grab_server(connection);
+    xcb_kill_client(connection, xsurface->window_id);
+    // A live client may retain resources on disconnect; a second request frees them.
+    // Ordinary clients already lost the resource, so discard that request's error.
+    const xcb_void_cookie_t cleanup = xcb_kill_client_checked(connection, xsurface->window_id);
+    xcb_discard_reply(connection, cleanup.sequence);
+    xcb_ungrab_server(connection);
+    return xcb_flush(connection) > 0;
   }
 
   const pixman_region32_t* Xwayland::surfaceShape(wlr_surface* surface) const { return m_shapes->shape(surface); }
@@ -246,6 +272,21 @@ namespace umbriel {
 
   void Xwayland::updatePrimaryOutput() {
     m_primary->setOutput(m_outputs->primaryOutput(config().general.xwaylandPrimaryOutput));
+  }
+
+  void Xwayland::activateSurface(wlr_xwayland_surface* xsurface, bool activated) {
+    wlr_xwayland_surface_activate(xsurface, activated);
+    if (activated) {
+      // wlroots never records an override-redirect window.
+      if (!xsurface->override_redirect) {
+        m_focusRecord = xsurface;
+      }
+    } else if (m_focusRecord == xsurface) {
+      m_focusRecord = nullptr;
+      // Retiring the record moved X core focus to PointerRoot. No native enter follows when nothing takes the
+      // keyboard, so this is the only point that sees X11 lose it.
+      scheduleFocusClear();
+    }
   }
 
   uint64_t Xwayland::requestXwmSync(wlr_xwayland_surface* xsurface) {
@@ -374,8 +415,13 @@ namespace umbriel {
 
   int Xwayland::onFocusClearTimer(void* data) {
     auto* self = static_cast<Xwayland*>(data);
+    // An empty seat has left X11 too once the XWM has retired its focus record: nothing is left to hold an X11
+    // keyboard grab, and PointerRoot would keep X11 clients believing they still own input. While the record
+    // stands, a window is only between two roles and takes real X focus back.
     wlr_surface* focused = self->m_server.seat()->wlr()->keyboard_state.focused_surface;
-    if (focused != nullptr && wlr_xwayland_surface_try_from_wlr_surface(focused) == nullptr) {
+    const bool leftXwayland = focused != nullptr ? wlr_xwayland_surface_try_from_wlr_surface(focused) == nullptr
+                                                 : self->m_focusRecord == nullptr;
+    if (leftXwayland) {
       self->clearFocus();
     }
     return 0;

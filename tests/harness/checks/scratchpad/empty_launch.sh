@@ -21,7 +21,7 @@ blur = false
 backdrop = "#FFFFFFFF"
 
 [input.focus]
-follows_mouse = false
+follows_mouse = "off"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
