@@ -95,6 +95,8 @@ bool fx_render_pass_begin_capture(struct fx_gles_render_pass* pass, const struct
 void fx_render_pass_end_capture(
     struct fx_gles_render_pass* pass, const struct wlr_box* box, const pixman_region32_t* clip
 );
+// Records that a captured shadow caster was reused instead of re-rendered, for tests.
+void fx_render_pass_note_shadow_caster_reuse(struct fx_gles_render_pass* pass);
 // `box` and `logical_box` are the node's boxes; `expand` (logical px) grows the
 // drawn rectangle on every side. `uv` in the program spans the drawn rectangle.
 void fx_render_pass_end_animation(

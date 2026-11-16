@@ -3547,10 +3547,15 @@ static bool test_animation_shadow_reuse(struct fixture* fixture) {
 
   // Render once with reuse eligible, then compare against a frame where an
   // intervening animated node prevents reuse so both paths produce identical pixels.
+  const unsigned reuses_before = fx_renderer_shadow_caster_reuses_for_test(fixture->renderer);
   struct wlr_output_state state;
   struct wlr_buffer* reused = render_sized_scene(fixture, scene_output, out_size, out_size, &state);
   ok &= check(reused != NULL, "reused shadow scene renders");
   ok &= check(samples.count == 1, "output_sample fires once when shadow caster is reused");
+  ok &= check(
+      fx_renderer_shadow_caster_reuses_for_test(fixture->renderer) == reuses_before + 1,
+      "the eligible frame reuses the caster"
+  );
 
   struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_try_get(output);
   ok &= check(
@@ -3572,12 +3577,16 @@ static bool test_animation_shadow_reuse(struct fixture* fixture) {
       .progress = 1, .linear_progress = 1, .direction = 1, .transition_id = 2
   };
   wlr_scene_node_set_animation(&blocker->node, FX_SLOT_WINDOWS_IN, fade, &fade_params);
-  wlr_scene_node_set_position(&blocker->node, 200, 200);
+  wlr_scene_node_set_position(&blocker->node, 150, 8);
 
   struct wlr_output_state ref_state;
   struct wlr_buffer* reference = render_sized_scene(fixture, scene_output, out_size, out_size, &ref_state);
   ok &= check(reference != NULL, "reference non-reused shadow scene renders");
   ok &= check(samples.count == 2, "output_sample fires once in fallback frame");
+  ok &= check(
+      fx_renderer_shadow_caster_reuses_for_test(fixture->renderer) == reuses_before + 1,
+      "the bypassed frame renders the caster"
+  );
 
   uint8_t ref_blur_base[4] = {0};
   if (reused != NULL && reference != NULL) {
@@ -3674,6 +3683,128 @@ static bool test_animation_shadow_reuse(struct fixture* fixture) {
   return ok;
 }
 
+// A partially offscreen window's caster is clamped at the output edge. Reuse
+// must still keep the off-output texels a drag deformation bends back on
+// screen, whether it renders them or captures again.
+static bool test_animation_shadow_reuse_offscreen(struct fixture* fixture) {
+  const int out_size = 256;
+  struct wlr_output* output = wlr_headless_add_output(fixture->backend, out_size, out_size);
+  if (!check(
+          output != NULL && wlr_output_init_render(output, fixture->allocator, fixture->renderer), "256x256 output"
+      )) {
+    return false;
+  }
+  struct fx_effect_shader* drag = fx_effect_shader_create(
+      fixture->renderer, FX_EFFECT_ANIMATION,
+      "vec4 animation(vec2 uv) { return umbriel_sample(uv - vec2(3.0, 0.0) / umbriel_size); }", "shadow-offscreen-drag"
+  );
+  struct fx_effect_shader* fade = fx_effect_shader_create(
+      fixture->renderer, FX_EFFECT_ANIMATION, "vec4 animation(vec2 uv) { return umbriel_sample(uv); }",
+      "shadow-offscreen-fade"
+  );
+  bool ok = check(drag != NULL && fade != NULL, "offscreen reuse programs compile");
+  if (!ok) {
+    fx_effect_shader_unref(drag);
+    fx_effect_shader_unref(fade);
+    wlr_output_destroy(output);
+    return false;
+  }
+
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, output);
+  const float bg[4] = {0.2F, 0.2F, 0.2F, 1.0F};
+  wlr_scene_rect_create(&scene->tree, out_size, out_size, bg);
+
+  // The view starts 8 px off the left edge, so the first 8 px of content are off output.
+  struct wlr_scene_tree* view = wlr_scene_tree_create(&scene->tree);
+  wlr_scene_node_set_position(&view->node, -8, 96);
+  const float shadow_color[4] = {0.0F, 1.0F, 0.0F, 1.0F};
+  struct wlr_scene_shadow* shadow = wlr_scene_shadow_create(view, 48, 48, 0, 16.0F, shadow_color);
+  wlr_scene_node_set_position(&shadow->node, -8, -8);
+
+  struct wlr_scene_tree* content = wlr_scene_tree_create(view);
+  const float blue[4] = {0.0F, 0.0F, 1.0F, 1.0F};
+  const float green[4] = {0.0F, 1.0F, 0.0F, 1.0F};
+  const float red[4] = {1.0F, 0.0F, 0.0F, 1.0F};
+  wlr_scene_rect_create(content, 8, 32, blue);
+  struct wlr_scene_rect* seam = wlr_scene_rect_create(content, 8, 32, green);
+  wlr_scene_node_set_position(&seam->node, 8, 0);
+  struct wlr_scene_rect* right = wlr_scene_rect_create(content, 16, 32, red);
+  wlr_scene_node_set_position(&right->node, 16, 0);
+  wlr_scene_shadow_set_animation_source(shadow, &content->node, shadow_color);
+  struct fx_animation_parameters drag_params = {
+      .progress = 1, .linear_progress = 1, .direction = 1, .transition_id = 1, .expand = 4
+  };
+  wlr_scene_node_set_animation(&content->node, FX_SLOT_DRAG, drag, &drag_params);
+
+  struct wlr_output_state state;
+  const unsigned reuses_before = fx_renderer_shadow_caster_reuses_for_test(fixture->renderer);
+  struct wlr_buffer* reused = render_sized_scene(fixture, scene_output, out_size, out_size, &state);
+  ok &= check(reused != NULL, "offscreen shadow scene renders");
+  ok &= check(
+      fx_renderer_shadow_caster_reuses_for_test(fixture->renderer) == reuses_before + 1,
+      "the offscreen frame reuses the caster"
+  );
+
+  // An intervening animated sibling refuses reuse, making that frame the reference.
+  struct wlr_scene_rect* blocker = wlr_scene_rect_create(view, 4, 4, bg);
+  wlr_scene_node_place_above(&blocker->node, &shadow->node);
+  wlr_scene_node_set_position(&blocker->node, 200, 8);
+  struct fx_animation_parameters fade_params = {
+      .progress = 1, .linear_progress = 1, .direction = 1, .transition_id = 2
+  };
+  wlr_scene_node_set_animation(&blocker->node, FX_SLOT_WINDOWS_IN, fade, &fade_params);
+
+  struct wlr_output_state ref_state;
+  struct wlr_buffer* reference = render_sized_scene(fixture, scene_output, out_size, out_size, &ref_state);
+  ok &= check(reference != NULL, "offscreen reference shadow scene renders");
+  ok &= check(
+      fx_renderer_shadow_caster_reuses_for_test(fixture->renderer) == reuses_before + 1,
+      "the blocked offscreen frame renders the caster"
+  );
+
+  if (reused != NULL && reference != NULL) {
+    // Only the drag capture nested inside the caster can supply the off-output
+    // third of the window the deformation bends back on screen: a caster
+    // clamped at x = 0 would repeat the green edge instead.
+    uint8_t bent[4];
+    if (read_output_pixel(fixture, reused, out_size, out_size, 1, 100, bent)) {
+      ok &= check(bent[0] > 200 && bent[1] < 60, "reused caster bends the off-output third back on screen");
+    } else {
+      ok = false;
+    }
+    int diffs = 0;
+    for (int y = 88; y < 136; y++) {
+      for (int x = 0; x < 64; x++) {
+        uint8_t a[4], b[4];
+        if (!read_output_pixel(fixture, reused, out_size, out_size, x, y, a)
+            || !read_output_pixel(fixture, reference, out_size, out_size, x, y, b)) {
+          ok = false;
+          continue;
+        }
+        if (abs((int)a[0] - (int)b[0]) > 1 || abs((int)a[1] - (int)b[1]) > 1 || abs((int)a[2] - (int)b[2]) > 1) {
+          diffs++;
+        }
+      }
+    }
+    ok &= check(diffs == 0, "reused caster matches the offscreen capture across the deformed edge");
+  }
+  if (reused != NULL) {
+    wlr_buffer_unlock(reused);
+  }
+  if (reference != NULL) {
+    wlr_buffer_unlock(reference);
+  }
+  wlr_output_state_finish(&state);
+  wlr_output_state_finish(&ref_state);
+
+  wlr_scene_node_destroy(&scene->tree.node);
+  fx_effect_shader_unref(drag);
+  fx_effect_shader_unref(fade);
+  wlr_output_destroy(output);
+  return ok;
+}
+
 #include "workspace_reveal.h"
 
 int main(int argc, char* argv[]) {
@@ -3730,6 +3861,7 @@ int main(int argc, char* argv[]) {
     ok = test_animation_box_capture(&fixture);
   } else if (strcmp(argv[1], "animation-shadow-reuse") == 0) {
     ok = test_animation_shadow_reuse(&fixture);
+    ok &= test_animation_shadow_reuse_offscreen(&fixture);
   } else if (strcmp(argv[1], "animation-backdrop-reuse") == 0) {
     ok = test_animation_backdrop_fast_path(&fixture);
   } else if (strcmp(argv[1], "bounded-drag-confinement") == 0) {

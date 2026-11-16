@@ -1629,8 +1629,7 @@ bool fx_render_pass_end_animation_shadow(
   }
   struct fx_effect_shader* horizontal = renderer->animation_shadow_horizontal;
   struct fx_effect_shader* vertical = renderer->animation_shadow_vertical;
-  // Keep the caster's framebuffer reserved while allocating the horizontal
-  // pass, otherwise the depth-indexed pool would clear the texture we sample.
+  // The blur pass pushes its own slot, so the caster below it stays bound and unmodified while sampled.
   const struct wlr_box caster_box = pass->animation_boxes[pass->animation_depth - 1];
   struct wlr_texture* caster = pass->animation_textures[pass->animation_depth - 1];
   const struct wlr_box full = {.width = caster->width, .height = caster->height};
@@ -3371,6 +3370,14 @@ void fx_renderer_fail_target_copies_for_test(struct wlr_renderer* renderer, bool
 
 void fx_renderer_fail_animation_capture_for_test(struct wlr_renderer* renderer, bool fail) {
   fx_get_renderer(renderer)->fail_animation_capture_for_test = fail;
+}
+
+unsigned fx_renderer_shadow_caster_reuses_for_test(struct wlr_renderer* renderer) {
+  return fx_get_renderer(renderer)->shadow_caster_reuses;
+}
+
+void fx_render_pass_note_shadow_caster_reuse(struct fx_gles_render_pass* pass) {
+  pass->buffer->renderer->shadow_caster_reuses++;
 }
 
 void fx_renderer_fail_effect_capture_for_test(struct wlr_renderer* renderer, bool fail) {

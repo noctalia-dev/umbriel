@@ -142,8 +142,9 @@ void fx_effect_shader_unref(struct fx_effect_shader* shader);
 // A shape-preserving shader only scales its input's alpha uniformly. Shadows
 // keep their analytic fast path under it instead of capturing a silhouette.
 void fx_effect_shader_set_shape_preserving(struct fx_effect_shader* shader, bool shape_preserving);
-// A bounded shader reads only inside its node and writes only inside its drawn
-// box (node bounds plus expand), confining damage and occlusion exemptions.
+// A bounded shader writes only inside its drawn box (node bounds plus expand),
+// which must also cover the margin it samples, confining damage and occlusion
+// exemptions.
 void fx_effect_shader_set_bounded(struct fx_effect_shader* shader, bool bounded);
 // True when the linked program has an active uniform of that name.
 bool fx_effect_shader_reads(const struct fx_effect_shader* shader, const char* uniform);
@@ -252,6 +253,8 @@ void fx_renderer_fail_target_copies_for_test(struct wlr_renderer* renderer, bool
 void fx_renderer_fail_effect_capture_for_test(struct wlr_renderer* renderer, bool fail);
 // Exists for tests/effects.c and the animation-capture-fail harness IPC: makes every animation capture fail.
 void fx_renderer_fail_animation_capture_for_test(struct wlr_renderer* renderer, bool fail);
+// Exists for tests/effects.c: counts shadow casters reused instead of re-rendered.
+unsigned fx_renderer_shadow_caster_reuses_for_test(struct wlr_renderer* renderer);
 // Exists for the blur-composite-split harness IPC: draws backdrop blur's final upsample into an effect buffer and
 // composites that, as fx_render_pass_add_blur does when it cannot draw the upsample into the pass target directly.
 void fx_renderer_split_blur_composite_for_test(struct wlr_renderer* renderer, bool split);

@@ -4598,6 +4598,7 @@ static void render_animated_range(
             },
         };
         fx_render_pass_add_texture(pass, &options);
+        fx_render_pass_note_shadow_caster_reuse(pass);
       }
       struct wlr_box capture_box = {0};
       struct render_data sample_data = *data;
