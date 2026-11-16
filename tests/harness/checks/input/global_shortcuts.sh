@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Restored shortcut sessions own balanced key events through routing gates and lifecycle changes.
-set -euo pipefail
+set -Eeuo pipefail
+trap 'echo "global shortcut check failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 source "$UMBRIEL_HARNESS_LIB"
 
 readonly CLIENT=$UMBRIEL_GLOBAL_SHORTCUTS_CLIENT
@@ -9,6 +10,7 @@ readonly LOCAL=$UMBRIEL_RUNTIME_DIR/local.log
 readonly TOKEN=$UMBRIEL_RUNTIME_DIR/grant
 readonly OTHER_TOKEN=$UMBRIEL_RUNTIME_DIR/other-grant
 readonly BINDS=$UMBRIEL_RUNTIME_DIR/binds.toml
+readonly REPORT=$UMBRIEL_RUNTIME_DIR/inspection.json
 cat >> "$UMBRIEL_CONFIG" <<EOF
 
 [include]
@@ -52,11 +54,29 @@ keys() {
   "$UMBRIEL_POINTER_CLIENT" 1280 720 keyboard-only "$@" mod none tap 30
   await_events "$LOCAL" 'keyboard-key code=30 state=released' "$((count + 1))"
 }
+inspect() {
+  "$UMBRIEL" global-shortcuts --json > "$REPORT"
+  jq -e 'all(.[]; keys == ["application", "live", "shortcuts"] and
+    all(.shortcuts[]; keys == ["candidate", "conflict", "description", "id", "pending", "session", "source", "trigger"]))' \
+    "$REPORT" > /dev/null
+  if grep -F -f "$TOKEN" "$REPORT" > /dev/null || grep -F -f "$OTHER_TOKEN" "$REPORT" > /dev/null; then
+    echo "shortcut inspection exposed a restore credential"
+    exit 1
+  fi
+}
+
+inspect
+jq -e 'length == 2 and all(.[]; .live == false and all(.shortcuts[]; .session == null and .trigger == null))' \
+  "$REPORT" > /dev/null
 
 # A claimed application name cannot inherit the fixture's durable approval.
 send 'new org.test.App' 'add talk CTRL+m' bind
 sync_bridge unapproved
 expect_count "$LOG" 'bound session=0 ' 0
+inspect
+jq -e 'any(.[]; .application == "org.test.App" and .live and
+  any(.shortcuts[]; .pending and .source == "config" and .candidate == "Ctrl+M" and .trigger == null))' \
+  "$REPORT" > /dev/null
 # A rejected config edit keeps the pending review alive.
 cat > "$BINDS" <<'EOF'
 [global_shortcuts."org.test.App"]
@@ -69,6 +89,7 @@ expect_count "$LOG" 'bound session=0 ' 0
 "$UMBRIEL_POINTER_CLIENT" 1280 720 click 272
 sync_bridge cancelled
 expect_count "$LOG" 'bound session=0 .*status=1' 1
+send close
 send 'new org.test.App' "restore $TOKEN" 'add talk CTRL+m' 'add reserved CTRL+n' bind list
 sync_bridge restored
 expect_count "$LOG" 'restored session=1 .*status=0' 1
@@ -135,6 +156,10 @@ send 'new org.test.Other' "restore $OTHER_TOKEN" 'add talk CTRL+m' bind
 sync_bridge waiter
 expect_count "$LOG" 'bound session=2 .*status=0' 1
 expect_count "$LOG" 'shortcut session=2 ' 0
+inspect
+jq -e 'any(.[]; .application == "org.test.Other" and .live and
+  any(.shortcuts[]; .id == "talk" and .source == "stored" and .conflict == "in_use" and
+    .trigger == null and .candidate == "Ctrl+M"))' "$REPORT" > /dev/null
 pointer_hold 1280 720 keyboard-only mod control key-press 50 -- key-release 50 mod none tap 30
 await_events "$LOG" 'activated session=1 ' 4
 send 'select 1' close
@@ -219,6 +244,10 @@ EOF
 "$UMBRIEL" msg config-reload > /dev/null
 await_events "$LOG" 'changes-done session=2' "$((changes + 1))"
 expect_count "$LOG" 'changed session=2 ' "$snapshots"
+inspect
+jq -e 'any(.[]; .application == "org.test.Other" and any(.shortcuts[];
+  .source == "config" and .conflict == "disabled" and .candidate == null and .trigger == null))' \
+  "$REPORT" > /dev/null
 keys mod alt tap 37 mod control tap 50
 expect_count "$LOG" 'activated session=2 ' 7
 : > "$BINDS"
@@ -228,4 +257,70 @@ keys mod control tap 50
 await_events "$LOG" 'activated session=2 ' 8
 await_events "$LOG" 'deactivated session=2 ' 8
 
-echo "global shortcuts preserve key ownership through routing gates, config overrides, reloads, promotion, and teardown"
+# Revocation retires the owner before promoting another application's approved waiter.
+send 'new org.test.App' "restore $TOKEN" 'add talk CTRL+m' bind
+sync_bridge revoke-waiter
+expect_count "$LOG" 'bound session=3 .*status=0' 1
+expect_count "$LOG" 'shortcut session=3 ' 0
+pointer_hold 1280 720 keyboard-only mod control key-press 50 -- key-release 50 mod none tap 30
+await_events "$LOG" 'activated session=2 ' 9
+releases=$(events "$LOCAL" 'keyboard-key code=50 state=released')
+"$UMBRIEL" global-shortcuts-revoke org.test.Other
+await_events "$LOG" 'deactivated session=2 ' 9
+await_events "$LOG" 'closed session=2' 1
+await_events "$LOG" 'changed session=3 id=talk' 1
+inspect
+jq -e 'all(.[]; .application != "org.test.Other") and any(.[];
+  .application == "org.test.App" and any(.shortcuts[]; .trigger == "Ctrl+M" and .source == "stored"))' \
+  "$REPORT" > /dev/null
+pointer_release
+sync_bridge revoked-release
+expect_count "$LOCAL" 'keyboard-key code=50 state=released' "$releases"
+expect_count "$LOG" 'activated session=3 ' 0
+send 'new org.test.Other' "restore $OTHER_TOKEN"
+sync_bridge revoked-credential
+expect_count "$LOG" 'restored session=4 .*status=2' 1
+send close
+keys mod control tap 50
+await_events "$LOG" 'activated session=3 ' 1
+
+# A failed durable deletion still closes live sessions, and inspection reports an unreadable store.
+pointer_hold 1280 720 keyboard-only mod control key-press 50 -- key-release 50 mod none tap 30
+await_events "$LOG" 'activated session=3 ' 2
+chmod 0644 "$XDG_STATE_HOME/umbriel/global-shortcuts.json"
+if "$UMBRIEL" global-shortcuts-revoke org.test.App > /dev/null 2>&1; then
+  echo "shortcut revocation hid a durable deletion failure"
+  exit 1
+fi
+await_events "$LOG" 'deactivated session=3 ' 2
+await_events "$LOG" 'closed session=3' 1
+if "$UMBRIEL" global-shortcuts --json > /dev/null 2>&1; then
+  echo "shortcut inspection hid an unreadable store"
+  exit 1
+fi
+pointer_release
+chmod 0600 "$XDG_STATE_HOME/umbriel/global-shortcuts.json"
+send 'new org.test.App' "restore $TOKEN" 'add talk CTRL+m' bind
+sync_bridge failed-revoke-credential
+expect_count "$LOG" 'bound session=5 .*status=0' 1
+
+# Revoke-all cancels a visible review, closes every session, and forgets offline grants.
+"$CLIENT" seed "$UMBRIEL_RUNTIME_DIR/offline-grant" org.test.Offline offline F18
+send 'new org.test.Pending' "credential $UMBRIEL_RUNTIME_DIR/pending-grant" 'add new F17' bind
+sync_bridge pending-revoke
+expect_count "$LOG" 'bound session=6 ' 0
+"$UMBRIEL" global-shortcuts-revoke all
+await_events "$LOG" 'closed session=5' 1
+await_events "$LOG" 'closed session=6' 1
+expect_count "$LOG" 'bound session=6 .*status=2' 1
+expect_count "$LOG" 'grant session=6 ' 0
+keys tap 28
+inspect
+jq -e 'length == 0' "$REPORT" > /dev/null
+"$UMBRIEL" global-shortcuts-revoke all
+if "$UMBRIEL" global-shortcuts-revoke > /dev/null 2>&1; then
+  echo "shortcut revocation accepted a missing selector"
+  exit 1
+fi
+
+echo "global shortcuts preserve ownership through routing, overrides, inspection, revocation, promotion, and teardown"

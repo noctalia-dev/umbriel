@@ -90,6 +90,18 @@ namespace umbriel {
     std::vector<GlobalShortcutSessionId> cancelled;
   };
 
+  struct GlobalShortcutInspection {
+    std::optional<GlobalShortcutSessionId> session;
+    bool pending = false;
+    GlobalShortcutRegistration shortcut;
+  };
+
+  struct GlobalShortcutApplication {
+    std::string application;
+    bool live = false;
+    std::vector<GlobalShortcutInspection> shortcuts;
+  };
+
   class GlobalShortcutsRegistry {
   public:
     [[nodiscard]] std::optional<GlobalShortcutSessionId> createSession(std::string_view application);
@@ -114,6 +126,7 @@ namespace umbriel {
     // Listing closes the restore phase, including an empty result.
     std::optional<std::vector<GlobalShortcut>> list(GlobalShortcutSessionId id);
     GlobalShortcutChanges takeChanges();
+    std::vector<GlobalShortcutApplication> inspect(std::span<const GlobalShortcutGrant> grants) const;
 
   private:
     struct Session {

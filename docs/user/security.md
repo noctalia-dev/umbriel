@@ -62,6 +62,17 @@ Press Enter on a physical keyboard to review the next page. On the final page, a
 
 Remembered approval is restored only with a private, compositor-issued credential for the same application and shortcut IDs. Application labels alone do not restore it. The store is `$XDG_STATE_HOME/umbriel/global-shortcuts.json`, defaulting to `~/.local/state/umbriel/global-shortcuts.json`. Ordinary configured keybinds and compositor escape chords take priority. Shortcuts do not activate during capture, locking, a confirmation, shortcut inhibition, an active submap, or session inactivity.
 
+Inspect and revoke shortcut approval with:
+
+```sh
+umbriel global-shortcuts
+umbriel global-shortcuts --json
+umbriel global-shortcuts-revoke org.example.App
+umbriel global-shortcuts-revoke all
+```
+
+Inspection includes unassigned candidates and conflict reasons, without exposing restore credentials. Revocation closes matching live sessions and cancels pending review. A durable deletion failure is reported even though live sessions stop; retry revocation before relying on a credential being permanently invalid. See [Global shortcuts IPC](ipc.md#global-shortcuts) for the reply fields and failure behavior.
+
 ## Sandboxed Wayland clients
 
 Umbriel supports version 1 of the [Wayland security-context protocol](https://wayland.app/protocols/security-context-v1). It is always enabled.

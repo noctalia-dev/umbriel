@@ -410,6 +410,23 @@ namespace umbriel {
   GlobalShortcutsBridge::~GlobalShortcutsBridge() = default;
 
   void GlobalShortcutsBridge::setAuthorize(AuthorizationRequest request) { m_impl->authorize = std::move(request); }
+
+  bool GlobalShortcutsBridge::revokeApplication(std::string_view application) {
+    if (!validGlobalShortcutId(application)) {
+      return false;
+    }
+    const bool forgotten = m_impl->store.revokeApplication(application);
+    (void)m_impl->registry.revokeApplication(application);
+    dispatchChanges();
+    return forgotten;
+  }
+
+  bool GlobalShortcutsBridge::revokeAll() {
+    const bool forgotten = m_impl->store.revokeAll();
+    (void)m_impl->registry.revokeAll();
+    dispatchChanges();
+    return forgotten;
+  }
   void GlobalShortcutsBridge::setAuthorizationCancelled(AuthorizationCancelled cancelled) {
     m_impl->cancelled = std::move(cancelled);
   }

@@ -419,6 +419,55 @@ namespace umbriel {
     return found != m_sessions.end() ? std::optional{found->second.state} : std::nullopt;
   }
 
+  std::vector<GlobalShortcutApplication>
+  GlobalShortcutsRegistry::inspect(std::span<const GlobalShortcutGrant> grants) const {
+    std::map<std::string, GlobalShortcutApplication> applications;
+    std::set<std::pair<std::string, std::string>> represented;
+    for (const auto& [id, session] : m_sessions) {
+      auto& application = applications[session.state.application];
+      application.application = session.state.application;
+      application.live = true;
+      for (const auto& shortcut : session.state.shortcuts) {
+        application.shortcuts.push_back({id, session.state.pending, shortcut});
+        represented.emplace(session.state.grantId, shortcut.id);
+      }
+    }
+    for (const auto& grant : grants) {
+      auto& application = applications[grant.application];
+      application.application = grant.application;
+      Session remembered;
+      remembered.state.application = grant.application;
+      remembered.grant = grant;
+      for (const auto& approved : grant.approved) {
+        if (represented.contains({grant.id, approved.id})) {
+          continue;
+        }
+        const auto previous = std::ranges::find(grant.previous, approved.id, &GlobalShortcut::id);
+        auto shortcut = resolve(
+            remembered,
+            {approved.id, previous != grant.previous.end() ? previous->description : approved.description, {}}
+        );
+        if (shortcut.candidate) {
+          if (reserved(*shortcut.candidate)) {
+            shortcut.conflict = GlobalShortcutConflict::Reserved;
+          } else if (
+              match(std::array{shortcut.candidate->keysym}, shortcut.candidate->keysym, shortcut.candidate->modifiers)
+          ) {
+            shortcut.conflict = GlobalShortcutConflict::InUse;
+          }
+        }
+        application.shortcuts.push_back({std::nullopt, false, std::move(shortcut)});
+      }
+    }
+    std::vector<GlobalShortcutApplication> result;
+    result.reserve(applications.size());
+    for (auto& [name, application] : applications) {
+      (void)name;
+      result.push_back(std::move(application));
+    }
+    return result;
+  }
+
   std::optional<GlobalShortcutBinding> GlobalShortcutsRegistry::match(
       std::span<const xkb_keysym_t> keysyms, xkb_keysym_t rawKeysym, uint32_t modifiers
   ) const {

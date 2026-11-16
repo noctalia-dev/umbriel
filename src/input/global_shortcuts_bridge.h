@@ -33,6 +33,8 @@ namespace umbriel {
     GlobalShortcutsInput& input();
     // Flush registry changes after configuration or revocation.
     void dispatchChanges();
+    [[nodiscard]] bool revokeApplication(std::string_view application);
+    [[nodiscard]] bool revokeAll();
 
   private:
     struct Impl;

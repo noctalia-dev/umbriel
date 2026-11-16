@@ -788,11 +788,11 @@ UMBRIEL_TEST(bindingChangesAndRevocationDeactivateBeforeReplacementSnapshotsOrCl
   peer.sync();
   CHECK(session.kinds() == std::vector<std::string>{"activated"});
   session.events.clear();
-  (void)fixture.registry.revokeApplication("org.test.App");
-  fixture.bridge->dispatchChanges();
+  CHECK(fixture.bridge->revokeApplication("org.test.App"));
   CHECK(fixture.bridge->input().observeKey(&fixture, 50, 5, false));
   peer.sync();
   CHECK(session.kinds() == std::vector<std::string>({"deactivated", "closed"}));
+  CHECK(!fixture.store->restore(session.token, "org.test.App"));
 }
 
 UMBRIEL_TEST(destroyingAnActiveOwnerPromotesItsWaiterWithoutActivatingAHeldKey) {
@@ -844,6 +844,85 @@ UMBRIEL_TEST(bridgeTeardownDeactivatesBeforeClosingTheActiveSession) {
   fixture.bridge.reset();
   peer.sync();
   CHECK(session.kinds() == std::vector<std::string>({"deactivated", "closed"}));
+}
+
+UMBRIEL_TEST(failedDurableRevocationStillClosesActiveAndPendingApplicationSessions) {
+  Fixture fixture;
+  fixture.acceptRequests();
+  const auto credential = fixture.seed();
+  auto& peer = fixture.peer();
+  auto& owner = peer.create();
+  owner.restore(credential.token);
+  owner.add();
+  owner.bind();
+  peer.sync();
+  CHECK(owner.result("bound", 1, 0));
+  auto& pending = peer.create();
+  pending.add("new", "F16");
+  pending.bind();
+  peer.sync();
+  CHECK(fixture.press(1));
+  peer.sync();
+  owner.events.clear();
+  pending.events.clear();
+  {
+    PrivateStateFileLock lock(fixture.directory / "state/shortcuts.json", ".global-shortcuts.lock");
+    CHECK(static_cast<bool>(lock));
+    CHECK(!fixture.bridge->revokeApplication("org.test.App"));
+  }
+  peer.sync();
+  CHECK(owner.kinds() == std::vector<std::string>({"deactivated", "closed"}));
+  CHECK(pending.kinds() == std::vector<std::string>({"bound", "closed"}));
+  CHECK(pending.result("bound", 1, 2));
+  CHECK_EQ(fixture.cancelled.size(), size_t{1});
+  fixture.approveLast();
+  peer.sync();
+  CHECK(pending.token.empty());
+  CHECK(fixture.bridge->input().observeKey(&fixture, 50, 2, false));
+  CHECK(fixture.store->restore(owner.token, "org.test.App").has_value());
+}
+
+UMBRIEL_TEST(revokeAllClosesEveryLiveSessionEvenWhenTheStoreIsLocked) {
+  for (const bool failWrite : {false, true}) {
+    Fixture fixture;
+    fixture.acceptRequests();
+    const auto credential = fixture.seed();
+    const auto otherCredential = fixture.seed("org.test.Other");
+    (void)fixture.seed("org.test.Offline");
+    auto& peer = fixture.peer();
+    auto& owner = peer.create();
+    owner.restore(credential.token);
+    owner.add();
+    owner.bind();
+    auto& other = peer.create("org.test.Other");
+    other.restore(otherCredential.token);
+    other.add();
+    other.bind();
+    auto& pending = peer.create("org.test.Pending");
+    pending.add("new", "F16");
+    pending.bind();
+    peer.sync();
+    CHECK(fixture.press(1));
+    peer.sync();
+    owner.events.clear();
+    other.events.clear();
+    std::unique_ptr<PrivateStateFileLock> lock;
+    if (failWrite) {
+      lock =
+          std::make_unique<PrivateStateFileLock>(fixture.directory / "state/shortcuts.json", ".global-shortcuts.lock");
+      CHECK(static_cast<bool>(*lock));
+    }
+    CHECK_EQ(fixture.bridge->revokeAll(), !failWrite);
+    lock.reset();
+    peer.sync();
+    CHECK(owner.kinds() == std::vector<std::string>({"deactivated", "closed"}));
+    CHECK(other.kinds() == std::vector<std::string>{"closed"});
+    CHECK(pending.kinds() == std::vector<std::string>({"bound", "closed"}));
+    CHECK_EQ(fixture.store->list()->empty(), !failWrite);
+    fixture.approveLast();
+    peer.sync();
+    CHECK(pending.token.empty());
+  }
 }
 
 int main() { return RUN_TESTS(); }

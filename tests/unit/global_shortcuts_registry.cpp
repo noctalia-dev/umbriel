@@ -315,4 +315,108 @@ UMBRIEL_TEST(revocationClosesAllApplicationSessionsAndRetainsOtherApplications) 
   CHECK(!registry.session(waiter));
 }
 
+UMBRIEL_TEST(inspectionPreservesRestoreEligibilityAndQueuedChanges) {
+  GlobalShortcutsRegistry registry;
+  const auto id = create(registry);
+  auto saved = grant("org.test.App", {shortcut("talk", "CTRL+m"), shortcut("unused", "F16")});
+  saved.previous = {shortcut("talk", "CTRL+m")};
+  const auto before = registry.inspect(std::array{saved});
+  CHECK_EQ(before.size(), size_t{1});
+  CHECK(before.front().live);
+  CHECK_EQ(before.front().shortcuts.size(), size_t{2});
+  CHECK(registry.canRestore(id));
+  CHECK(registry.restore(id, saved));
+  CHECK(registry.beginBind(id, {{"talk", "Current description", "F20"}}).has_value());
+  CHECK(registry.commitBind(id));
+  CHECK(registry.configure({{"org.test.App", {{"talk", "Ctrl+K"}}}}, {}, WLR_MODIFIER_LOGO));
+  const auto inspected = registry.inspect(std::array{saved});
+  CHECK_EQ(inspected.front().shortcuts.size(), size_t{2});
+  const auto& live = inspected.front().shortcuts.front();
+  CHECK_EQ(live.session, std::optional{id});
+  CHECK(!live.pending);
+  CHECK_EQ(live.shortcut.description, "Current description");
+  CHECK_EQ(live.shortcut.source, GlobalShortcutSource::Config);
+  CHECK_EQ(live.shortcut.trigger, std::optional{trigger("CTRL+k")});
+  const auto& offline = inspected.front().shortcuts.back();
+  CHECK(!offline.session);
+  CHECK(!offline.shortcut.trigger);
+  CHECK_EQ(offline.shortcut.candidate, std::optional{trigger("F16")});
+  CHECK_EQ(registry.takeChanges().changed, std::vector{id});
+  CHECK(registry.owns({id, "talk", trigger("CTRL+k")}));
+}
+
+UMBRIEL_TEST(inspectionReportsRememberedCandidatesWithoutAssigningThemLiveOwnership) {
+  GlobalShortcutsRegistry registry;
+  CHECK(registry.configure(
+      {{"org.test.Offline", {{"disabled", ""}, {"reserved", "Ctrl+N"}, {"typing", "a"}}}},
+      std::array{trigger("CTRL+n")}, WLR_MODIFIER_LOGO
+  ));
+  const auto owner = create(registry);
+  CHECK(registry.beginBind(owner, {{"talk", "Owner", "CTRL+m"}}).has_value());
+  approvePending(registry, owner);
+  auto offline = grant(
+      "org.test.Offline",
+      {shortcut("talk", "CTRL+m"), shortcut("disabled", "F16"), shortcut("reserved", "F17"), shortcut("typing"),
+       shortcut("unassigned")}
+  );
+  offline.id = std::string(32, 'b');
+  offline.previous = {shortcut("talk", "F18")};
+  offline.previous.front().description = "Most recent description";
+  const auto inspected = registry.inspect(std::array{offline});
+  CHECK_EQ(inspected.size(), size_t{2});
+  const auto& application = inspected.back();
+  CHECK_EQ(application.application, "org.test.Offline");
+  CHECK(!application.live);
+  CHECK_EQ(application.shortcuts.size(), size_t{5});
+  for (const auto& entry : application.shortcuts) {
+    CHECK(!entry.session && !entry.pending && !entry.shortcut.trigger);
+  }
+  CHECK_EQ(application.shortcuts[0].shortcut.conflict, GlobalShortcutConflict::InUse);
+  CHECK_EQ(application.shortcuts[0].shortcut.description, "Most recent description");
+  CHECK_EQ(application.shortcuts[0].shortcut.candidate, std::optional{trigger("CTRL+m")});
+  CHECK_EQ(application.shortcuts[1].shortcut.conflict, GlobalShortcutConflict::Disabled);
+  CHECK_EQ(application.shortcuts[2].shortcut.conflict, GlobalShortcutConflict::Reserved);
+  CHECK_EQ(application.shortcuts[2].shortcut.candidate, std::optional{trigger("CTRL+n")});
+  CHECK_EQ(application.shortcuts[3].shortcut.source, GlobalShortcutSource::Config);
+  CHECK_EQ(application.shortcuts[3].shortcut.candidate, std::optional{trigger("a")});
+  CHECK_EQ(application.shortcuts[4].shortcut.conflict, GlobalShortcutConflict::Unassigned);
+  CHECK_EQ(application.shortcuts[4].shortcut.source, GlobalShortcutSource::None);
+  CHECK(registry.owns({owner, "talk", trigger("CTRL+m")}));
+  CHECK(registry.takeChanges().changed.empty());
+}
+
+UMBRIEL_TEST(inspectionKeepsSameApplicationSessionsAndGrantScopesSeparate) {
+  GlobalShortcutsRegistry registry;
+  auto first = grant("org.test.App", {shortcut("talk", "F16"), shortcut("hidden", "F18")});
+  auto second = grant("org.test.App", {shortcut("talk", "F17"), shortcut("hidden", "F19")});
+  second.id = std::string(32, 'b');
+  const auto owner = create(registry);
+  CHECK(registry.restore(owner, first));
+  CHECK(registry.beginBind(owner, {{"talk", "First", "F21"}}).has_value());
+  CHECK(registry.commitBind(owner));
+  const auto pending = create(registry);
+  CHECK(registry.beginBind(pending, {{"talk", "Unverified claim", "F20"}}).has_value());
+  const auto other = create(registry);
+  CHECK(registry.restore(other, second));
+  CHECK(registry.beginBind(other, {{"talk", "Second", "F21"}}).has_value());
+  CHECK(registry.commitBind(other));
+  const auto inspected = registry.inspect(std::array{first, second});
+  CHECK_EQ(inspected.size(), size_t{1});
+  const auto& shortcuts = inspected.front().shortcuts;
+  CHECK_EQ(shortcuts.size(), size_t{5});
+  CHECK_EQ(shortcuts[0].session, std::optional{owner});
+  CHECK_EQ(shortcuts[0].shortcut.trigger, std::optional{trigger("F16")});
+  CHECK_EQ(shortcuts[1].session, std::optional{pending});
+  CHECK(shortcuts[1].pending);
+  CHECK_EQ(shortcuts[1].shortcut.source, GlobalShortcutSource::Preferred);
+  CHECK_EQ(shortcuts[1].shortcut.candidate, std::optional{trigger("F20")});
+  CHECK(!shortcuts[1].shortcut.trigger);
+  CHECK_EQ(shortcuts[2].session, std::optional{other});
+  CHECK_EQ(shortcuts[2].shortcut.trigger, std::optional{trigger("F17")});
+  CHECK(!shortcuts[3].session && !shortcuts[4].session);
+  CHECK_EQ(shortcuts[3].shortcut.candidate, std::optional{trigger("F18")});
+  CHECK_EQ(shortcuts[4].shortcut.candidate, std::optional{trigger("F19")});
+  CHECK(registry.session(pending)->pending);
+}
+
 int main() { return RUN_TESTS(); }

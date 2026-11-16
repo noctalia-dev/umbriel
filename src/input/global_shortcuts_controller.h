@@ -4,7 +4,10 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
+#include <string_view>
+#include <vector>
 #include <xkbcommon/xkbcommon.h>
 
 namespace umbriel {
@@ -29,6 +32,8 @@ namespace umbriel {
     void setAuthorize(GlobalShortcutsBridge::AuthorizationRequest request);
     void setAuthorizationCancelled(GlobalShortcutsBridge::AuthorizationCancelled cancelled);
     void authorizeSession(GlobalShortcutSessionId id, GlobalShortcutsBridge::Authorization authorization);
+    std::optional<std::vector<GlobalShortcutApplication>> inspect() const;
+    [[nodiscard]] bool revoke(std::string_view application);
 
   private:
     struct Impl;

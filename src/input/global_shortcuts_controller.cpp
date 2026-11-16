@@ -92,4 +92,13 @@ namespace umbriel {
     m_impl->bridge.dispatchChanges();
   }
 
+  std::optional<std::vector<GlobalShortcutApplication>> GlobalShortcuts::inspect() const {
+    const auto grants = m_impl->store.list();
+    return grants ? std::optional{m_impl->registry.inspect(*grants)} : std::nullopt;
+  }
+
+  bool GlobalShortcuts::revoke(std::string_view application) {
+    return application == "all" ? m_impl->bridge.revokeAll() : m_impl->bridge.revokeApplication(application);
+  }
+
 } // namespace umbriel
