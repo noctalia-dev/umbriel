@@ -776,6 +776,7 @@ core_sources = files(
   'src/scene/effect_registry.cpp',
   'src/core/fdlimit.cpp',
   'src/core/log.cpp',
+  'src/core/private_state_file.cpp',
   'src/config/config.cpp',
   'src/config/fields.cpp',
   'src/config/fields_animation.cpp',
