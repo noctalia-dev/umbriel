@@ -2128,6 +2128,16 @@ namespace umbriel {
       return scratchpad != nullptr && scratchpad->showStep(*name, Direction, output);
     }
 
+    template <int Direction> bool actionScratchpadWindowCycle(Server& server, const Keybind& bind, std::string* error) {
+      const auto name = scratchpadName(server, bind, error);
+      Output* output = server.outputFromWlr(server.preferredOutput());
+      if (!name || output == nullptr) {
+        return false;
+      }
+      ScratchpadManager* scratchpad = server.scratchpadManager();
+      return scratchpad != nullptr && scratchpad->cycle(*name, Direction, output, focusedScratchpadWindow(server));
+    }
+
     bool actionRestoreFromScratchpad(Server& server, const Keybind& bind, std::string* error) {
       const auto name = scratchpadName(server, bind, error);
       if (!name) {
@@ -2434,6 +2444,8 @@ namespace umbriel {
         &actionColumnTabBar<0>,
         &actionScratchpadWindowShowStep<1>,
         &actionScratchpadWindowShowStep<-1>,
+        &actionScratchpadWindowCycle<1>,
+        &actionScratchpadWindowCycle<-1>,
         &actionLayoutToggleSplit,
         &actionOutputSdrWhite,
         &actionWindowSetRegion,
