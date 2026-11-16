@@ -52,6 +52,7 @@ struct fx_gles_render_pass {
   // The region where there's blur
   pixman_region32_t blur_padding_region;
   bool has_blur;
+  bool skip_optimized_no_blur;
   // Contains output-specific framebuffers.
   // NULL when no advanced effects like blur is being used in the current pass.
   // Call `fx_render_pass_init_offscreen_buffers` to use advanced effects.

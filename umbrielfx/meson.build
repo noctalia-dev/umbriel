@@ -250,6 +250,8 @@ if build_tests
     'shared-sdr-capture-storage-change',
     'capture-read-format',
     'framebuffer-texture-binding',
+    'blur-ping-pong-size',
+    'blur-scratch-lifecycle',
   ]
     test(
       'color-' + case_name,

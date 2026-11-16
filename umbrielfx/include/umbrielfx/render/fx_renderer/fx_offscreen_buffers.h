@@ -47,8 +47,12 @@ struct fx_offscreen_buffers {
 
   // Contains the blurred background for tiled windows
   struct fx_framebuffer* optimized_blur_buffer;
+  int optimized_blur_source_width;
+  int optimized_blur_source_height;
   // Whether the optimized blur buffers hold a completed render
   bool optimized_blur_valid;
+  // Set when optimized blur buffers are evicted silently so the next consumer frame un-culls the backdrop
+  bool optimized_blur_evicted;
   // sdr_tf the optimized blur buffers were rendered in linear light with, or 0
   // when they hold encoded values
   enum wlr_color_transfer_function optimized_blur_sdr_tf;
@@ -69,5 +73,11 @@ void fx_offscreen_buffers_clear_group(struct fx_offscreen_buffers* fbos);
 struct fx_offscreen_buffers* fx_offscreen_buffers_try_get(struct wlr_output* output);
 void fx_offscreen_buffers_invalidate_blend(struct wlr_output* output);
 void fx_renderer_clear_animation_buffers(struct wlr_output* output);
+// Clears blur scratch buffers for output; returns true if any optimized blur buffer was released.
+bool fx_renderer_clear_blur_buffers(struct wlr_output* output);
+void fx_renderer_clear_optimized_no_blur(struct wlr_output* output);
+bool fx_renderer_has_optimized_no_blur(struct wlr_output* output);
+bool fx_renderer_has_optimized_blur_evicted(struct wlr_output* output);
+void fx_renderer_clear_optimized_blur_evicted(struct wlr_output* output);
 
 #endif
