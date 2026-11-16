@@ -82,11 +82,13 @@ uniform vec4 sample_bounds;
 #endif
 
 #if DOWNSAMPLE
-// Area (box) average for a minified source: taps.x times taps.y samples at
-// ratio/K texel steps, weighted evenly, tiling the fragment's whole footprint
-// (texel centers exactly while integer ratios fit the grid). The grid is
-// constant-bounded and skips entries past the per-axis tap counts, which the
-// pass derives from the minification ratio (clamped to 4).
+// Area (box) average for a minified source. Up to 4:1 per axis every texel the
+// fragment's footprint touches is fetched at its center and weighted by the
+// area it covers (box_ratio texels per pixel, at least one). Above that,
+// taps.x times taps.y bilinear samples at ratio/K texel steps tile the
+// footprint instead, which bounds the cost of thumbnails.
+uniform vec2 box_ratio;
+uniform vec2 box_texture_size;
 uniform vec2 taps;
 uniform vec2 tap_step;
 // The curve a passthrough pass's content is in (0 when the pass converts). A passthrough draw converts nothing, so
@@ -264,11 +266,44 @@ vec4 encode_linear(vec4 color) {
 }
 #endif
 
+#if DOWNSAMPLE
+// Exact area average: a footprint of at most four texels per axis touches at
+// most five. Each texel is fetched at its center, where the bilinear filter
+// returns it unmixed, and decoded before it is weighted, so encoded values are
+// never blended and the result conserves coverage at every ratio and phase.
+vec4 sample_area() {
+  vec2 center = v_texcoord * box_texture_size;
+  vec2 lo = center - 0.5 * box_ratio;
+  vec2 hi = center + 0.5 * box_ratio;
+  vec2 first = floor(lo);
+  vec4 acc = vec4(0.0);
+  for (int y = 0; y < 5; y++) {
+    float ty = first.y + float(y);
+    float wy = min(hi.y, ty + 1.0) - max(lo.y, ty);
+    if (wy <= 0.0) {
+      continue;
+    }
+    for (int x = 0; x < 5; x++) {
+      float tx = first.x + float(x);
+      float wx = min(hi.x, tx + 1.0) - max(lo.x, tx);
+      if (wx <= 0.0) {
+        continue;
+      }
+      acc += (wx * wy) * sample_linear((vec2(tx, ty) + 0.5) / box_texture_size);
+    }
+  }
+  return encode_linear(acc / (box_ratio.x * box_ratio.y));
+}
+#endif
+
 // Source color converted for the pass. Downsampling averages the box in linear
 // light: averaging encoded values darkens every partially covered pixel, which
 // thins light text on dark backgrounds and fattens dark text on light ones.
 vec4 sample_converted() {
 #if DOWNSAMPLE
+  if (max(box_ratio.x, box_ratio.y) <= 4.0) {
+    return sample_area();
+  }
   vec4 acc = vec4(0.0);
   for (int y = 0; y < 4; y++) {
     for (int x = 0; x < 4; x++) {

@@ -1990,10 +1990,12 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   wlr_render_texture_options_get_dst_box(options, &dst_box);
   float alpha = wlr_render_texture_options_get_alpha(options);
 
-  // Box taps tile the fragment's texel footprint: K per axis at ratio/K texel
-  // steps (exact one-texel centers while integer ratios fit the constant 4x4
-  // grid). A rotated draw swaps which destination extent each buffer axis
-  // shrinks into, so the ratios derive from the transformed extents.
+  // The box footprint is ratio texels per destination pixel on each buffer
+  // axis (at least one): the shader weights every texel by the area it covers
+  // up to 4:1, and above that tiles the footprint with K taps per axis at
+  // ratio/K texel steps. A rotated draw swaps which destination extent each
+  // buffer axis shrinks into, so the ratios derive from the transformed extents.
+  float box_ratio_x = 1.0f, box_ratio_y = 1.0f;
   float taps_x = 1.0f, taps_y = 1.0f;
   float step_x = 1.0f, step_y = 1.0f;
   if (use_box) {
@@ -2001,6 +2003,8 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     wlr_output_transform_coords(options->transform, &dst_width, &dst_height);
     const double ratio_x = dst_width > 0 ? src_fbox.width / dst_width : 1.0;
     const double ratio_y = dst_height > 0 ? src_fbox.height / dst_height : 1.0;
+    box_ratio_x = fmax(ratio_x, 1.0);
+    box_ratio_y = fmax(ratio_y, 1.0);
     taps_x = fmin(fmax(ceil(ratio_x), 1.0), 4.0);
     taps_y = fmin(fmax(ceil(ratio_y), 1.0), 4.0);
     step_x = fmax(ratio_x, 1.0) / taps_x;
@@ -2112,6 +2116,8 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   glUniform1i(shader->tex, 0);
   glUniform1f(shader->alpha, alpha);
   if (use_box) {
+    glUniform2f(shader->box_ratio, box_ratio_x, box_ratio_y);
+    glUniform2f(shader->box_texture_size, options->texture->width, options->texture->height);
     glUniform2f(shader->taps, taps_x, taps_y);
     glUniform2f(shader->tap_step, step_x / options->texture->width, step_y / options->texture->height);
   }

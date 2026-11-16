@@ -1148,21 +1148,23 @@ static bool test_implicit_srgb_target(struct fixture* fixture) {
 // with the curve of the space it is already in: an SDR swapchain (sRGB) or
 // extended linear behind colour management, where the values are already
 // linear. Each pair of texels is chosen to separate the two SDR curves.
-static bool render_box_pair(
-    struct fixture* fixture, const uint8_t texels[2][4], enum wlr_color_transfer_function input_tf,
-    struct wlr_color_transform* output_transform, uint8_t out[4]
+// One row of `texel_count` texels drawn into `pixel_count` pixels with the box.
+static bool render_box_row(
+    struct fixture* fixture, const uint8_t (*texels)[4], int texel_count, int pixel_count,
+    enum wlr_color_transfer_function input_tf, struct wlr_color_transform* output_transform, uint8_t (*out)[4]
 ) {
   struct wlr_color_primaries srgb;
   wlr_color_primaries_from_named(&srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
-  struct wlr_texture* texture = wlr_texture_from_pixels(fixture->renderer, DRM_FORMAT_ABGR8888, 8, 2, 1, texels);
+  struct wlr_texture* texture =
+      wlr_texture_from_pixels(fixture->renderer, DRM_FORMAT_ABGR8888, texel_count * 4, texel_count, 1, texels);
   if (!check(texture != NULL, "create box input texture")) {
     return false;
   }
-  struct wlr_buffer* output = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, 1, 1);
+  struct wlr_buffer* output = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, pixel_count, 1);
   bool ok = check(output != NULL, "allocate box output buffer");
   struct wlr_render_pass* pass = NULL;
   pixman_region32_t region;
-  pixman_region32_init_rect(&region, 0, 0, 1, 1);
+  pixman_region32_init_rect(&region, 0, 0, pixel_count, 1);
   if (ok) {
     pass = wlr_renderer_begin_buffer_pass(
         fixture->renderer, output, &(struct wlr_buffer_pass_options){.color_transform = output_transform}
@@ -1170,9 +1172,7 @@ static bool render_box_pair(
     ok = check(pass != NULL, "begin box render pass");
   }
   if (ok) {
-    // Two texels into one pixel: ratio 2, so two taps land on the texel
-    // centres and the box averages them exactly.
-    const struct wlr_box box = {.width = 1, .height = 1};
+    const struct wlr_box box = {.width = pixel_count, .height = 1};
     fx_render_pass_add_texture(
         fx_get_render_pass(pass),
         &(struct fx_render_texture_options){
@@ -1193,7 +1193,7 @@ static bool render_box_pair(
     ok = check(wlr_render_pass_submit(pass), "submit box render pass");
   }
   if (ok) {
-    ok = check(read_buffer(fixture, output, DRM_FORMAT_ABGR8888, 4, out), "read box output buffer");
+    ok = check(read_buffer(fixture, output, DRM_FORMAT_ABGR8888, pixel_count * 4, out), "read box output buffer");
   }
   pixman_region32_fini(&region);
   if (output != NULL) {
@@ -1201,6 +1201,14 @@ static bool render_box_pair(
   }
   wlr_texture_destroy(texture);
   return ok;
+}
+
+// Two texels into one pixel: ratio 2, so the box averages them exactly.
+static bool render_box_pair(
+    struct fixture* fixture, const uint8_t texels[2][4], enum wlr_color_transfer_function input_tf,
+    struct wlr_color_transform* output_transform, uint8_t out[4]
+) {
+  return render_box_row(fixture, texels, 2, 1, input_tf, output_transform, (uint8_t (*)[4])out);
 }
 
 static bool check_box_grey(const uint8_t pixel[4], int expected, const char* name) {
@@ -1246,6 +1254,56 @@ static bool test_box_downsample_curves(struct fixture* fixture) {
   ok = ok
       && render_box_pair(fixture, dark_pair, WLR_COLOR_TRANSFER_FUNCTION_GAMMA22, NULL, pixel)
       && check_box_grey(pixel, converted, "gamma 2.2 content box average");
+  return ok;
+}
+
+// At 1.5:1 a pixel covers one whole texel and half of the next. The box must
+// weight them 2:1 by area and average in light: a lone white texel on black
+// reports linear 2/3 (213) on the pixel holding it whole and 1/3 (156) where it
+// is split, never an encoded blend or a tap that reaches outside the footprint.
+// The light a dark stem removes must not depend on where the stem starts.
+static bool test_box_downsample_area(struct fixture* fixture) {
+  static const uint8_t black[4] = {0, 0, 0, 255};
+  static const uint8_t white[4] = {255, 255, 255, 255};
+  uint8_t pixels[4][4] = {{0}};
+  bool ok = true;
+
+  const uint8_t (*whole)[4] = (const uint8_t[3][4]){
+      {255, 255, 255, 255},
+      {0, 0, 0, 255},
+      {0, 0, 0, 255},
+  };
+  ok = render_box_row(fixture, whole, 3, 2, WLR_COLOR_TRANSFER_FUNCTION_SRGB, NULL, pixels)
+      && check_box_grey(pixels[0], to_u8(linear_to_srgb(2.0f / 3.0f)), "texel covered whole")
+      && check_box_grey(pixels[1], 0, "footprint without the texel");
+
+  const uint8_t (*split)[4] = (const uint8_t[3][4]){
+      {0, 0, 0, 255},
+      {255, 255, 255, 255},
+      {0, 0, 0, 255},
+  };
+  ok = ok
+      && render_box_row(fixture, split, 3, 2, WLR_COLOR_TRANSFER_FUNCTION_SRGB, NULL, pixels)
+      && check_box_grey(pixels[0], to_u8(linear_to_srgb(1.0f / 3.0f)), "texel split, first half")
+      && check_box_grey(pixels[1], to_u8(linear_to_srgb(1.0f / 3.0f)), "texel split, second half");
+
+  // A two-texel black stem on white, six texels into four pixels, at each
+  // start: the removed light stays 2/1.5 pixels.
+  for (int start = 0; ok && start < 5; start++) {
+    uint8_t row[6][4];
+    for (int texel = 0; texel < 6; texel++) {
+      memcpy(row[texel], texel == start || texel == start + 1 ? black : white, sizeof(row[texel]));
+    }
+    ok = render_box_row(fixture, row, 6, 4, WLR_COLOR_TRANSFER_FUNCTION_SRGB, NULL, pixels);
+    float ink = 0.0f;
+    for (int pixel = 0; ok && pixel < 4; pixel++) {
+      ink += 1.0f - srgb_to_linear(pixels[pixel][0] / 255.0f);
+    }
+    if (ok && fabsf(ink - (2.0f / 1.5f)) > 0.02f) {
+      fprintf(stderr, "stem at texel %d removes %.3f pixels of light, expected %.3f\n", start, ink, 2.0f / 1.5f);
+      ok = false;
+    }
+  }
   return ok;
 }
 
@@ -3663,6 +3721,8 @@ int main(int argc, char* argv[]) {
     ok = test_optimized_blur_copy_failure(&fixture);
   } else if (strcmp(argv[1], "box-downsample-curves") == 0) {
     ok = test_box_downsample_curves(&fixture);
+  } else if (strcmp(argv[1], "box-downsample-area") == 0) {
+    ok = test_box_downsample_area(&fixture);
   } else if (strcmp(argv[1], "gamma22-to-srgb") == 0) {
     ok = test_gamma22_to_srgb(&fixture);
   } else if (strcmp(argv[1], "pq-roundtrip") == 0) {

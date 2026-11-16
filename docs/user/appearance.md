@@ -113,7 +113,7 @@ With `opaque_fullscreen = false`, a fullscreen window that is translucent shows 
 
 X11 bounding-shape cutouts show what is behind the window with either `opaque_fullscreen` setting.
 
-`downsample` picks the sampling method whenever content shrinks: the [render_scale supersample](outputs.md#supersampling-with-render_scale) downsample, a window scaled down while it animates, or a thumbnail. `box` averages each destination pixel's source footprint on a fixed 4x4 grid: exact for integer ratios up to 4:1, every texel weighed up to 8:1, and above that some texels fall between taps. `bilinear` takes one interpolated sample per pixel and `nearest` the closest texel, so both alias more. A reload applies the method immediately, including to a capture already in progress.
+`downsample` picks the sampling method whenever content shrinks: the [render_scale supersample](outputs.md#supersampling-with-render_scale) downsample, a window scaled down while it animates, or a thumbnail. `box` averages each destination pixel's source footprint in linear light. Up to 4:1 every texel counts by the area it covers, at any ratio. Above 4:1 a fixed 4x4 grid samples the footprint: every texel is weighed up to 8:1, and above that some texels fall between taps. `bilinear` takes one interpolated sample per pixel and `nearest` the closest texel, so both alias more. A reload applies the method immediately, including to a capture already in progress.
 
 Set `prefer_no_csd = false` to let newly connected applications draw their own decorations. Restart applications after changing it because decoration protocol availability is fixed when an application connects.
 

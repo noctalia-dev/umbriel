@@ -195,3 +195,43 @@ fi
 expect_pair "capped box spans the footprint" 175 118 118 175
 
 echo "capped box grid spans the full minification footprint"
+
+# Non-integer ratio: render_scale 1.5 on a scale-1.0 output draws 1.5 texels
+# into every pixel, the ratio of a 4/3 output supersampled at 2.0. Each pixel
+# covers green and blue texels only, so an area average in light makes the two
+# channels' linear values add up to one whatever the pixel's phase, with
+# neither pure. Bilinear taps blend encoded neighbours and lose that sum.
+mapped_before=$(grep -c '^mapped ' "$CLIENT_LOG")
+sed -i 's/scale = 0.8/scale = 1.0/; s/render_scale = 4.0/render_scale = 1.5/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+await_lines "$CLIENT_LOG" 'mapped ' "$((mapped_before + 1))" 0.05
+presented=$(grep '^mapped ' "$CLIENT_LOG" | tail -1)
+if [[ $presented != *"scale 180/120"* ]]; then
+  echo "the client did not render at render_scale 1.5 ($presented)"
+  exit 1
+fi
+"$UMBRIEL" settle > /dev/null
+IMAGE="$UMBRIEL_RUNTIME_DIR/downsample-box-fraction.png"
+GRIM=(grim -o HEADLESS-1)
+# Linear light of one 8-bit sRGB channel, in thousandths.
+linear_milli() {
+  awk -v c="$1" 'BEGIN { v = c / 255; v = v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ^ 2.4; printf "%d", v * 1000 + 0.5 }'
+}
+area_conserved() {
+  local px=$1 red green blue g b
+  read -r red green blue < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" pixel "$px" 190)
+  [[ $green =~ ^[0-9]+$ && $blue =~ ^[0-9]+$ ]] || return 1
+  g=$(linear_milli "$green")
+  b=$(linear_milli "$blue")
+  ((g + b >= 980 && g + b <= 1020 && g >= 300 && b >= 300))
+}
+for _ in $(seq 30); do
+  "${GRIM[@]}" "$IMAGE"
+  if area_conserved 200 && area_conserved 201 && area_conserved 202; then
+    echo "box conserves light at a non-integer ratio"
+    exit 0
+  fi
+  sleep 0.1
+done
+echo "box at 1.5:1 does not conserve light: px 200..202 show $(pixel 200 190) / $(pixel 201 190) / $(pixel 202 190)"
+exit 1

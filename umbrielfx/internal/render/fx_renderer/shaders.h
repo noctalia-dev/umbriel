@@ -154,6 +154,8 @@ struct tex_shader {
   GLint sample_bounds;
 
   // Only used for the downsample (box) variants
+  GLint box_ratio;
+  GLint box_texture_size;
   GLint taps;
   GLint tap_step;
   GLint box_tf;

@@ -306,6 +306,8 @@ bool link_tex_program(
 
   shader->discard_transparent = glGetUniformLocation(prog, "discard_transparent");
   shader->sample_bounds = sample_clamp ? glGetUniformLocation(prog, "sample_bounds") : -1;
+  shader->box_ratio = downsample ? glGetUniformLocation(prog, "box_ratio") : -1;
+  shader->box_texture_size = downsample ? glGetUniformLocation(prog, "box_texture_size") : -1;
   shader->taps = downsample ? glGetUniformLocation(prog, "taps") : -1;
   shader->tap_step = downsample ? glGetUniformLocation(prog, "tap_step") : -1;
   shader->box_tf = downsample ? glGetUniformLocation(prog, "box_tf") : -1;
