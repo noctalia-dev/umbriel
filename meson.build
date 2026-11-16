@@ -173,6 +173,25 @@ input_capture_protocol_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
+global_shortcuts_server_h = custom_target(
+  'umbriel-global-shortcuts-v1-server-protocol.h',
+  input: 'protocols/umbriel-global-shortcuts-v1.xml',
+  output: 'umbriel-global-shortcuts-v1-server-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
+global_shortcuts_client_h = custom_target(
+  'umbriel-global-shortcuts-v1-client-protocol.h',
+  input: 'protocols/umbriel-global-shortcuts-v1.xml',
+  output: 'umbriel-global-shortcuts-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+global_shortcuts_protocol_c = custom_target(
+  'umbriel-global-shortcuts-v1-protocol.c',
+  input: 'protocols/umbriel-global-shortcuts-v1.xml',
+  output: 'umbriel-global-shortcuts-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
 # umbrielfx's vendored layer-shell scene helper needs this server header, so it
 # is generated before the subdir that consumes it.
 layer_shell_protocol_h = custom_target(
@@ -831,6 +850,7 @@ core_sources = files(
   'src/input/input_capture.cpp',
   'src/input/input_capture_permissions.cpp',
   'src/input/global_shortcuts.cpp',
+  'src/input/global_shortcuts_bridge.cpp',
   'src/input/global_shortcuts_store.cpp',
   'src/input/eis_socket.cpp',
   'src/xwayland/window.cpp',
@@ -920,6 +940,8 @@ umbriel_core = static_library(
   core_sources + [
     input_capture_server_h,
     input_capture_protocol_c,
+    global_shortcuts_server_h,
+    global_shortcuts_protocol_c,
     toplevel_drag_server_h,
     toplevel_drag_c,
     xdg_shell_client_c,

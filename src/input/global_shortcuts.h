@@ -44,6 +44,8 @@ namespace umbriel {
     std::string preferredTrigger;
   };
 
+  bool validGlobalShortcutRequest(const GlobalShortcutRequest& shortcut);
+
   enum class GlobalShortcutSource : uint8_t { None, Config, Stored, Preferred };
   enum class GlobalShortcutConflict : uint8_t { None, Unassigned, Disabled, Reserved, InUse };
 
@@ -82,6 +84,7 @@ namespace umbriel {
   class GlobalShortcutsRegistry {
   public:
     [[nodiscard]] std::optional<GlobalShortcutSessionId> createSession(std::string_view application);
+    bool canRestore(GlobalShortcutSessionId id) const;
     // Grant snapshots must come from a successful store restore or physical approval.
     [[nodiscard]] bool restore(GlobalShortcutSessionId id, std::optional<GlobalShortcutGrant> grant);
     [[nodiscard]] std::optional<GlobalShortcutBind>

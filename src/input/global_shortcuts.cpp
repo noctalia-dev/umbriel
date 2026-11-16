@@ -70,6 +70,12 @@ namespace umbriel {
 
   bool validGlobalShortcutId(std::string_view value) { return !value.empty() && validText(value, 256); }
 
+  bool validGlobalShortcutRequest(const GlobalShortcutRequest& shortcut) {
+    return validGlobalShortcutId(shortcut.id)
+        && validText(shortcut.description, 1024)
+        && validText(shortcut.preferredTrigger, 256);
+  }
+
   bool validGlobalShortcutList(std::span<const GlobalShortcut> shortcuts, bool boundOnly, size_t maxCount) {
     if (shortcuts.size() > maxCount) {
       return false;
@@ -119,15 +125,19 @@ namespace umbriel {
     return id;
   }
 
-  bool GlobalShortcutsRegistry::restore(GlobalShortcutSessionId id, std::optional<GlobalShortcutGrant> grant) {
+  bool GlobalShortcutsRegistry::canRestore(GlobalShortcutSessionId id) const {
     const auto found = m_sessions.find(id);
-    if (found == m_sessions.end()
-        || found->second.restoreAttempted
-        || found->second.listed
-        || found->second.state.bindAttempted) {
+    return found != m_sessions.end()
+        && !found->second.restoreAttempted
+        && !found->second.listed
+        && !found->second.state.bindAttempted;
+  }
+
+  bool GlobalShortcutsRegistry::restore(GlobalShortcutSessionId id, std::optional<GlobalShortcutGrant> grant) {
+    if (!canRestore(id)) {
       return false;
     }
-    auto& session = found->second;
+    auto& session = m_sessions.at(id);
     session.restoreAttempted = true;
     if (!grant || !validGlobalShortcutGrant(*grant) || grant->application != session.state.application) {
       return false;
@@ -185,10 +195,7 @@ namespace umbriel {
     }
     std::set<std::string_view> ids;
     for (const auto& shortcut : shortcuts) {
-      if (!validGlobalShortcutId(shortcut.id)
-          || !validText(shortcut.description, 1024)
-          || !validText(shortcut.preferredTrigger, 256)
-          || !ids.insert(shortcut.id).second) {
+      if (!validGlobalShortcutRequest(shortcut) || !ids.insert(shortcut.id).second) {
         return std::nullopt;
       }
     }
