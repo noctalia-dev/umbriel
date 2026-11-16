@@ -339,12 +339,7 @@ namespace umbriel {
     refocusFallback(nullptr);
   }
 
-  void FocusManager::refocus(Output* preferred) { refocusExplicit(preferred); }
-
-  void FocusManager::refocusExplicit(Output* preferred) {
-    if (m_server.sessionLocked()) {
-      return;
-    }
+  void FocusManager::refocus(Output* preferred) {
     // If a scratchpad is open and it already has focus, don't steal it.
     auto* surface = m_server.seat()->wlr()->keyboard_state.focused_surface;
     auto* focused = View::fromSurface(surface);
@@ -364,8 +359,15 @@ namespace umbriel {
     if (pad != nullptr && pad->refocusActive(scratchpadOutput)) {
       return;
     }
-    if (pad != nullptr) {
-      pad->deactivateOn(scratchpadOutput);
+    refocusExplicit(preferred);
+  }
+
+  void FocusManager::refocusExplicit(Output* preferred) {
+    if (m_server.sessionLocked()) {
+      return;
+    }
+    if (ScratchpadManager* pad = m_server.scratchpadManager()) {
+      pad->deactivateOn(preferred != nullptr ? preferred : m_server.outputFromWlr(m_server.preferredOutput()));
     }
     if (LayerSurface* layer = exclusiveKeyboardLayer()) {
       layer->focus();
