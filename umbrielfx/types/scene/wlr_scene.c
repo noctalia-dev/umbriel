@@ -6825,9 +6825,26 @@ static bool scene_output_build_state(
       .signal_timeline = scene_output->in_timeline,
       .signal_point = scene_output->in_point,
   };
-  struct wlr_render_pass* render_pass = wlr_renderer_is_fx(output->renderer)
-      ? fx_renderer_begin_output_buffer_pass(output, buffer, &pass_options)
-      : wlr_renderer_begin_buffer_pass(output->renderer, buffer, &pass_options);
+
+  bool blur_composition = false;
+  if (is_scene_blur_enabled(&scene_output->scene->blur_data)) {
+    for (int i = 0; i < list_len; i++) {
+      const enum wlr_scene_node_type type = list_data[i].node->type;
+      if (type == WLR_SCENE_NODE_BLUR || type == WLR_SCENE_NODE_OPTIMIZED_BLUR) {
+        blur_composition = true;
+        break;
+      }
+    }
+  }
+
+  struct wlr_render_pass* render_pass;
+  if (wlr_renderer_is_fx(output->renderer)) {
+    render_pass = blur_composition ? fx_renderer_begin_offscreen_output_buffer_pass(output, buffer, &pass_options)
+                                   : fx_renderer_begin_output_buffer_pass(output, buffer, &pass_options);
+  } else {
+    render_pass = wlr_renderer_begin_buffer_pass(output->renderer, buffer, &pass_options);
+  }
+
   if (render_pass == NULL) {
     wlr_buffer_unlock(buffer);
 
