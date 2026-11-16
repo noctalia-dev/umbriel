@@ -1,12 +1,3 @@
-# Umbriel
-
-A Wayland compositor designed for daily use, with scrolling, dwindle, master, and stacking layouts, per-output workspaces, window rules, blur, shadows, and fluid animations.
-
-It runs independently and pairs with [Noctalia](https://github.com/noctalia-dev/noctalia), which provides a first-class desktop shell on top. Under the hood: C++23, [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots), and `umbrielfx`, an in-tree hard fork of [SceneFX](https://github.com/wlrfx/scenefx).
-
-> [!IMPORTANT]
-> The project is young and actively evolving. It is usable today, but configuration keys, keybinds, and behavior may change between releases, and rough edges remain. Current defaults are opinions, not stability promises.
-
 <p align="center">
   <img src="https://assets.noctalia.dev/?file=umbriel.svg" alt="Umbriel Logo" style="width: 192px" />
 </p>
@@ -19,6 +10,15 @@ It runs independently and pairs with [Noctalia](https://github.com/noctalia-dev/
     <img src="https://img.shields.io/badge/discord-fbf099?style=for-the-badge&logo=discord&logoColor=110f3d&labelColor=fbf099" alt="Discord" />
   </a>
 </p>
+
+# Umbriel
+
+A Wayland compositor designed for daily use, with scrolling, dwindle, master, and stacking layouts, per-output workspaces, window rules, blur, shadows, and fluid animations.
+
+It runs independently and pairs with [Noctalia](https://github.com/noctalia-dev/noctalia), which provides a first-class desktop shell on top. Under the hood: C++23, [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots), and `umbrielfx`, an in-tree hard fork of [SceneFX](https://github.com/wlrfx/scenefx).
+
+> [!IMPORTANT]
+> The project is young and actively evolving. It is usable today, but configuration keys, keybinds, and behavior may change between releases, and rough edges remain. Current defaults are opinions, not stability promises.
 
 ## Why Umbriel?
 
