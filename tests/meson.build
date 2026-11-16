@@ -45,6 +45,7 @@ unit_tests = [
   ['global-shortcut-trigger', ['unit/global_shortcut_trigger.cpp'], []],
   ['global-shortcuts-registry', ['unit/global_shortcuts_registry.cpp'], [umbriel_core_dep]],
   ['global-shortcuts-input', ['unit/global_shortcuts_input.cpp'], [umbriel_core_dep]],
+  ['shortcut-approval', ['unit/shortcut_approval.cpp'], [umbriel_core_dep]],
   ['global-shortcuts-store', ['unit/global_shortcuts_store.cpp'], [umbriel_core_dep], [], ['-Wl,--wrap=renameat']],
   ['global-shortcuts-bridge', ['unit/global_shortcuts_bridge.cpp', global_shortcuts_client_h], [umbriel_core_dep]],
   ['xcursor-matcher', ['unit/xcursor_matcher.cpp'], []],

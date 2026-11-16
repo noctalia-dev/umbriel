@@ -4,6 +4,8 @@ The compositor owns shortcut resolution, durable approval, and input delivery. T
 
 A session can restore a compositor-issued credential scoped to its application and approved shortcut IDs. Restoration rotates the credential before reporting success. A claimed application name alone grants no authority. The bridge fails binds needing fresh approval when no authorization handler is installed.
 
+The approval layout measures complete pages with the text renderer before allocating their buffers. Each page includes the application label and review controls within the available panel dimensions. Its contiguous content ranges preserve every shortcut ID, description, candidate, and conflict reason, with breaks only at grapheme boundaries. Control and formatting characters in requester text are replaced before layout; markup is escaped. Only the final page carries the approval action. Reflow creates a new layout starting at the first content range.
+
 Only successful live bindings participate in matching. Configured default-submap keybinds, Ctrl+Alt+Escape, and VT-switch chords are reserved. Live ownership follows successful bind order, with request order breaking ties. Closing an owner promotes approved waiters and publishes complete replacement snapshots, including empty snapshots.
 
 Every keyboard event is observed before capture or confirmation can return. Matching happens after configured press and release bindings. The configured bindings and global shortcuts share keysym matching, including the layout fallback and removal of Caps Lock and Num Lock masks. Input-method-owned keyboard echoes cannot activate a second shortcut.
