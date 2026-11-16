@@ -53,7 +53,10 @@ keys() {
 # A claimed application name cannot inherit the fixture's durable approval.
 send 'new org.test.App' 'add talk CTRL+m' bind
 sync_bridge unapproved
-expect_count "$LOG" 'bound session=0 .*status=2' 1
+expect_count "$LOG" 'bound session=0 ' 0
+"$UMBRIEL_POINTER_CLIENT" 1280 720 click 272
+sync_bridge cancelled
+expect_count "$LOG" 'bound session=0 .*status=1' 1
 send 'new org.test.App' "restore $TOKEN" 'add talk CTRL+m' 'add reserved CTRL+n' bind list
 sync_bridge restored
 expect_count "$LOG" 'restored session=1 .*status=0' 1

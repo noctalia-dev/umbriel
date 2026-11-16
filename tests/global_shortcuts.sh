@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Backend-boundary input in a private compositor verifies capture handoff without touching the host session.
+# Backend-boundary input verifies approval and capture handoff in a private compositor.
 set -euo pipefail
+trap 'echo "global shortcut check failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 umask 077
 readonly BUILD=$(realpath "${1:?usage: global_shortcuts.sh BUILD_DIRECTORY}")
 readonly RUNTIME=$(mktemp -d /tmp/umbriel-shortcuts-input.XXXXXXXX)
 readonly CLIENT=$BUILD/tests/global-shortcuts-client
 readonly COMPOSITOR=$BUILD/tests/input-capture-compositor
+readonly UMBRIEL=$BUILD/umbriel
 readonly REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 PIDS=()
 SUCCESS=0
@@ -13,7 +15,7 @@ cleanup() {
   local pid
   for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
   for pid in "${PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
-  if ((SUCCESS)); then
+  if ((SUCCESS)) && [[ ${UMBRIEL_SHORTCUTS_KEEP_LOGS:-0} != 1 ]]; then
     rm -rf "$RUNTIME"
   else
     echo "global shortcut input logs retained in $RUNTIME"
@@ -81,7 +83,187 @@ expect_count() {
   fi
 }
 
-activations=0
+send() { printf '%s\n' "$@" >&"$shortcut_fd"; }
+next_session=1
+new_session() {
+  SESSION=$next_session
+  next_session=$((next_session + 1))
+  send "new $1" "credential $RUNTIME/credential-$SESSION"
+}
+request() {
+  new_session "$1"
+  send 'add requested F17' bind
+  sync_bridge "request-$SESSION"
+}
+status_serial=0
+review_status() {
+  status_serial=$((status_serial + 1))
+  physical "shortcut-status $status_serial"
+  await_events "$RUNTIME/compositor.log" "shortcut-status tag=$status_serial " 1
+  read -r VISIBLE PAGE PAGES < <(sed -n -E \
+    "s/^shortcut-status tag=$status_serial visible=([^ ]+) page=([0-9]+) pages=([0-9]+)$/\\1 \\2 \\3/p" \
+    "$RUNTIME/compositor.log" | tail -1)
+}
+bound() { await_events "$RUNTIME/shortcuts.log" "bound session=$1 .*status=$2" 1; }
+snapshot() {
+  if [[ ${UMBRIEL_SHORTCUTS_SCREENSHOTS:-0} == 1 ]]; then
+    "$UMBRIEL" settle
+    grim "$RUNTIME/$1.png"
+  fi
+}
+
+# A held Enter and virtual keys cannot decide a new application's approval.
+physical 'press 28'
+sync_bridge held-enter
+request org.test.Fresh
+review_status
+[[ $VISIBLE == true && $PAGE == 1 && $PAGES == 1 ]]
+snapshot approval-first
+"$BUILD/tests/pointer-client" 1280 720 keyboard-only tap 28 tap 1
+physical 'press 28'
+sync_bridge blocked-enter
+expect_count "bound session=$SESSION " 0
+review_status
+[[ $VISIBLE == true && $PAGE == 1 ]]
+physical 'release 28'
+await_events "$RUNTIME/local.log" 'keyboard-key code=28 state=released' 1
+[[ $(events "$RUNTIME/local.log" 'keyboard-key code=28 state=pressed') == \
+   $(events "$RUNTIME/local.log" 'keyboard-key code=28 state=released') ]]
+physical 'tap 28'
+bound "$SESSION" 0
+[[ -s $RUNTIME/credential-$SESSION ]]
+send close
+
+# Each page needs a distinct physical press, and resizing restarts review.
+new_session org.test.Pages
+send 'add-many 6 800' bind
+sync_bridge paginated
+review_status
+[[ $VISIBLE == true && $PAGES -gt 1 && $PAGE == 1 ]]
+physical 'press 28'
+sync_bridge advanced
+review_status
+[[ $PAGE == 2 ]]
+physical 'press 28'
+"$BUILD/tests/pointer-client" 1280 720 keyboard-only tap 28
+sync_bridge repeated
+review_status
+[[ $PAGE == 2 ]]
+expect_count "bound session=$SESSION " 0
+physical 'release 28' 'output-mode 700 500'
+sync_bridge resized
+"$UMBRIEL" settle
+review_status
+[[ $VISIBLE == true && $PAGE == 1 && $PAGES -gt 1 ]]
+while ((PAGE < PAGES)); do
+  physical 'tap 28'
+  sync_bridge "page-$PAGE"
+  review_status
+done
+expect_count "bound session=$SESSION " 0
+snapshot approval-final
+physical 'tap 28'
+bound "$SESSION" 0
+jq -e '[.grants[] | select(.application == "org.test.Pages") | .approved | length] == [6]' \
+  "$XDG_STATE_HOME/umbriel/global-shortcuts.json" > /dev/null
+send close
+physical 'output-mode 1280 720'
+sync_bridge restored-mode
+"$UMBRIEL" settle
+
+# Cancellation does not persist a denial and cannot leave late approval behind.
+request org.test.Cancelled
+physical 'tap 1'
+bound "$SESSION" 1
+expect_count "grant session=$SESSION " 0
+send close
+request org.test.Cancelled
+physical 'tap 28'
+bound "$SESSION" 0
+send close
+request org.test.ClientCancel
+send cancel
+sync_bridge client-cancel
+bound "$SESSION" 1
+review_status
+[[ $VISIBLE == false ]]
+physical 'tap 28'
+sync_bridge late-enter
+expect_count "grant session=$SESSION " 0
+send close
+request org.test.Destroyed
+send close
+sync_bridge destroyed
+review_status
+[[ $VISIBLE == false ]]
+physical 'tap 28'
+sync_bridge destroyed-enter
+expect_count "grant session=$SESSION " 0
+
+# Existing modals and another pending review fail contention without changing its owner.
+"$UMBRIEL" msg session-quit > /dev/null
+request org.test.Busy
+bound "$SESSION" 2
+physical status
+await_events "$RUNTIME/compositor.log" 'status confirmation=1 ' 1
+send close
+physical 'tap 1'
+request org.test.Busy
+physical 'tap 28'
+bound "$SESSION" 0
+send close
+request org.test.First
+first=$SESSION
+request org.test.Second
+bound "$SESSION" 2
+review_status
+[[ $VISIBLE == true ]]
+physical 'tap 28'
+bound "$first" 0
+expect_count "grant session=$SESSION " 0
+send close "select $first" close
+
+# Reload invalidates the candidates, while output loss fails pending review.
+request org.test.Reload
+"$UMBRIEL" msg config-reload > /dev/null
+bound "$SESSION" 2
+physical 'tap 28'
+sync_bridge reload-enter
+expect_count "grant session=$SESSION " 0
+send close
+request org.test.Small
+physical 'output-mode 240 180'
+sync_bridge too-small
+"$UMBRIEL" settle
+bound "$SESSION" 2
+send close
+request org.test.Small
+bound "$SESSION" 2
+review_status
+[[ $VISIBLE == false ]]
+send close
+physical 'output-mode 1280 720'
+sync_bridge usable-again
+"$UMBRIEL" settle
+
+# Lock preparation cancels pending consent, and locked sessions cannot prompt.
+request org.test.Lock
+mkfifo "$RUNTIME/lock"
+exec {lock_fd}<> "$RUNTIME/lock"
+"$BUILD/tests/lock-client" --defer-commit <&"$lock_fd" > "$RUNTIME/lock.log" 2>&1 &
+PIDS+=("$!")
+await_events "$RUNTIME/lock.log" configured 1
+bound "$SESSION" 2
+send close
+printf 'commit\n' >&"$lock_fd"
+await_events "$RUNTIME/lock.log" locked 1
+request org.test.Locked
+bound "$SESSION" 2
+send close
+printf 'unlock\n' >&"$lock_fd"
+await_events "$RUNTIME/lock.log" unlocked 1
+
+activations=$(events "$RUNTIME/shortcuts.log" activated)
 for capability in 2 1; do
   capture new-session "application org.test.Capture$capability" "load-grant $RUNTIME/capture-$capability" "start $capability 2"
   await_events "$RUNTIME/capture.log" 'started .*status=0' "$((3 - capability))"
@@ -109,11 +291,12 @@ for capability in 2 1; do
   zones=$(events "$RUNTIME/capture.log" 'zones request=')
   capture disable zones
   await_events "$RUNTIME/capture.log" 'zones request=' "$((zones + 1))"
+  markers=$(events "$RUNTIME/local.log" 'keyboard-key code=30 state=released')
   physical 'release 29' 'press 29' 'tap 50' 'release 29' 'tap 30'
   activations=$((activations + 1))
   await_events "$RUNTIME/shortcuts.log" activated "$activations"
   await_events "$RUNTIME/shortcuts.log" deactivated "$activations"
-  await_events "$RUNTIME/local.log" 'keyboard-key code=30 state=released' "$((3 - capability))"
+  await_events "$RUNTIME/local.log" 'keyboard-key code=30 state=released' "$((markers + 1))"
   presses=$(events "$RUNTIME/local.log" 'keyboard-key code=50 state=pressed')
   releases=$(events "$RUNTIME/local.log" 'keyboard-key code=50 state=released')
   if ((presses != releases)); then
@@ -128,4 +311,4 @@ physical quit
 await_events "$RUNTIME/shortcuts.log" deactivated "$activations"
 wait "$COMPOSITOR_PID"
 SUCCESS=1
-echo "keyboard and pointer capture retire held shortcuts and require fresh input after handoff"
+echo "physical shortcut approval, page review, cancellation, and capture handoff passed"

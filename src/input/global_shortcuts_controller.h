@@ -1,5 +1,7 @@
 #pragma once
 
+#include "input/global_shortcuts_bridge.h"
+
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -24,6 +26,9 @@ namespace umbriel {
     void forgetSource(const void* source);
     void suspend();
     void refreshConfig();
+    void setAuthorize(GlobalShortcutsBridge::AuthorizationRequest request);
+    void setAuthorizationCancelled(GlobalShortcutsBridge::AuthorizationCancelled cancelled);
+    void authorizeSession(GlobalShortcutSessionId id, GlobalShortcutsBridge::Authorization authorization);
 
   private:
     struct Impl;

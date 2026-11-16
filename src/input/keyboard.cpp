@@ -39,6 +39,9 @@ namespace umbriel {
       case QuitConfirm::Kind::InputCapture:
         server.confirmInputCapture(rememberCapture);
         return;
+      case QuitConfirm::Kind::GlobalShortcuts:
+        server.confirmGlobalShortcuts();
+        return;
       }
     }
   } // namespace
@@ -54,6 +57,7 @@ namespace umbriel {
       m_server->inputMethodRelay()->canonicalizeOwnedKeyboardKeymap(m_keyboard);
     }
     applyConfig();
+    m_pressedKeycodes.insert(m_keyboard->keycodes, m_keyboard->keycodes + m_keyboard->num_keycodes);
     m_modifiers.notify = onModifiers;
     wl_signal_add(&m_keyboard->events.modifiers, &m_modifiers);
     m_key.notify = onKey;
@@ -312,7 +316,7 @@ namespace umbriel {
   }
 
   bool Keyboard::handleConfirmationPress(
-      std::span<const uint32_t> keysyms, uint32_t rawKeysym, uint32_t modifiers, bool modifierOnly
+      std::span<const uint32_t> keysyms, uint32_t rawKeysym, uint32_t modifiers, bool modifierOnly, bool freshPress
   ) {
     QuitConfirm* confirm = m_server->quitConfirm();
     if (confirm == nullptr || !confirm->visible() || modifierOnly) {
@@ -329,6 +333,16 @@ namespace umbriel {
     }
     if (rememberCapture) {
       confirmDialog(*m_server, confirm->kind(), true);
+      return true;
+    }
+    if (confirm->kind() == QuitConfirm::Kind::GlobalShortcuts) {
+      if (!m_virtual && freshPress) {
+        if (enterPressed) {
+          m_server->confirmGlobalShortcuts();
+        } else {
+          m_server->dismissConfirmation();
+        }
+      }
       return true;
     }
 
@@ -350,12 +364,23 @@ namespace umbriel {
 
   void Keyboard::handleKey(void* data) {
     auto* event = static_cast<wlr_keyboard_key_event*>(data);
+    const bool freshPress =
+        event->state == WL_KEYBOARD_KEY_STATE_PRESSED ? m_pressedKeycodes.insert(event->keycode).second : false;
+    if (event->state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+      m_pressedKeycodes.erase(event->keycode);
+    }
     bool shortcutConsumed = false;
     if (GlobalShortcuts* shortcuts = m_server->globalShortcuts()) {
       shortcutConsumed =
           shortcuts->observeKey(this, event->keycode, event->time_msec, event->state == WL_KEYBOARD_KEY_STATE_PRESSED);
       if (shortcutConsumed && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         m_consumedKeycodes.insert(event->keycode);
+        return;
+      }
+    }
+    if (!freshPress && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+      const auto* confirm = m_server->quitConfirm();
+      if (confirm != nullptr && confirm->visible() && confirm->kind() == QuitConfirm::Kind::GlobalShortcuts) {
         return;
       }
     }
@@ -389,8 +414,11 @@ namespace umbriel {
     // An XF86 key can arrive from a dedicated hotkey device while its modifiers are held on the main keyboard. Match
     // against the combined seat-wide state so those chords behave like keys on one device.
     uint32_t modifiers = m_server->keyboardModifiers(true);
-    if (QuitConfirm* confirm = m_server->quitConfirm();
-        confirm != nullptr && confirm->visible() && confirm->kind() == QuitConfirm::Kind::InputCapture && m_virtual) {
+    if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr
+        && confirm->visible()
+        && m_virtual
+        && (confirm->kind() == QuitConfirm::Kind::InputCapture
+            || confirm->kind() == QuitConfirm::Kind::GlobalShortcuts)) {
       if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         m_consumedKeycodes.insert(event->keycode);
       } else {
@@ -453,7 +481,8 @@ namespace umbriel {
       // Enter or a matching press action confirms; release bindings never confirm.
       // Input capture can also offer R to remember approval. Modifier-only presses keep held chords intact.
       const bool confirmationConsumed = handleConfirmationPress(
-          std::span<const uint32_t>(syms, nsyms > 0 ? static_cast<size_t>(nsyms) : 0), rawSym, modifiers, modifierOnly
+          std::span<const uint32_t>(syms, nsyms > 0 ? static_cast<size_t>(nsyms) : 0), rawSym, modifiers, modifierOnly,
+          freshPress
       );
       handled = handled || confirmationConsumed;
       std::optional<Keybind> matched;

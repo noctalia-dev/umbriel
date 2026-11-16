@@ -2,9 +2,11 @@
 
 The compositor owns shortcut resolution, durable approval, and input delivery. The private `umbriel_global_shortcuts_manager_v1` bridge accepts session, restore, bind, and list operations. It is withheld from security-context clients by the default global filter.
 
-A session can restore a compositor-issued credential scoped to its application and approved shortcut IDs. Restoration rotates the credential before reporting success. A claimed application name alone grants no authority. The bridge fails binds needing fresh approval when no authorization handler is installed.
+A session can restore a compositor-issued credential scoped to its application and approved shortcut IDs. Restoration rotates the credential before reporting success. A claimed application name alone grants no authority. New IDs require the compositor's paginated approval panel. Each page requires a fresh physical Enter; virtual keyboards and emulated keys cannot advance or approve. Only the final page approves the complete request.
 
 The approval layout measures complete pages with the text renderer before allocating their buffers. Each page includes the application label and review controls within the available panel dimensions. Its contiguous content ranges preserve every shortcut ID, description, candidate, and conflict reason, with breaks only at grapheme boundaries. Control and formatting characters in requester text are replaced before layout; markup is escaped. Only the final page carries the approval action. Reflow creates a new layout starting at the first content range.
+
+The panel uses the preferred output's usable area. Geometry, scale, or output changes restart page review. If there is no usable output or the panel cannot render, the request fails. Another modal, active input capture, locking, inactivity, and shutdown also fail approval without queuing a prompt or remembering a denial. A non-modifier physical key other than Enter, or a pointer click, cancels. Configuration reload and client cancellation invalidate pending review before a later Enter can issue a credential.
 
 Only successful live bindings participate in matching. Configured default-submap keybinds, Ctrl+Alt+Escape, and VT-switch chords are reserved. Live ownership follows successful bind order, with request order breaking ties. Closing an owner promotes approved waiters and publishes complete replacement snapshots, including empty snapshots.
 

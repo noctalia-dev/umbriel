@@ -27,6 +27,7 @@ namespace {
     size_t number;
     umbriel_global_shortcuts_session_v1* proxy;
     std::string tokenFile;
+    uint32_t bindRequest = 0;
     Session(State& owner, size_t number, umbriel_global_shortcuts_session_v1* proxy)
         : owner(owner), number(number), proxy(proxy) {}
     ~Session() {
@@ -131,15 +132,34 @@ namespace {
           throw std::runtime_error("cannot load shortcut fixture credential");
         }
         umbriel_global_shortcuts_session_v1_restore(current.proxy, request, token.c_str());
+      } else if (action == "credential") {
+        words >> current.tokenFile;
       } else if (action == "add") {
         std::string id;
         std::string trigger;
         words >> id >> trigger;
+        std::string description;
+        std::getline(words >> std::ws, description);
         umbriel_global_shortcuts_session_v1_add_shortcut(
-            current.proxy, id.c_str(), "Test action", trigger == "-" ? "" : trigger.c_str()
+            current.proxy, id.c_str(), description.empty() ? "Test action" : description.c_str(),
+            trigger == "-" ? "" : trigger.c_str()
         );
+      } else if (action == "add-many") {
+        size_t count = 0;
+        size_t length = 0;
+        if (!(words >> count >> length) || count > umbriel::kMaxGlobalShortcuts || length > 1024) {
+          throw std::runtime_error("invalid shortcut batch fixture");
+        }
+        const std::string description(length, 'x');
+        for (size_t index = 0; index < count; ++index) {
+          const auto id = std::format("review-{:03}", index);
+          umbriel_global_shortcuts_session_v1_add_shortcut(current.proxy, id.c_str(), description.c_str(), "F16");
+        }
       } else if (action == "bind") {
+        current.bindRequest = request;
         umbriel_global_shortcuts_session_v1_bind(current.proxy, request);
+      } else if (action == "cancel") {
+        umbriel_global_shortcuts_session_v1_cancel(current.proxy, current.bindRequest);
       } else if (action == "list") {
         umbriel_global_shortcuts_session_v1_list(current.proxy, request);
       } else if (action == "close") {

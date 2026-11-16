@@ -11,6 +11,7 @@
 #include "wlr.h"
 
 #include <chrono>
+#include <utility>
 #include <vector>
 
 namespace umbriel {
@@ -64,6 +65,17 @@ namespace umbriel {
 
   void GlobalShortcuts::forgetSource(const void* source) { m_impl->bridge.input().forgetSource(source, timeMsec()); }
   void GlobalShortcuts::suspend() { m_impl->bridge.input().suspend(timeMsec()); }
+
+  void GlobalShortcuts::setAuthorize(GlobalShortcutsBridge::AuthorizationRequest request) {
+    m_impl->bridge.setAuthorize(std::move(request));
+  }
+  void GlobalShortcuts::setAuthorizationCancelled(GlobalShortcutsBridge::AuthorizationCancelled cancelled) {
+    m_impl->bridge.setAuthorizationCancelled(std::move(cancelled));
+  }
+  void
+  GlobalShortcuts::authorizeSession(GlobalShortcutSessionId id, GlobalShortcutsBridge::Authorization authorization) {
+    m_impl->bridge.authorizeSession(id, authorization);
+  }
 
   void GlobalShortcuts::refreshConfig() {
     std::vector<GlobalShortcutTrigger> reserved;

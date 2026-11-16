@@ -2035,6 +2035,7 @@ namespace umbriel {
   }
 
   void Server::beginSessionLock(wlr_session_lock_v1* lock) {
+    failGlobalShortcuts();
     if (m_globalShortcuts != nullptr) {
       m_globalShortcuts->suspend();
     }

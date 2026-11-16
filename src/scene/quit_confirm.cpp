@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "input/global_shortcuts_controller.h"
 #include "input/input_capture.h"
+#include "output/output.h"
 #include "scene/border_rect.h"
 #include "scene/color.h"
 #include "scene/text_buffer.h"
@@ -53,17 +54,84 @@ namespace umbriel {
     show(Kind::InputCapture);
   }
 
+  void QuitConfirm::showGlobalShortcuts(
+      std::string_view application, std::span<const GlobalShortcutRegistration> shortcuts
+  ) {
+    m_application = application;
+    m_shortcuts.assign(shortcuts.begin(), shortcuts.end());
+    m_shortcutLayout.reset();
+    m_shortcutPage = 0;
+    show(Kind::GlobalShortcuts);
+  }
+
+  bool QuitConfirm::updateShortcutLayout() {
+    wlr_output* output = m_server.preferredOutput();
+    const Output* owner = m_server.outputFromWlr(output);
+    if (output == nullptr || owner == nullptr || !output->enabled) {
+      m_shortcutLayout.reset();
+      m_shortcutPage = 0;
+      return true;
+    }
+    const auto area = owner->usableArea();
+    const std::array bounds{area.x, area.y, area.width, area.height};
+    const double scale = output->scale;
+    if (m_shortcutLayout && m_shortcutOutput == output && m_shortcutArea == bounds && m_shortcutScale == scale) {
+      return false;
+    }
+    m_shortcutOutput = output;
+    m_shortcutArea = bounds;
+    m_shortcutScale = scale;
+    m_shortcutPage = 0;
+    m_shortcutLayout = layoutShortcutApproval(
+        m_application, m_shortcuts, area.width - 2 * kMargin, area.height - 2 * kMargin, std::max(1.0, std::ceil(scale))
+    );
+    return true;
+  }
+
+  bool QuitConfirm::refreshShortcutApproval() {
+    if (m_kind != Kind::GlobalShortcuts || !updateShortcutLayout()) {
+      return false;
+    }
+    render();
+    if (!visible()) {
+      m_server.failGlobalShortcuts();
+    }
+    return true;
+  }
+
+  bool QuitConfirm::shortcutPageFinal() const {
+    return m_shortcutLayout && m_shortcutLayout->pages.at(m_shortcutPage).final;
+  }
+
+  void QuitConfirm::advanceShortcutPage() {
+    if (!m_shortcutLayout || shortcutPageFinal()) {
+      return;
+    }
+    ++m_shortcutPage;
+    render();
+    if (!visible()) {
+      m_server.failGlobalShortcuts();
+    }
+  }
+
   void QuitConfirm::hide() {
     if (m_tree != nullptr) {
       m_shadow.reset();
       wlr_scene_node_destroy(&m_tree->node);
       m_tree = nullptr;
     }
+    m_shortcuts.clear();
+    m_shortcutLayout.reset();
+    m_shortcutPage = 0;
+    m_shortcutOutput = nullptr;
   }
 
   void QuitConfirm::relayout() {
     if (m_tree != nullptr) {
       render();
+      if (m_kind == Kind::GlobalShortcuts && !visible()) {
+        m_server.failGlobalShortcuts();
+      }
     }
   }
 
@@ -73,6 +141,10 @@ namespace umbriel {
       m_shadow.reset();
       wlr_scene_node_destroy(&m_tree->node);
       m_tree = nullptr;
+    }
+    if (m_kind == Kind::GlobalShortcuts) {
+      renderShortcutApproval();
+      return;
     }
 
     // Determine output scale and dimensions.
@@ -152,7 +224,36 @@ namespace umbriel {
       return;
     }
 
+    renderPanel(rendered, outputBox, haveOutput);
+  }
+
+  void QuitConfirm::renderShortcutApproval() {
+    updateShortcutLayout();
+    if (!m_shortcutLayout) {
+      return;
+    }
+    auto params = m_shortcutLayout->pageParams(m_shortcutPage);
+    params.markup = std::format("<span foreground='{}'>{}</span>", rgbaHex(config().colors.textPrimary), params.markup);
+    auto rendered = renderTextBuffer(params);
+    if (rendered.buffer == nullptr) {
+      return;
+    }
+    if (rendered.logicalWidth > m_shortcutLayout->width || rendered.logicalHeight > m_shortcutLayout->height) {
+      wlr_buffer_drop(rendered.buffer);
+      return;
+    }
+    const wlr_box area{m_shortcutArea[0], m_shortcutArea[1], m_shortcutArea[2], m_shortcutArea[3]};
+    renderPanel(rendered, area, true);
+  }
+
+  void QuitConfirm::renderPanel(TextBufferResult rendered, const wlr_box& outputBox, bool haveOutput) {
     m_tree = wlr_scene_tree_create(m_parent);
+    if (m_tree == nullptr) {
+      wlr_buffer_drop(rendered.buffer);
+      return;
+    }
+    const auto& colors = config().colors;
+    const auto& accent = m_kind == Kind::SessionQuit ? colors.error : colors.warning;
 
     // Shadow, colored border, rounded panel, then text.
     const int cornerRadius = config().appearance.cornerRadius;
@@ -161,6 +262,11 @@ namespace umbriel {
     float borderColor[4]{};
     premultiplied(borderColor, accent, 1.0F);
     wlr_scene_border* panelBorder = wlr_scene_border_create(m_tree, borderColor, borderColor);
+    if (panelBorder == nullptr) {
+      wlr_buffer_drop(rendered.buffer);
+      hide();
+      return;
+    }
     applyBorderGeometry(
         panelBorder, makeBorderRing(rendered.logicalWidth, rendered.logicalHeight, cornerRadius, kBorderWidth, 0),
         kBorderWidth, 0
@@ -170,6 +276,11 @@ namespace umbriel {
     premultiplied(panelColor, colors.background, 1.0F);
     wlr_scene_rect* panelRect =
         wlr_scene_rect_create(m_tree, rendered.logicalWidth, rendered.logicalHeight, panelColor);
+    if (panelRect == nullptr) {
+      wlr_buffer_drop(rendered.buffer);
+      hide();
+      return;
+    }
     wlr_scene_rect_set_corner_radius(panelRect, nestedRadius(cornerRadius, kBorderWidth));
     (void)panelRect;
 
@@ -180,6 +291,9 @@ namespace umbriel {
       // (the click-cancel is global in Cursor::handleButton).
       wlr_scene_buffer_set_dest_size(sceneBuf, rendered.logicalWidth, rendered.logicalHeight);
       sceneBuf->point_accepts_input = [](wlr_scene_buffer*, double*, double*) -> bool { return false; };
+    } else {
+      hide();
+      return;
     }
 
     // Position: centered on both axes of the preferred output.
