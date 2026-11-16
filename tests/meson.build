@@ -43,6 +43,8 @@ unit_tests = [
   ['shortcuts-inhibit', ['unit/shortcuts_inhibit.cpp'], []],
   ['shortcut-keysym', ['unit/shortcut_keysym.cpp'], []],
   ['global-shortcut-trigger', ['unit/global_shortcut_trigger.cpp'], []],
+  ['global-shortcuts-registry', ['unit/global_shortcuts_registry.cpp'], [umbriel_core_dep]],
+  ['global-shortcuts-store', ['unit/global_shortcuts_store.cpp'], [umbriel_core_dep], [], ['-Wl,--wrap=renameat']],
   ['xcursor-matcher', ['unit/xcursor_matcher.cpp'], []],
   ['output-direction', ['unit/output_direction.cpp'], []],
   ['output-identity', ['unit/output_identity.cpp'], []],
