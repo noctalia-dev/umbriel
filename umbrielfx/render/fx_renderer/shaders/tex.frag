@@ -82,11 +82,11 @@ uniform vec4 sample_bounds;
 #endif
 
 #if DOWNSAMPLE
-// Area (box) average for a minified source. Up to 4:1 per axis every texel the
-// fragment's footprint touches is fetched at its center and weighted by the
-// area it covers (box_ratio texels per pixel, at least one). Above that,
-// taps.x times taps.y bilinear samples at ratio/K texel steps tile the
-// footprint instead, which bounds the cost of thumbnails.
+// Area (box) average for a minified source. Along each axis independently, up
+// to 4:1 every texel the fragment's footprint touches is fetched at its center
+// and weighted by the area it covers (box_ratio texels per pixel, at least
+// one). Above 4:1 on an axis, `taps` bilinear samples at ratio/taps texel steps
+// tile that axis instead, which bounds the cost of thumbnails.
 uniform vec2 box_ratio;
 uniform vec2 box_texture_size;
 uniform vec2 taps;
@@ -267,32 +267,51 @@ vec4 encode_linear(vec4 color) {
 #endif
 
 #if DOWNSAMPLE
-// Exact area average: a footprint of at most four texels per axis touches at
-// most five. Each texel is fetched at its center, where the bilinear filter
-// returns it unmixed, and decoded before it is weighted, so encoded values are
-// never blended and the result conserves coverage at every ratio and phase.
-vec4 sample_area() {
-  vec2 center = v_texcoord * box_texture_size;
-  vec2 lo = center - 0.5 * box_ratio;
-  vec2 hi = center + 0.5 * box_ratio;
-  vec2 first = floor(lo);
+// One axis of a footprint: up to 4:1 every texel center the axis touches, with
+// the weight of the area it covers; above that `taps` bilinear samples at
+// ratio/taps texel steps. `box_ratio` texels per pixel, at least one.
+void box_axis_sample(
+    int index, float ratio, float taps, float coord, float size, float step, out float uv, out float weight
+) {
+  if (ratio <= 4.0) {
+    float lo = coord * size - 0.5 * ratio;
+    float texel = floor(lo) + float(index);
+    weight = min(lo + ratio, texel + 1.0) - max(lo, texel);
+    uv = (texel + 0.5) / size;
+  } else {
+    weight = float(index) < taps ? 1.0 / taps : 0.0;
+    uv = coord + (float(index) + 0.5 - taps * 0.5) * step;
+  }
+}
+
+// Exact area average on every axis within 4:1: each texel is fetched at its
+// center, where the bilinear filter returns it unmixed, and decoded before it
+// is weighted, so encoded values are never blended and the result conserves
+// coverage at every ratio and phase. Above 4:1 on an axis the tap grid tiles
+// that axis instead, which bounds the cost of thumbnails. The axes dispatch
+// independently, so an anisotropic draw stays exact on the axis it can.
+vec4 sample_box() {
   vec4 acc = vec4(0.0);
   for (int y = 0; y < 5; y++) {
-    float ty = first.y + float(y);
-    float wy = min(hi.y, ty + 1.0) - max(lo.y, ty);
-    if (wy <= 0.0) {
+    float uv_y, weight_y;
+    box_axis_sample(y, box_ratio.y, taps.y, v_texcoord.y, box_texture_size.y, tap_step.y, uv_y, weight_y);
+    if (weight_y <= 0.0) {
       continue;
     }
     for (int x = 0; x < 5; x++) {
-      float tx = first.x + float(x);
-      float wx = min(hi.x, tx + 1.0) - max(lo.x, tx);
-      if (wx <= 0.0) {
+      float uv_x, weight_x;
+      box_axis_sample(x, box_ratio.x, taps.x, v_texcoord.x, box_texture_size.x, tap_step.x, uv_x, weight_x);
+      if (weight_x <= 0.0) {
         continue;
       }
-      acc += (wx * wy) * sample_linear((vec2(tx, ty) + 0.5) / box_texture_size);
+      acc += (weight_x * weight_y) * sample_linear(vec2(uv_x, uv_y));
     }
   }
-  return encode_linear(acc / (box_ratio.x * box_ratio.y));
+  // A texel-path axis normalizes by the whole covered area, a tap-path axis by
+  // its unit sample weights.
+  float norm_x = box_ratio.x <= 4.0 ? box_ratio.x : 1.0;
+  float norm_y = box_ratio.y <= 4.0 ? box_ratio.y : 1.0;
+  return encode_linear(acc / (norm_x * norm_y));
 }
 #endif
 
@@ -301,20 +320,7 @@ vec4 sample_area() {
 // thins light text on dark backgrounds and fattens dark text on light ones.
 vec4 sample_converted() {
 #if DOWNSAMPLE
-  if (max(box_ratio.x, box_ratio.y) <= 4.0) {
-    return sample_area();
-  }
-  vec4 acc = vec4(0.0);
-  for (int y = 0; y < 4; y++) {
-    for (int x = 0; x < 4; x++) {
-      if (float(x) >= taps.x || float(y) >= taps.y) {
-        continue;
-      }
-      vec2 offset = (vec2(float(x), float(y)) + 0.5 - taps * 0.5) * tap_step;
-      acc += sample_linear(v_texcoord + offset);
-    }
-  }
-  return encode_linear(acc / (taps.x * taps.y));
+  return sample_box();
 #else
   return convert_color(sample_texel(SAMPLE_UV));
 #endif

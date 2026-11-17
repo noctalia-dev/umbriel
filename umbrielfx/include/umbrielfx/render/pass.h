@@ -143,8 +143,9 @@ struct fx_render_texture_options {
   struct wlr_color_transform* decode_transform;
   // Area (box) averaging for a minified source instead of the single-tap
   // fetch. The pass derives the per-axis footprint from the source and
-  // destination extents; up to 4:1 every covered texel is weighted by its
-  // area in linear light. Only set when the draw is actually minifying.
+  // destination extents; up to 4:1 on an axis every texel that axis covers is
+  // weighted by its area in linear light. Only set when the draw is actually
+  // minifying.
   bool downsample_box;
 };
 

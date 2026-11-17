@@ -1992,7 +1992,7 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
 
   // The box footprint is ratio texels per destination pixel on each buffer
   // axis (at least one): the shader weights every texel by the area it covers
-  // up to 4:1, and above that tiles the footprint with K taps per axis at
+  // up to 4:1 on that axis, and above that tiles the axis with K taps at
   // ratio/K texel steps. A rotated draw swaps which destination extent each
   // buffer axis shrinks into, so the ratios derive from the transformed extents.
   float box_ratio_x = 1.0f, box_ratio_y = 1.0f;

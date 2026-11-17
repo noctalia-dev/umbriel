@@ -278,8 +278,11 @@ bool link_quad_grad_round_program(struct quad_grad_round_shader* shader, int max
 bool link_tex_program(
     struct tex_shader* shader, enum fx_tex_shader_source source, bool effects, bool sample_clamp, bool downsample
 ) {
-  GLchar frag_src_part[12288];
-  GLchar frag_src[16384];
+  GLchar frag_src_part[20480];
+  GLchar frag_src[24576];
+  // The four one-digit specifiers grow by one byte each; a tex.frag that
+  // outgrows the buffer is truncated into an unterminated #if.
+  _Static_assert(sizeof(tex_frag_src) + 16 <= sizeof(frag_src_part), "tex.frag does not fit frag_src_part");
   snprintf(frag_src_part, sizeof(frag_src_part), tex_frag_src, source, effects, sample_clamp, downsample);
   snprintf(frag_src, sizeof(frag_src), "%s\n%s\n", frag_src_part, effects ? corner_alpha_frag_src : "");
 
