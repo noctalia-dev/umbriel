@@ -106,13 +106,15 @@ UMBRIEL_TEST(polynomialUniformsPreserveThePhysicalSheet) {
     }
     return rows[0] + v * (rows[1] + v * (rows[2] + v * rows[3]));
   };
-  for (const auto size : {std::array{120.0F, 70.0F}, std::array{2532.0F, 1362.0F}, std::array{7680.0F, 4320.0F}}) {
+  for (const auto size :
+       {std::array{1.0F, 1.0F}, std::array{120.0F, 70.0F}, std::array{2532.0F, 1362.0F},
+        std::array{7680.0F, 4320.0F}}) {
     for (const auto grab : {std::array{0.0F, 0.0F}, std::array{0.25F, 0.8F}, std::array{1.0F, 1.0F}}) {
       DragPhysics physics;
       physics.begin(size[0], size[1], grab[0], grab[1], 1);
-      for (int frame = 0; frame < 24; ++frame) {
-        physics.move(frame % 2 == 0 ? 700.0F : -500.0F, frame % 3 == 0 ? 400.0F : -300.0F);
-        physics.tick(1.0 / 60);
+      for (int frame = 0; frame < 400; ++frame) {
+        physics.move(frame % 2 == 0 ? 900.0F : -900.0F, frame % 3 == 0 ? 700.0F : -700.0F);
+        physics.tick(1.0 / 240);
         const auto polynomial = physics.normalizedPolynomial();
         for (int y = -1; y <= 17; ++y) {
           for (int x = -1; x <= 17; ++x) {

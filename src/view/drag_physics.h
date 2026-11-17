@@ -61,7 +61,7 @@ namespace umbriel {
     Sheet normalizedDisplacement() const;
     // The same normalized bicubic surface in the power basis, row-major in y then x.
     // Evaluate each row with Horner's method in x, then the four results in y.
-    Sheet normalizedPolynomial() const;
+    [[nodiscard]] Sheet normalizedPolynomial() const;
     // Largest displacement in logical pixels.
     float maxDisplacement() const;
     // Largest speed of any mass on either axis, in logical pixels per second.
