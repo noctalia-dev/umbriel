@@ -135,7 +135,19 @@ start_compositor() {
   UMBRIEL_SOCKET=$(sed -n 's/^ready .*socket=\([^ ]*\).*/\1/p' "$COMPOSITOR_LOG" | head -1)
 }
 start_backend() {
-  "$PORTAL_BUILD/xdg-desktop-portal-umbriel" > "$RUNTIME/backend-$1.log" 2>&1 &
+  local label=$1
+  backend_logger_pid=
+  if [[ ${2:-} == fail-writes ]]; then
+    # Keep logs outside the limit and make failed file writes return errors.
+    mkfifo "$RUNTIME/backend-$label.pipe"
+    cat "$RUNTIME/backend-$label.pipe" > "$RUNTIME/backend-$label.log" &
+    backend_logger_pid=$!
+    PIDS+=("$backend_logger_pid")
+    bash -c 'trap "" XFSZ; ulimit -Sf 0 || exit; exec "$@"' _ \
+      "$PORTAL_BUILD/xdg-desktop-portal-umbriel" > "$RUNTIME/backend-$label.pipe" 2>&1 &
+  else
+    "$PORTAL_BUILD/xdg-desktop-portal-umbriel" > "$RUNTIME/backend-$label.log" 2>&1 &
+  fi
   backend_pid=$!
   PIDS+=("$backend_pid")
   wait_owner org.freedesktop.impl.portal.desktop.umbriel
@@ -349,5 +361,64 @@ start_compositor restarted
 start_backend compositor-restart
 start_frontend compositor-restart
 restore_after_restart compositor
+
+# A restore rotation cannot succeed if its replacement credential cannot be saved.
+stop_process "$backend_pid"
+wait_owner org.freedesktop.impl.portal.desktop.umbriel false
+start_backend cache-failure fail-writes
+cp "$CREDENTIAL_CACHE" "$RUNTIME/cache-before-failure.json"
+start_client cache-failure
+client_ready
+send '{"op":"create","tag":"failed-restore"}'
+response failed-restore 2
+no_live_sessions
+cmp "$CREDENTIAL_CACHE" "$RUNTIME/cache-before-failure.json"
+
+# Without a cached credential, physical approval still cannot bypass a failed save.
+mv "$CREDENTIAL_CACHE" "$RUNTIME/stale-cache.json"
+send '{"op":"create","session":"failed-bind","tag":"failure-create"}'
+response failure-create 0
+send '{"op":"bind","session":"failed-bind","tag":"failed-bind","shortcuts":[{"id":"talk","description":"Talk \"quoted\"\nnext line","preferred_trigger":"CTRL+m"}]}'
+review true
+physical 'tap 28'
+response failed-bind 2
+await_json 'any(.[]; .event == "closed" and .session == "failed-bind")' "failed-save session closure"
+no_live_sessions
+review false
+if [[ -e $CREDENTIAL_CACHE ]]; then
+  echo "failed save published a credential cache" >&2
+  exit 1
+fi
+physical 'press 29' 'tap 50' 'release 29' 'mark failed-save-input'
+await_events "$COMPOSITOR_LOG" 'mark failed-save-input$' 1 "input after failed save"
+send '{"op":"create","session":"barrier","tag":"failure-barrier-create"}'
+response failure-barrier-create 0
+send '{"op":"list","session":"barrier","tag":"failure-barrier-list"}'
+response failure-barrier-list 0
+expect_json 'all(.[]; .event != "activated" and .event != "deactivated" and .event != "changed" and .event != "error") and
+  any(.[]; .event == "response" and .tag == "failure-barrier-list" and .shortcuts == [])'
+finish_client
+stop_process "$backend_pid"
+wait_owner org.freedesktop.impl.portal.desktop.umbriel false
+wait "$backend_logger_pid"
+forget_pid "$backend_logger_pid"
+
+# A healthy backend needs new consent after the unsaved grant, then remains usable.
+start_backend cache-recovery
+start_client cache-recovery
+client_ready
+send '{"op":"create","tag":"recovery-create"}'
+response recovery-create 0
+send '{"op":"bind","tag":"recovery-bind","shortcuts":[{"id":"talk","description":"Talk \"quoted\"\nnext line","preferred_trigger":"CTRL+m"}]}'
+review true
+physical 'tap 28'
+response recovery-bind 0
+expect_restored_snapshot recovery-bind cache-recovery
+[[ -s $CREDENTIAL_CACHE ]]
+physical 'press 29' 'tap 50' 'release 29'
+roundtrip recovery-activated
+expect_json '([.[] | select(.event == "activated" and .id == "talk")] | length) == 1 and
+  ([.[] | select(.event == "deactivated" and .id == "talk")] | length) == 1 and all(.[]; .event != "error")'
+finish_client
 SUCCESS=1
-echo "public global shortcuts approval, routing, snapshots, cancellation, cleanup, and restart persistence passed"
+echo "public global shortcuts approval, routing, snapshots, cancellation, cleanup, persistence, and failed saves passed"
