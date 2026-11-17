@@ -229,6 +229,7 @@ namespace umbriel {
     }
     m_effects.resetSlots();
     m_tiledOpeningDeferred = false;
+    m_pendingFocusWarp = false;
     m_presentedTiledBox = {};
     m_acceptClientMaximizeRequests = config().general.honorRestoredMaximize;
     // Firefox often re-assert session maximize after map. With honor off, consume that one request so
@@ -442,6 +443,12 @@ namespace umbriel {
         m_workspace->deferFocusChrome();
       }
       m_server->focusView(this, activateOnMap ? FocusReason::XdgActivation : FocusReason::Startup);
+      // A newly mapped window that receives initial focus counts as a keyboard-driven focus transfer; warp after the
+      // map completes, since warping flushes the pending arrange while the map is still placing the view.
+      Overview* overview = m_server->overview();
+      if (config().input.cursor.followsFocus && (overview == nullptr || !overview->active())) {
+        m_pendingFocusWarp = true;
+      }
     } else if (deferredActivation.has_value()) {
       setUrgent(true);
     }
@@ -547,6 +554,25 @@ namespace umbriel {
       // A remap can retain membership in an empty workspace without going through addView().
       m_workspace->group()->reconcileDynamic();
     }
+    if (m_pendingFocusWarp) {
+      applyPendingFocusWarp();
+    }
+  }
+
+  void View::applyPendingFocusWarp() {
+    if (!m_pendingFocusWarp) {
+      return;
+    }
+    m_pendingFocusWarp = false;
+    const Workspace* workspace = m_workspace;
+    if (!m_mapped || workspace == nullptr || workspace->focusedView() != this) {
+      return;
+    }
+    const Overview* overview = m_server->overview();
+    if (!config().input.cursor.followsFocus || (overview != nullptr && overview->active())) {
+      return;
+    }
+    m_server->cursor()->warpToView(*this);
   }
 
   void View::handleUnmap(bool animateClose) {
