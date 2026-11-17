@@ -88,8 +88,8 @@ namespace umbriel {
   }
 
   void DragPhysics::setGrab(float grabX, float grabY) {
-    // One bicubic Bernstein surface couples the whole window; the shader
-    // interpolates with the same weights, so the pin lands exactly on the pointer.
+    // Bernstein weights pin the grab point on the bicubic surface; the shader
+    // evaluates the same surface in the power basis, preserving the pin.
     const float u = std::clamp(grabX, 0.0F, 1.0F);
     const float v = std::clamp(grabY, 0.0F, 1.0F);
     const std::array<float, 4> horizontal = bernstein(u);
