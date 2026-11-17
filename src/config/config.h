@@ -862,8 +862,9 @@ namespace umbriel {
 
       // Sampling method for sources the scene shrinks into their destination:
       // the render_scale supersample downsample, scaled-down windows, and
-      // thumbnails. Box averages the source's texel footprint on a fixed 4x4
-      // grid; the others take one sample per pixel.
+      // thumbnails. Box averages the source's texel footprint in linear light,
+      // exactly up to 4:1 and on a fixed 4x4 grid above it; the others take one
+      // sample per pixel.
       DownsampleMode downsample = DownsampleMode::Box;
 
       int totalBorderWidth() const { return borderWidth + outerBorderWidth; }
