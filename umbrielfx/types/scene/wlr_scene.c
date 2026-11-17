@@ -3780,10 +3780,11 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
 
     // Downsample policy: a minified source is sampled with the scene's
     // configured method unless the buffer pins nearest, which stays exact.
-    // Up to 4:1 the box reads exactly the pixel's own texel footprint. Above
-    // that its bilinear tap grid reaches less than one texel past it, which
-    // stays within the one-pixel expansion the damage path applies to
-    // non-integer ratios.
+    // Up to 4:1 the box reads exactly the pixel's own texel footprint and
+    // reaches half a texel past it, inside the one-pixel expansion the damage
+    // path already applies to non-integer ratios. Above 4:1 the tap grid spans
+    // (taps - 1) * ratio / taps + 1 texels, which is shorter than the
+    // footprint, so it stays inside it.
     const bool minifying = (src_dst_width > 0 && snapped_src_box.width > src_dst_width)
         || (src_dst_height > 0 && snapped_src_box.height > src_dst_height);
     bool downsample_box = false;

@@ -233,6 +233,7 @@ if build_tests
     'optimized-blur-copy-failure',
     'box-downsample-curves',
     'box-downsample-area',
+    'box-downsample-axes',
     'gamma22-to-srgb',
     'pq-roundtrip',
     'bt2020-to-srgb',
