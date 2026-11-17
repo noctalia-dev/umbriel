@@ -108,6 +108,8 @@ Rendering, layout, animation, Wayland lifecycle, and compositor integration chan
 - `zwlr_virtual_pointer_v1` cannot generate touchpad gesture events, so changes to gesture state or gesture feel need a real input device in a running session.
 - The harness `layer-client` maps a real exclusive zone (see `layout/struts`). Extend it for layer arrangement and usable-area changes; interaction with real bars and panels still needs a running session.
 
+Global shortcut approval uses backend-boundary input devices in a private headless compositor: `bash tests/global_shortcuts.sh build-debug`. To exercise the public D-Bus interface through the real portal frontend, build both repositories with their test clients, then run `bash tests/global_shortcuts_portal.sh build-debug ../xdg-desktop-portal-umbriel/build-debug /path/to/xdg-desktop-portal`. This needs `jq`, `dbus-daemon`, `dbus-send`, and `xdg-permission-store` beside the supplied frontend executable. The check covers physical approval, binding and listing, activation pairs, binding change snapshots, cancellation, session cleanup, and credential restoration across separate backend and frontend restarts and a full private compositor restart. Each restored session must recover its saved shortcut list, rotate its private credential, and activate without another approval prompt. The check uses private bus, config, data, and state directories; failed runs retain logs, and `UMBRIEL_SHORTCUTS_KEEP_LOGS=1` also keeps successful runs.
+
 ## Releases
 
 `VERSION` is the canonical build version and Meson reads it directly. A release remains an explicit tag push: after the version bump is committed to the intended release commit, create and push the matching tag:
