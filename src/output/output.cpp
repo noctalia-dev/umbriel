@@ -1054,9 +1054,9 @@ namespace umbriel {
         case RenderedStateCommitResult::Committed:
           return FormatCommitResult::Committed;
         case RenderedStateCommitResult::CommitFailed:
-          // A commit that keeps the live mode can fail because a page-flip is still pending, this is a transient failure.
-          // The next frame can retry after the flip completes.
-          // Actual permanent format rejections are caught earlier in the test phase and do not reach here.
+          // A commit that keeps the live mode can fail because a page-flip is still pending, this is a transient
+          // failure. The next frame can retry after the flip completes. Actual permanent format rejections are caught
+          // earlier in the test phase and do not reach here.
           if (keptLiveMode != nullptr) {
             return FormatCommitResult::Retry;
           }
