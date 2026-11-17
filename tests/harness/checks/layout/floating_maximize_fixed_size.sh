@@ -13,11 +13,12 @@ enabled = false
 
 [[window_rule]]
 match.title = "^fixed-splash$"
+default_focused = false
 default_maximize = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
-FIXED_SIZE=1 "$CLIENT" fixed-splash 300 200 > "$UMBRIEL_RUNTIME_DIR/fixed-splash.log" 2>&1 &
+FIXED_SIZE=1 HOLD_SIZE=1 "$CLIENT" fixed-splash 300 200 > "$UMBRIEL_RUNTIME_DIR/fixed-splash.log" 2>&1 &
 
 field_of() {
   "$UMBRIEL" windows --json \
@@ -36,6 +37,18 @@ done
 actual="$(field_of fixed-splash w)x$(field_of fixed-splash h)+$(field_of fixed-splash x)+$(field_of fixed-splash y)"
 if [[ $actual != "$expected" ]]; then
   echo "expected the fixed-size maximized float at $expected, got $actual"
+  exit 1
+fi
+
+readonly SCREENSHOT="$UMBRIEL_RUNTIME_DIR/fixed-splash.png"
+grim -o HEADLESS-1 "$SCREENSHOT"
+# The child covers the parent with blue. Red outside it exposes a parent stretched past the reported geometry.
+read -r red_pixels blue_pixels < <(
+  "$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" count 'r > 0.9 && g < 0.1 && b < 0.1' \
+    'b > 0.9 && r < 0.1 && g < 0.1' | xargs
+)
+if ((red_pixels != 0 || blue_pixels == 0)); then
+  echo "fixed-size splash content escaped its frame or was missing: red=$red_pixels blue=$blue_pixels"
   exit 1
 fi
 

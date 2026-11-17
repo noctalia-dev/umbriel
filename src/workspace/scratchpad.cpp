@@ -1081,7 +1081,7 @@ namespace umbriel {
       if (area.width > 0 && area.height > 0) {
         view->cancelPositionAnimation();
         view->setPosition(area.x, area.y);
-        view->configureSize(area.width, area.height);
+        view->requestFloatingSize(area.width, area.height);
         view->applyPresentation(area);
       }
       return;
