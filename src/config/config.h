@@ -1251,6 +1251,8 @@ namespace umbriel {
         bool hideWhenTyping = false;
         // Milliseconds without pointer activity before hiding the cursor. Zero disables it.
         int hideTimeoutMs = 0;
+        // Hide the cursor while the touchscreen is used; pointer activity restores it.
+        bool hideOnTouch = true;
         bool operator==(const Cursor&) const = default;
       } cursor;
 

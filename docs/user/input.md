@@ -281,6 +281,7 @@ hardware_cursor = true
 follows_focus = false
 hide_when_typing = false
 hide_timeout_ms = 0
+hide_on_touch = true
 ```
 
 | Key                | Range or values | Description                                        |
@@ -291,8 +292,9 @@ hide_timeout_ms = 0
 | `follows_focus`    | bool            | Follow keyboard-driven window focus.               |
 | `hide_when_typing` | bool            | Hide after a non-modifier key press.               |
 | `hide_timeout_ms`  | 0 to 3600000    | Hide after inactivity; `0` disables the timeout.   |
+| `hide_on_touch`    | bool            | Hide the cursor on touchscreen input.              |
 
-Set `hardware_cursor = false` to work around hardware cursor flicker or disappearance. Set `hide_timeout_ms` to a value from 1 to 3600000 to hide an inactive cursor; `0` disables the timeout.
+Set `hardware_cursor = false` to work around hardware cursor flicker or disappearance. Set `hide_timeout_ms` to a value from 1 to 3600000 to hide an inactive cursor; `0` disables the timeout. With `hide_on_touch = true` (the default), a touchscreen tap hides the cursor until the next pointer, tablet, or button activity.
 
 `follows_focus = true` moves the cursor to a newly focused window after keyboard-driven focus and transfer actions. Moving the focused window with a keybind, such as a move, swap, consume, or `window-move-by`, moves the cursor to the window's center. New windows, activation requests, and the replacement focus after a close do not move the cursor, so it stays on a dock, bar, or tray icon. Pointer-driven focus and gestures do not move it either. `window-focus-warp <id>` always moves the cursor regardless of this setting. A cursor hidden by `hide_when_typing` or `hide_timeout_ms` stays hidden through these moves and reappears at its new position on the next pointer activity. Active-workspace output swaps keep the cursor and seat focus on the invoking output when this setting is false; when it is true, both follow the previously focused window to its new output.
 
