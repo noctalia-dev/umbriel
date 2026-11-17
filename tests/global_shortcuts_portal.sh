@@ -420,5 +420,46 @@ roundtrip recovery-activated
 expect_json '([.[] | select(.event == "activated" and .id == "talk")] | length) == 1 and
   ([.[] | select(.event == "deactivated" and .id == "talk")] | length) == 1 and all(.[]; .event != "error")'
 finish_client
+
+# Unrelated peers cannot control live sessions or cancel a pending review.
+start_client ownership
+client_ready
+send '{"op":"create","tag":"owner-create"}'
+response owner-create 0
+send '{"op":"bind","tag":"owner-bind","shortcuts":[{"id":"talk","description":"Talk \"quoted\"\nnext line","preferred_trigger":"CTRL+m"}]}'
+response owner-bind 0
+expect_restored_snapshot owner-bind ownership
+send '{"op":"create","session":"pending","tag":"owner-pending-create"}'
+response owner-pending-create 0
+send '{"op":"bind","session":"pending","tag":"owner-pending-bind","shortcuts":[{"id":"owner-pending","description":"Pending","preferred_trigger":"CTRL+n"}]}'
+review true
+owner_session=$(jq -sr '[.[] | select(.event == "response" and .tag == "owner-create")][0].session_handle' "$CLIENT_LOG")
+pending_request=$(jq -sr '[.[] | select(.event == "requested" and .tag == "owner-pending-bind")][0].request_handle' "$CLIENT_LOG")
+"$PORTAL_BUILD/global-shortcuts-test-client" --probe-session "$owner_session" "$pending_request" \
+  > "$RUNTIME/ownership-peer.jsonl"
+jq -se 'length == 4 and all(.[]; .event == "rejected" and .replacement == false) and
+  ([.[].method] | sort) == ["BindShortcuts", "ListShortcuts", "Request.Close", "Session.Close"]' \
+  "$RUNTIME/ownership-peer.jsonl" > /dev/null
+review true
+roundtrip owner-preserved
+expect_restored_snapshot owner-preserved ownership
+
+# A crashed frontend cannot clean up for the backend; owner loss must retire both sessions.
+kill -KILL "$frontend_pid"
+frontend_status=0
+wait "$frontend_pid" 2>/dev/null || frontend_status=$?
+[[ $frontend_status == 137 ]]
+forget_pid "$frontend_pid"
+wait_owner org.freedesktop.portal.Desktop false
+no_live_sessions
+review false
+"$PORTAL_BUILD/global-shortcuts-test-client" --probe-replacement "$owner_session" \
+  > "$RUNTIME/ownership-replacement.jsonl"
+jq -se 'length == 1 and .[0] == {"event":"rejected","method":"ListShortcuts","replacement":true}' \
+  "$RUNTIME/ownership-replacement.jsonl" > /dev/null
+wait_owner org.freedesktop.portal.Desktop false
+finish_client
+start_frontend owner-recovery
+restore_after_restart owner-recovery
 SUCCESS=1
-echo "public global shortcuts approval, routing, snapshots, cancellation, cleanup, persistence, and failed saves passed"
+echo "public global shortcuts approval, routing, snapshots, cancellation, persistence, failed saves, and ownership passed"
