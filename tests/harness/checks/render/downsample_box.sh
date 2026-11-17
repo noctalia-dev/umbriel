@@ -223,15 +223,22 @@ area_conserved() {
   [[ $green =~ ^[0-9]+$ && $blue =~ ^[0-9]+$ ]] || return 1
   g=$(linear_milli "$green")
   b=$(linear_milli "$blue")
-  ((g + b >= 980 && g + b <= 1020 && g >= 300 && b >= 300))
+  # The exact average sums to one texel of light; the pair reads 997 here, so a
+  # 1% band leaves room for one readback rounding step. A tap blend reports the
+  # encoded mix instead and misses it by 40%.
+  ((g + b >= 990 && g + b <= 1010 && g >= 300 && b >= 300))
 }
+conserved=false
 for _ in $(seq 30); do
   "${GRIM[@]}" "$IMAGE"
   if area_conserved 200 && area_conserved 201 && area_conserved 202; then
-    echo "box conserves light at a non-integer ratio"
-    exit 0
+    conserved=true
+    break
   fi
   sleep 0.1
 done
-echo "box at 1.5:1 does not conserve light: px 200..202 show $(pixel 200 190) / $(pixel 201 190) / $(pixel 202 190)"
-exit 1
+if [[ $conserved != true ]]; then
+  echo "box at 1.5:1 does not conserve light: px 200..202 show $(pixel 200 190) / $(pixel 201 190) / $(pixel 202 190)"
+  exit 1
+fi
+echo "box conserves light at a non-integer ratio"

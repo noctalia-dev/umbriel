@@ -1144,27 +1144,26 @@ static bool test_implicit_srgb_target(struct fixture* fixture) {
   return ok;
 }
 
-// The box downsample averages in linear light, so a passthrough draw must decode
-// with the curve of the space it is already in: an SDR swapchain (sRGB) or
-// extended linear behind colour management, where the values are already
-// linear. Each pair of texels is chosen to separate the two SDR curves.
-// One row of `texel_count` texels drawn into `pixel_count` pixels with the box.
-static bool render_box_row(
-    struct fixture* fixture, const uint8_t (*texels)[4], int texel_count, int pixel_count,
-    enum wlr_color_transfer_function input_tf, struct wlr_color_transform* output_transform, uint8_t (*out)[4]
+// `texel_width` x `texel_height` texels drawn into `pixel_width` x
+// `pixel_height` pixels with the box.
+static bool render_box_grid(
+    struct fixture* fixture, const uint8_t (*texels)[4], int texel_width, int texel_height, int pixel_width,
+    int pixel_height, enum wlr_color_transfer_function input_tf, struct wlr_color_transform* output_transform,
+    uint8_t (*out)[4]
 ) {
   struct wlr_color_primaries srgb;
   wlr_color_primaries_from_named(&srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
-  struct wlr_texture* texture =
-      wlr_texture_from_pixels(fixture->renderer, DRM_FORMAT_ABGR8888, texel_count * 4, texel_count, 1, texels);
+  struct wlr_texture* texture = wlr_texture_from_pixels(
+      fixture->renderer, DRM_FORMAT_ABGR8888, texel_width * 4, texel_width, texel_height, texels
+  );
   if (!check(texture != NULL, "create box input texture")) {
     return false;
   }
-  struct wlr_buffer* output = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, pixel_count, 1);
+  struct wlr_buffer* output = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, pixel_width, pixel_height);
   bool ok = check(output != NULL, "allocate box output buffer");
   struct wlr_render_pass* pass = NULL;
   pixman_region32_t region;
-  pixman_region32_init_rect(&region, 0, 0, pixel_count, 1);
+  pixman_region32_init_rect(&region, 0, 0, pixel_width, pixel_height);
   if (ok) {
     pass = wlr_renderer_begin_buffer_pass(
         fixture->renderer, output, &(struct wlr_buffer_pass_options){.color_transform = output_transform}
@@ -1172,7 +1171,7 @@ static bool render_box_row(
     ok = check(pass != NULL, "begin box render pass");
   }
   if (ok) {
-    const struct wlr_box box = {.width = pixel_count, .height = 1};
+    const struct wlr_box box = {.width = pixel_width, .height = pixel_height};
     fx_render_pass_add_texture(
         fx_get_render_pass(pass),
         &(struct fx_render_texture_options){
@@ -1193,7 +1192,7 @@ static bool render_box_row(
     ok = check(wlr_render_pass_submit(pass), "submit box render pass");
   }
   if (ok) {
-    ok = check(read_buffer(fixture, output, DRM_FORMAT_ABGR8888, pixel_count * 4, out), "read box output buffer");
+    ok = check(read_buffer(fixture, output, DRM_FORMAT_ABGR8888, pixel_width * 4, out), "read box output buffer");
   }
   pixman_region32_fini(&region);
   if (output != NULL) {
@@ -1201,6 +1200,14 @@ static bool render_box_row(
   }
   wlr_texture_destroy(texture);
   return ok;
+}
+
+// One row of `texel_count` texels drawn into `pixel_count` pixels with the box.
+static bool render_box_row(
+    struct fixture* fixture, const uint8_t (*texels)[4], int texel_count, int pixel_count,
+    enum wlr_color_transfer_function input_tf, struct wlr_color_transform* output_transform, uint8_t (*out)[4]
+) {
+  return render_box_grid(fixture, texels, texel_count, 1, pixel_count, 1, input_tf, output_transform, out);
 }
 
 // Two texels into one pixel: ratio 2, so the box averages them exactly.
@@ -1221,6 +1228,10 @@ static bool check_box_grey(const uint8_t pixel[4], int expected, const char* nam
   return true;
 }
 
+// The box downsample averages in linear light, so a passthrough draw must decode
+// with the curve of the space it is already in: an SDR swapchain (sRGB) or
+// extended linear behind colour management, where the values are already
+// linear. Each pair of texels is chosen to separate the two SDR curves.
 static bool test_box_downsample_curves(struct fixture* fixture) {
   // 0 and 16 encode to 9 through the sRGB curve and 12 through gamma 2.2, so
   // the pair pins which curve an SDR passthrough draw decodes with.
@@ -1305,6 +1316,23 @@ static bool test_box_downsample_area(struct fixture* fixture) {
     }
   }
   return ok;
+}
+
+// One axis inside 4:1 and one above it: 3x5 texels into 2x1 pixels gives an x
+// ratio of 1.5 and a y ratio of 5. The rows are identical, so y can sample them
+// any way it likes and the x weights must still be exact. A dispatch on the
+// larger ratio alone sends x through the tap grid too and reports the blended
+// encoded pair instead of the 2/3 area result.
+static bool test_box_downsample_axes(struct fixture* fixture) {
+  static const uint8_t texels[5][3][4] = {
+      {{255, 255, 255, 255}, {0, 0, 0, 255}, {0, 0, 0, 255}}, {{255, 255, 255, 255}, {0, 0, 0, 255}, {0, 0, 0, 255}},
+      {{255, 255, 255, 255}, {0, 0, 0, 255}, {0, 0, 0, 255}}, {{255, 255, 255, 255}, {0, 0, 0, 255}, {0, 0, 0, 255}},
+      {{255, 255, 255, 255}, {0, 0, 0, 255}, {0, 0, 0, 255}},
+  };
+  uint8_t pixels[2][4] = {{0}};
+  return render_box_grid(fixture, &texels[0][0], 3, 5, 2, 1, WLR_COLOR_TRANSFER_FUNCTION_SRGB, NULL, pixels)
+      && check_box_grey(pixels[0], to_u8(linear_to_srgb(2.0f / 3.0f)), "exact axis beside a tapped axis")
+      && check_box_grey(pixels[1], 0, "footprint without the texel beside a tapped axis");
 }
 
 static bool test_gamma22_to_srgb(struct fixture* fixture) {
@@ -3723,6 +3751,8 @@ int main(int argc, char* argv[]) {
     ok = test_box_downsample_curves(&fixture);
   } else if (strcmp(argv[1], "box-downsample-area") == 0) {
     ok = test_box_downsample_area(&fixture);
+  } else if (strcmp(argv[1], "box-downsample-axes") == 0) {
+    ok = test_box_downsample_axes(&fixture);
   } else if (strcmp(argv[1], "gamma22-to-srgb") == 0) {
     ok = test_gamma22_to_srgb(&fixture);
   } else if (strcmp(argv[1], "pq-roundtrip") == 0) {
