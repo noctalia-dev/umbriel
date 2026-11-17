@@ -508,5 +508,59 @@ expect_json '([.[] | select(.event == "activated")] | length) == 3 and
   any(.[]; .event == "response" and .tag == "second-activated" and .shortcuts ==
     [{"id":"talk","description":"Waiting","trigger_description":"Ctrl+M"}])'
 finish_client
+
+# Revocation retires held input and rejects a cached credential from before it.
+start_client revocation
+client_ready
+send '{"op":"create","tag":"revoke-create"}'
+response revoke-create 0
+send '{"op":"bind","tag":"revoke-bind","shortcuts":[{"id":"talk","description":"Talk \"quoted\"\nnext line","preferred_trigger":"CTRL+m"}]}'
+response revoke-bind 0
+expect_restored_snapshot revoke-bind revocation
+physical 'press 29' 'press 50'
+await_json 'any(.[]; .event == "activated" and .session == "main" and .id == "talk")' "activation before revocation"
+cp "$CREDENTIAL_CACHE" "$RUNTIME/cache-before-revoke.json"
+"$UMBRIEL" global-shortcuts-revoke "$APPLICATION" > /dev/null
+await_json 'any(.[]; .event == "deactivated" and .session == "main" and .id == "talk")' "held activation retired by revoke"
+await_json 'any(.[]; .event == "closed" and .session == "main")' "revoked owner closure"
+no_live_sessions
+physical 'release 50' 'release 29' 'mark revoked-release'
+await_events "$COMPOSITOR_LOG" 'mark revoked-release$' 1 "release after revocation"
+
+cp "$RUNTIME/cache-before-revoke.json" "$CREDENTIAL_CACHE"
+send '{"op":"create","session":"retry","tag":"revoked-restore"}'
+response revoked-restore 0
+roundtrip revoked-list retry
+expect_json 'any(.[]; .event == "response" and .tag == "revoked-list" and .shortcuts == [])'
+if [[ -e $CREDENTIAL_CACHE ]] && ! jq -e --arg app "$APPLICATION" \
+  'all(.credentials[]; .application != $app)' "$CREDENTIAL_CACHE" > /dev/null; then
+  echo "revoked credential remained in backend cache" >&2
+  exit 1
+fi
+
+# Revoking an unapproved retry cancels its review and leaves no reusable grant.
+send '{"op":"bind","session":"retry","tag":"revoked-retry","shortcuts":[{"id":"talk","description":"Talk \"quoted\"\nnext line","preferred_trigger":"CTRL+m"}]}'
+review true
+"$UMBRIEL" global-shortcuts-revoke "$APPLICATION" > /dev/null
+response revoked-retry 2
+await_json 'any(.[]; .event == "closed" and .session == "retry")' "revoked pending review closure"
+no_live_sessions
+review false
+send '{"op":"create","session":"reapproved","tag":"reapproved-create"}'
+response reapproved-create 0
+send '{"op":"bind","session":"reapproved","tag":"reapproved-bind","shortcuts":[{"id":"talk","description":"Talk \"quoted\"\nnext line","preferred_trigger":"CTRL+m"}]}'
+review true
+physical 'tap 28'
+response reapproved-bind 0
+expect_restored_snapshot reapproved-bind revocation
+[[ -s $CREDENTIAL_CACHE ]]
+physical 'press 29' 'tap 50' 'release 29'
+roundtrip reapproved-activated reapproved
+expect_json '([.[] | select(.event == "activated")] | length) == 2 and
+  ([.[] | select(.event == "deactivated")] | length) == 2 and
+  ([.[] | select(.event == "activated" and .session == "reapproved" and .id == "talk")] | length) == 1 and
+  ([.[] | select(.event == "deactivated" and .session == "reapproved" and .id == "talk")] | length) == 1 and
+  all(.[]; .event != "error")'
+finish_client
 SUCCESS=1
-echo "public global shortcuts approval, routing, snapshots, persistence, failed saves, ownership, and promotion passed"
+echo "public global shortcuts approval, routing, snapshots, persistence, failed saves, ownership, promotion, and revocation passed"
