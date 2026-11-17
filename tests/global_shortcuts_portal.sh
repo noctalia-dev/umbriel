@@ -195,10 +195,11 @@ await_json() {
 response() { await_json "any(.[]; .event == \"response\" and .tag == \"$1\" and .status == $2)" "$1 response $2"; }
 roundtrip_serial=0
 roundtrip() {
+  local session=${2:-main}
   roundtrip_serial=$((roundtrip_serial + 1))
   physical "mark public-$roundtrip_serial"
   await_events "$COMPOSITOR_LOG" "mark public-$roundtrip_serial$" 1 "physical input barrier"
-  send "{\"op\":\"list\",\"tag\":\"$1\"}"
+  send "{\"op\":\"list\",\"session\":\"$session\",\"tag\":\"$1\"}"
   response "$1" 0
 }
 status_serial=0
@@ -461,5 +462,51 @@ wait_owner org.freedesktop.portal.Desktop false
 finish_client
 start_frontend owner-recovery
 restore_after_restart owner-recovery
+
+# Approved sessions of one application compete in successful-bind order.
+start_client concurrent
+client_ready
+send '{"op":"create","tag":"leader-create"}'
+response leader-create 0
+send '{"op":"bind","tag":"leader-bind","shortcuts":[{"id":"talk","description":"Talk \"quoted\"\nnext line","preferred_trigger":"CTRL+m"}]}'
+response leader-bind 0
+expect_restored_snapshot leader-bind concurrent
+for waiter in first second; do
+  send "{\"op\":\"create\",\"session\":\"$waiter\",\"tag\":\"$waiter-create\"}"
+  response "$waiter-create" 0
+  send "{\"op\":\"bind\",\"session\":\"$waiter\",\"tag\":\"$waiter-bind\",\"shortcuts\":[{\"id\":\"talk\",\"description\":\"Waiting\",\"preferred_trigger\":\"CTRL+m\"}]}"
+  response "$waiter-bind" 0
+  expect_json "any(.[]; .event == \"response\" and .tag == \"$waiter-bind\" and .shortcuts == [])"
+  roundtrip "$waiter-list" "$waiter"
+  expect_json "any(.[]; .event == \"response\" and .tag == \"$waiter-list\" and .shortcuts == [])"
+done
+review false
+physical 'press 29' 'press 50'
+await_json 'any(.[]; .event == "activated" and .session == "main" and .id == "talk")' "original owner activation"
+send '{"op":"close"}'
+await_json 'any(.[]; .event == "changed" and .session == "first" and .shortcuts ==
+  [{"id":"talk","description":"Waiting","trigger_description":"Ctrl+M"}])' "first waiter promotion"
+physical 'release 50' 'release 29'
+roundtrip first-promoted first
+expect_json '([.[] | select(.event == "activated")] | length) == 1 and
+  all(.[]; .event != "changed" or .session == "first") and
+  any(.[]; .event == "response" and .tag == "first-promoted" and .shortcuts ==
+    [{"id":"talk","description":"Waiting","trigger_description":"Ctrl+M"}])'
+physical 'press 29' 'tap 50' 'release 29'
+roundtrip first-activated first
+expect_json '([.[] | select(.event == "activated" and .session == "first")] | length) == 1 and
+  ([.[] | select(.event == "deactivated" and .session == "first")] | length) == 1'
+send '{"op":"close","session":"first"}'
+await_json 'any(.[]; .event == "changed" and .session == "second" and .shortcuts ==
+  [{"id":"talk","description":"Waiting","trigger_description":"Ctrl+M"}])' "second waiter promotion"
+physical 'press 29' 'tap 50' 'release 29'
+roundtrip second-activated second
+expect_json '([.[] | select(.event == "activated")] | length) == 3 and
+  ([.[] | select(.event == "activated" and .session == "second")] | length) == 1 and
+  ([.[] | select(.event == "deactivated" and .session == "second")] | length) == 1 and
+  all(.[]; .event != "error") and
+  any(.[]; .event == "response" and .tag == "second-activated" and .shortcuts ==
+    [{"id":"talk","description":"Waiting","trigger_description":"Ctrl+M"}])'
+finish_client
 SUCCESS=1
-echo "public global shortcuts approval, routing, snapshots, cancellation, persistence, failed saves, and ownership passed"
+echo "public global shortcuts approval, routing, snapshots, persistence, failed saves, ownership, and promotion passed"
