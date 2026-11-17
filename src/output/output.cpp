@@ -954,6 +954,7 @@ namespace umbriel {
     std::string_view pendingHdrFail = earlyHdrFail;
     std::string_view pendingSdr10Fail;
     bool hdrRejected = !earlyHdrFail.empty();
+    bool seqRetry = false;
 
     if (enabled) {
       const FormatSequenceParams seqParams{
@@ -1053,6 +1054,12 @@ namespace umbriel {
         case RenderedStateCommitResult::Committed:
           return FormatCommitResult::Committed;
         case RenderedStateCommitResult::CommitFailed:
+          // A commit that keeps the live mode can fail because a page-flip is still pending, this is a transient failure.
+          // The next frame can retry after the flip completes.
+          // Actual permanent format rejections are caught earlier in the test phase and do not reach here.
+          if (keptLiveMode != nullptr) {
+            return FormatCommitResult::Retry;
+          }
           return FormatCommitResult::Rejected;
         case RenderedStateCommitResult::BuildFailed:
         case RenderedStateCommitResult::MissingBuffer:
@@ -1104,6 +1111,7 @@ namespace umbriel {
       };
 
       const FormatSequenceResult seq = runFormatSequence(seqParams, seqOps);
+      seqRetry = seq.retry;
       anyCommitted = seq.committed;
       usedModeFallback = seq.usedModeFallback;
       if (seq.usedLiveModeRetry) {
@@ -1172,7 +1180,9 @@ namespace umbriel {
     } else {
       if (!hdrRequested) {
         setHdrFallbackReason({});
-      } else if (enabled) {
+      } else if (enabled && !(seqRetry && hdrRequested)) {
+        // Skip permanent HDR disable on a transient failure (page-flip already pending).
+        // The request stays pending and will be retried at the next frame boundary.
         if (!pendingHdrFail.empty()) {
           m_hdrAvailable = false;
         }
