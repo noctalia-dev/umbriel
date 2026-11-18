@@ -454,7 +454,7 @@ namespace umbriel {
         {"overview-open", "", "Open the workspace overview", KeybindAction::OverviewOpen},
         {"overview-toggle", "", "Open or close the workspace overview", KeybindAction::OverviewToggle},
         {"overview-zoom-cycle", "", "Cycle overview zoom presets, opening if closed", KeybindAction::OverviewZoomCycle},
-        {"overview-zoom-in", "", "Zoom overview in, closing past the largest preset", KeybindAction::OverviewZoomIn},
+        {"overview-zoom-in", "", "Zoom overview in; scroll stops at the largest preset", KeybindAction::OverviewZoomIn},
         {"overview-zoom-out", "", "Zoom overview out, opening if closed", KeybindAction::OverviewZoomOut},
         {"scratchpad-focus-next", "[<scratchpad>]", "Focus the next visible scratchpad window",
          KeybindAction::ScratchpadFocusNext, ActionArgKind::OptionalScratchpad},

@@ -147,7 +147,7 @@ namespace umbriel {
       }
       return false;
     }
-    const ActionHandlerFn handler = actionHandlerFor(bind.action);
+    const ActionHandler* handler = actionHandlerFor(bind.action);
     if (handler == nullptr) {
       if (error != nullptr) {
         *error = "action has no handler";
@@ -159,15 +159,8 @@ namespace umbriel {
     const std::optional<SubmapArg> submapAfter = bind.submapAfter;
     Overview* overview = this->overview();
     bool handled = overview != nullptr && overview->handleKeybindAction(bind.action);
-    if (!handled
-        && overview != nullptr
-        && scrollNotches > 0.0
-        && (bind.action == KeybindAction::OverviewZoomIn || bind.action == KeybindAction::OverviewZoomOut)) {
-      overview->changeZoom(bind.action, scrollNotches);
-      handled = true;
-    }
     if (!handled) {
-      handled = handler(*this, bind, error);
+      handled = (*handler)(*this, bind, error, scrollNotches);
     }
     refreshPendingAloneRules();
     if (!submapAfter.has_value()) {

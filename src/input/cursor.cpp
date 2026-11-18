@@ -2119,6 +2119,10 @@ namespace umbriel {
         && (wheelBind->action == KeybindAction::OverviewZoomIn
             || wheelBind->action == KeybindAction::OverviewZoomOut)) {
       resetWheelAccumulation();
+      // The modifier steals the finger stream even when zoom is clamped, disabled, or on cooldown.
+      if (Overview* overview = m_server->overview()) {
+        overview->cancelNavigation();
+      }
       if (rawDelta != 0.0) {
         const double notches = event->delta_discrete != 0 ? std::abs(rawDelta) / 120.0 : std::abs(rawDelta) / 15.0;
         m_server->executeAction(*wheelBind, nullptr, nullptr, notches);

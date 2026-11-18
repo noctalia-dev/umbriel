@@ -334,6 +334,7 @@ namespace umbriel {
     // Upper bound on how far any visible card pixel moves per unit of zoom animation value, for ending a spring once
     // its remaining motion can no longer change a pixel.
     double zoomPixelsPerUnit() const;
+    double outputExtent() const;
     static bool previewMetrics(const OutputState& state, const Server& server, double zoom, PreviewMetrics& out);
     // The workspace preview's box in layout coordinates.
     static wlr_box previewBox(const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex);

@@ -2070,8 +2070,8 @@ namespace umbriel {
     }
 
     template <KeybindAction Action>
-    bool actionOverviewZoom(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
-      server.overview()->changeZoom(Action);
+    bool actionOverviewZoom(Server& server, const Keybind& /*bind*/, std::string* /*error*/, double scrollNotches) {
+      server.overview()->changeZoom(Action, scrollNotches);
       return true;
     }
 
@@ -2258,8 +2258,8 @@ namespace umbriel {
       return true;
     }
 
-    constexpr std::array<ActionHandlerFn, static_cast<size_t>(KeybindAction::Count)> kActionHandlers = {
-        nullptr,
+    constexpr std::array<ActionHandler, static_cast<size_t>(KeybindAction::Count)> kActionHandlers = {
+        ActionHandler{},
         &actionSpawn,
         &actionWindowClose,
         &actionWindowKill,
@@ -2450,11 +2450,11 @@ namespace umbriel {
     };
 
     consteval bool everyActionHasHandler() {
-      if (kActionHandlers.front() != nullptr) {
+      if (static_cast<bool>(kActionHandlers.front())) {
         return false;
       }
-      return std::ranges::all_of(kActionHandlers.begin() + 1, kActionHandlers.end(), [](ActionHandlerFn handler) {
-        return handler != nullptr;
+      return std::ranges::all_of(kActionHandlers.begin() + 1, kActionHandlers.end(), [](const ActionHandler& handler) {
+        return static_cast<bool>(handler);
       });
     }
 
@@ -2462,16 +2462,16 @@ namespace umbriel {
 
   } // namespace
 
-  ActionHandlerFn actionHandlerFor(KeybindAction action) {
+  const ActionHandler* actionHandlerFor(KeybindAction action) {
     const auto index = static_cast<size_t>(action);
-    return index < kActionHandlers.size() ? kActionHandlers[index] : nullptr;
+    return index < kActionHandlers.size() && kActionHandlers[index] ? &kActionHandlers[index] : nullptr;
   }
 
   bool actionRegistryComplete() {
     std::array<bool, kActionHandlers.size()> advertised{};
     for (const ActionSpec& spec : actionSpecs()) {
       const auto index = static_cast<size_t>(spec.action);
-      if (index == 0 || index >= advertised.size() || advertised[index] || kActionHandlers[index] == nullptr) {
+      if (index == 0 || index >= advertised.size() || advertised[index] || !kActionHandlers[index]) {
         return false;
       }
       advertised[index] = true;

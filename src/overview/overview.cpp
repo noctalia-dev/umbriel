@@ -195,9 +195,7 @@ namespace umbriel {
     teardown();
   }
 
-  double Overview::settledZoom() const {
-    return m_active ? m_presetTarget : std::clamp(config().overview.zoom, 0.1, 0.75);
-  }
+  double Overview::settledZoom() const { return m_active ? m_presetTarget : config().overview.zoom; }
 
   double Overview::zoom() const { return 1.0 - m_progress * (1.0 - m_presetZoom); }
 
@@ -210,15 +208,19 @@ namespace umbriel {
     // at most E / 2 per unit of zoom. Neighbouring rows add a whole step, E * (1 + gap), but they only show near the
     // open end; a close ends with them off the output.
     const double rowFactor = m_targetProgress < m_progressFrom ? 0.5 : 1.5 + kPreviewRowGapFraction;
+    const double zoomSpan = std::abs(m_targetProgress - m_progressFrom) * (1.0 - settledZoom());
+    // Whole pixels per unit keep the target (1.0) on the pixel grid finishSpringTail rounds against.
+    return std::ceil(zoomSpan * outputExtent() * rowFactor);
+  }
+
+  double Overview::outputExtent() const {
     double extent = 0.0;
     for (const auto& state : m_outputs) {
       wlr_box box{};
       wlr_output_layout_get_box(m_server->outputLayout(), state->output->wlr(), &box);
       extent = std::max(extent, static_cast<double>(std::max(box.width, box.height)));
     }
-    const double zoomSpan = std::abs(m_targetProgress - m_progressFrom) * (1.0 - settledZoom());
-    // Whole pixels per unit keep the target (1.0) on the pixel grid finishSpringTail rounds against.
-    return std::ceil(zoomSpan * extent * rowFactor);
+    return extent;
   }
 
   // -: geometry
@@ -1502,7 +1504,7 @@ namespace umbriel {
 
   void Overview::updateShortcutAssignments() {
     const auto updateCard = [this](Card& card, std::string label) {
-      const bool changed = card.shortcut != label;
+      const bool changed = card.shortcut != label || (card.shortcutMatched != 0 && card.shortcutMatched != SIZE_MAX);
       card.shortcut = std::move(label);
       card.shortcutMatched = 0;
       if (changed) {
@@ -1757,7 +1759,7 @@ namespace umbriel {
       switchPick.group->activate(switchPick.target, false);
     }
 
-    m_presetZoom = initialZoom > 0.0 ? initialZoom : std::clamp(config().overview.zoom, 0.1, 0.75);
+    m_presetZoom = initialZoom > 0.0 ? initialZoom : settledZoom();
     m_presetFrom = m_presetZoom;
     m_presetTarget = m_presetZoom;
     m_presetAnim.snap(1.0);
@@ -1852,13 +1854,13 @@ namespace umbriel {
     const bool zoomIn = action == KeybindAction::OverviewZoomIn;
     const bool cycle = action == KeybindAction::OverviewZoomCycle;
     const bool reopening = !interactive();
+    const double openingTarget = cycle ? presets.front() : std::ranges::max(presets);
     if (reopening) {
       if (zoomIn) {
         return;
       }
-      const double target = cycle ? presets.front() : std::ranges::max(presets);
       if (!m_active) {
-        if (beginPresentation(target)) {
+        if (beginPresentation(openingTarget)) {
           startAnimation(1.0, false);
         }
         return;
@@ -1867,9 +1869,23 @@ namespace umbriel {
       open();
     }
 
-    double target = m_presetTarget;
+    // A reversed scroll may miss a preset by a few ulps. Treat that as the preset for both stepping and cycling.
+    constexpr double presetTolerance = 1e-9;
+    const auto nearPreset = [&](double zoom) {
+      return std::ranges::find_if(presets, [zoom](double preset) {
+        return std::abs(preset - zoom) <= presetTolerance;
+      });
+    };
+    const auto& animation = config().animation;
+    const auto& overview = animation.overview;
+    const bool directScroll = scrollNotches > 0.0 && overview.curve.easing != Easing::Spring;
+    // Direct input takes over at the visible scale, including during an eased preset step.
+    double target = directScroll ? m_presetZoom : m_presetTarget;
+    if (const auto preset = nearPreset(target); preset != presets.end()) {
+      target = *preset;
+    }
     if (reopening) {
-      target = cycle ? presets.front() : std::ranges::max(presets);
+      target = openingTarget;
     } else if (cycle) {
       const auto current = std::ranges::find(presets, target);
       target = current == presets.end() || std::next(current) == presets.end() ? presets.front() : *std::next(current);
@@ -1877,11 +1893,11 @@ namespace umbriel {
       const auto [smallest, largest] = std::ranges::minmax(presets);
       const double travel = scrollNotches * config().overview.zoomScrollFactor * (zoomIn ? 1.0 : -1.0);
       target *= std::pow(1.1, travel);
-      if (zoomIn && target > largest + 1e-9) {
-        close();
-        return;
-      }
+      // Continuous input clamps at both ends. Tiny reversals at the upper bound must not close/reopen the overview.
       target = std::clamp(target, smallest, largest);
+      if (const auto preset = nearPreset(target); preset != presets.end()) {
+        target = *preset;
+      }
     } else {
       std::optional<double> next;
       for (const double preset : presets) {
@@ -1898,7 +1914,7 @@ namespace umbriel {
       }
       target = *next;
     }
-    if (target == m_presetTarget) {
+    if (target == m_presetTarget && (!directScroll || !m_presetAnim.animating())) {
       return;
     }
     cancelNavigation();
@@ -1908,14 +1924,10 @@ namespace umbriel {
     const double velocity = (m_presetTarget - m_presetFrom) * m_presetAnim.velocity();
     m_presetFrom = m_presetZoom;
     m_presetTarget = target;
-    m_shortcutInput.clear();
-    m_shortcutsDirty = true;
-    const auto& animation = config().animation;
-    const auto& overview = animation.overview;
-    if (!animation.enabled || !overview.enabled || m_presetFrom == target) {
+    if (!animation.enabled || !overview.enabled || m_presetFrom == target || directScroll) {
       m_presetAnim.snap(1.0);
       m_presetZoom = target;
-      applyProgress();
+      assignShortcuts();
       return;
     }
     m_presetAnim.snap(0.0);
@@ -1924,7 +1936,7 @@ namespace umbriel {
     } else {
       m_presetAnim.retarget(1.0, overview.durationMs, overview.curve);
     }
-    scheduleFrames();
+    assignShortcuts();
   }
 
   void Overview::toggle() {
@@ -2053,16 +2065,10 @@ namespace umbriel {
     bool active = m_dropHint != nullptr && m_dropHint->tickAnimations(nowMsec);
     const bool presetTicked = m_presetAnim.tick(nowMsec);
     if (presetTicked) {
-      double extent = 0.0;
-      for (const auto& state : m_outputs) {
-        wlr_box box{};
-        wlr_output_layout_get_box(m_server->outputLayout(), state->output->wlr(), &box);
-        extent = std::max(extent, static_cast<double>(std::max(box.width, box.height)));
-      }
       // At the minimum scale more distant rows become visible. Bound their travel as well as the centered row.
       constexpr double rowFactor = 0.5 / 0.1 + 1.0 + kPreviewRowGapFraction;
       static_cast<void>(
-          m_presetAnim.finishSpringTail(std::ceil(std::abs(m_presetTarget - m_presetFrom) * extent * rowFactor))
+          m_presetAnim.finishSpringTail(std::ceil(std::abs(m_presetTarget - m_presetFrom) * outputExtent() * rowFactor))
       );
       m_presetZoom = std::clamp(m_presetFrom + (m_presetTarget - m_presetFrom) * m_presetAnim.current(), 0.1, 0.75);
     }

@@ -110,6 +110,23 @@ fi
 write_config 'shortcut_keys = "12"'
 "$UMBRIEL" msg overview-open > /dev/null
 finish
+# Resetting a partial shortcut through zoom must redraw badges even when their labels remain the same.
+grim "$UMBRIEL_RUNTIME_DIR/badges-before.png"
+pointer tap 3
+finish
+grim "$UMBRIEL_RUNTIME_DIR/badges-partial.png"
+read -r _ differing < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/badges-before.png" diff "$UMBRIEL_RUNTIME_DIR/badges-partial.png")
+(( differing > 0 ))
+"$UMBRIEL" msg overview-zoom-out > /dev/null
+finish
+"$UMBRIEL" msg overview-zoom-in > /dev/null
+finish
+grim "$UMBRIEL_RUNTIME_DIR/badges-reset.png"
+read -r _ differing < <("$UMBRIEL_PIXEL_PROBE" "$UMBRIEL_RUNTIME_DIR/badges-before.png" diff "$UMBRIEL_RUNTIME_DIR/badges-reset.png")
+if (( differing != 0 )); then
+  echo "zoom left a stale partial shortcut highlight ($differing pixels differ)"
+  exit 1
+fi
 pointer tap 3 tap 2
 finish
 if [[ $(focused_title) != shortcut-second ]]; then

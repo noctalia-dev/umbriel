@@ -74,11 +74,11 @@ For example, these bindings replace the default Mod+wheel focus actions:
 "Mod+Shift+O" = "overview-zoom-cycle"
 ```
 
-When bound to a scroll direction, zoom-in/out follow the scroll amount continuously between the smallest and largest presets. Fractional wheel movement and two-finger scrolling with the bound modifier both work without waiting for a full notch. At the default `zoom_scroll_factor = 1.0`, one notch multiplies the scale by 1.1 when zooming in or divides it by 1.1 when zooming out. Opposite travel reverses the change. Scrolling out from the desktop opens at the largest preset; scrolling in beyond that preset closes the overview.
+When bound to a scroll direction, zoom-in/out follow the scroll amount continuously between the smallest and largest presets. Fractional wheel movement and two-finger scrolling with the bound modifier both work without waiting for a full notch. At the default `zoom_scroll_factor = 1.0`, one notch multiplies the scale by 1.1 when zooming in or divides it by 1.1 when zooming out. Opposite travel reverses the change. Scrolling out from the desktop opens at the largest preset; scrolling in stops at that preset. Use a keyboard/IPC zoom-in action or `overview-close` to leave the overview.
 
 For finer control, set `zoom_scroll_factor = 0.5`; use `2.0` for faster zoom. Keep `cooldown_ms` unset on smooth zoom bindings so every scroll sample can take effect. Keyboard shortcuts still use the presets, and `overview-zoom-cycle` still cycles presets even when bound to a wheel.
 
-Zoom changes apply to every output and use `[animation.overview]` timing. They preserve the selected workspace and window. Ordinary wheel and touchpad navigation continues at the new scale. Zoom actions are ignored during a window drag or middle-button navigation.
+Zoom changes apply to every output and preserve the selected workspace and window. Preset steps use `[animation.overview]` timing. Scroll input preserves velocity with spring curves. With other curves, every scroll sample updates the displayed scale directly, including whole mouse-wheel notches. Scrolling during a preset animation continues from the currently displayed scale. Ordinary wheel and touchpad navigation continues at the new scale. Zoom actions are ignored during a window drag or middle-button navigation.
 
 Opening with `overview-open`, `overview-toggle`, or a four-finger swipe starts at `overview.zoom`. Closing uses the currently displayed scale, including when a zoom animation is interrupted.
 
