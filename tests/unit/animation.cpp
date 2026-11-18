@@ -368,6 +368,53 @@ UMBRIEL_TEST(springTailFinishesOnlyInsideTheTargetPixelsRoundingCell) {
   CHECK(overdampedRelease.animating());
 }
 
+UMBRIEL_TEST(pixelAlignedSpringReachesHalfPixelTargetsBeforeRest) {
+  constexpr double scale = 1.5;
+  const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 1000.0, .mass = 1.0};
+  for (double origin : {0.0, 101.0}) {
+    for (int direction : {-1, 1}) {
+      const double target = origin + 11.0;
+      umbriel::AnimatedValue value{target - direction};
+      value.settleSpring(target, spring);
+      CHECK(value.tick(1000.0));
+      bool finished = false;
+      for (int frame = 1; frame <= 40 && value.animating(); ++frame) {
+        CHECK(value.tick(1000.0 + frame * 1000.0 / 165.0));
+        const long before = std::lround((value.pixelAlignedCurrent(scale, origin) - origin) * scale);
+        if (value.finishPixelAlignedSpringTail(scale, origin)) {
+          finished = true;
+          CHECK_EQ(before, std::lround((value.pixelAlignedCurrent(scale, origin) - origin) * scale));
+        }
+      }
+      CHECK(finished);
+      CHECK(!value.animating());
+      CHECK_EQ(value.current(), target);
+    }
+  }
+}
+
+UMBRIEL_TEST(pixelAlignedRetargetPreservesThePresentedStart) {
+  constexpr double scale = 1.5;
+  umbriel::AnimatedValue value{10.0};
+  value.retarget(11.0, 100, umbriel::Easing::Linear);
+  CHECK(value.tick(1000));
+  CHECK(value.tick(1040));
+  const double shown = value.pixelAlignedCurrent(scale);
+  CHECK(std::abs(shown - value.current()) > 0.1);
+  value.retarget(20.0, 100, umbriel::Easing::Linear);
+  CHECK(value.tick(1040));
+  CHECK_NEAR(value.pixelAlignedCurrent(scale), shown, 1e-12);
+  value.translate(100.0);
+  CHECK_NEAR(value.pixelAlignedCurrent(scale, 100.0), shown + 100.0, 1e-12);
+
+  // A release at the current logical value still has a different presented starting edge.
+  const double logical = value.current();
+  value.settleSpring(logical, {.damping = 1.0, .stiffness = 1000.0, .mass = 1.0});
+  CHECK(value.tick(1040));
+  CHECK(value.animating());
+  CHECK_NEAR(value.pixelAlignedCurrent(scale, 100.0), shown + 100.0, 1e-12);
+}
+
 UMBRIEL_TEST(springTailPresentationDeceleratesAtTheReportedRefreshRate) {
   constexpr double step = 587.0;
   const umbriel::SpringConfig spring{.damping = 1.0, .stiffness = 1000.0, .mass = 1.0};

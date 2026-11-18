@@ -211,6 +211,8 @@ namespace umbriel {
     // Canonical box currently presented by this view. The normal scene and overview cards both project this state, so
     // position and size transitions cannot diverge between the two render paths.
     const wlr_box& presentedBox() const { return m_presentedBox; }
+    // Effective layout-coordinate content box, including ancestor presentation corrections.
+    wlr_fbox fractionalPresentedBox() const;
     float presentedOpacity() const { return effectiveOpacity(); }
     // The drop shadow the scene draws for this view, and whether it sits in the workspace's tile shadow layer rather
     // than under the view's own frame. Overview cards mirror it so they match the window they swap with.
@@ -335,9 +337,11 @@ namespace umbriel {
     // Per-frame presentation of a layout-assigned tiled slot. Remembers the unscaled logical box underneath an
     // opening popin or zoom.
     void presentTiledBox(const wlr_box& box);
+    void presentTiledBox(const wlr_fbox& box);
     // Present `box` carrying whatever opening inset is running: position the node, adopt the presented size, refresh
     // the derived chrome. Width and height are clamped to at least 1.
     void presentBox(const wlr_box& box);
+    void presentBox(const wlr_fbox& box);
     // Keep a fresh tiled opener invisible from map until the admitting arrange places it. Resuming starts a fresh
     // windows_in at that slot.
     void deferTiledOpening();
@@ -522,7 +526,8 @@ namespace umbriel {
     bool canUseRegionGeometry() const;
 
     // Move the frame, and a lent shadow with it.
-    void setScenePosition(int x, int y);
+    void setScenePosition(double x, double y);
+    void syncFractionalPresentation();
     // Shared by both constructors once the role pointer is set.
     void initCommon();
     // Role mechanism behind the opening and configure paths.
@@ -714,15 +719,16 @@ namespace umbriel {
       return openingInsetPending() && (tiledOpeningActive() || fullscreenOpeningActive());
     }
     // `box` with that inset applied, else `box` itself. Both extents are at least 1.
-    wlr_box openingInsetBox(const wlr_box& box) const;
+    wlr_fbox openingInsetBox(const wlr_fbox& box) const;
     // The output box a fullscreen view rests in, carrying the scrolling column offset its workspace applies.
     wlr_box fullscreenLayoutBox() const;
     // Position the node at `box` with any opening inset applied and adopt that presented size, without refreshing the
     // chrome derived from it.
     void placePresentedBox(const wlr_box& box);
-    // Unscaled logical box underneath an active tiled windows_in presentation. Once another layout change arrives, the
-    // view can retain its lifecycle effect while this box participates independently in windows_move.
-    std::optional<wlr_box> openingLayoutBox() const;
+    void placePresentedBox(const wlr_fbox& box);
+    // Last fractional tiled box before the opening inset. A retarget starts here
+    // while windows_in can retain its independent lifecycle effect.
+    std::optional<wlr_fbox> tiledMotionPresentationBox() const;
     // Drop the opening inset and put the node back on its resting origin; the caller settles the presented size.
     void dropOpeningInset();
     // True while the border ring exists and is showing. Fullscreen keeps the
@@ -992,6 +998,10 @@ namespace umbriel {
     uint64_t m_minimizeSerial = 0;
     ViewEffects m_effects;
     ViewPresentation m_presentation;
+    PositionPixelAlignment m_positionAlignmentX;
+    PositionPixelAlignment m_positionAlignmentY;
+    double m_fractionalX = 0;
+    double m_fractionalY = 0;
     DragPhysics m_dragPhysics;
     double m_dragPhysicsMsec = 0; // animation clock at the sheet's last tick
     // The frame-local grab and the content tree's drawn bounds the sheet was last fitted to.
@@ -1002,9 +1012,9 @@ namespace umbriel {
     wlr_box m_presentedBox{};
     // Last committed content size considered for the windows event stream.
     ClientSize m_ipcContentSize;
-    // Last unscaled box supplied by the workspace. A tiled popin or zoom presents an inset inside this logical box,
-    // so a later layout change must animate from the logical box rather than scaling the inset a second time.
-    wlr_box m_presentedTiledBox{};
+    // Last fractional slot supplied by the workspace, before a tiled popin or zoom
+    // applies its inset. Retargeting must not scale that inset a second time.
+    wlr_fbox m_presentedTiledBox{};
     wlr_foreign_toplevel_handle_v1* m_foreign = nullptr;
     wlr_ext_foreign_toplevel_handle_v1* m_extForeign = nullptr;
     wlr_output* m_foreignOutput = nullptr;

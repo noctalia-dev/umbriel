@@ -29,6 +29,15 @@ extern "C" {
 namespace umbriel {
   namespace {
     constexpr Logger kLog("view");
+
+    wlr_fbox fractionalBox(const wlr_box& box) {
+      return {
+          static_cast<double>(box.x),
+          static_cast<double>(box.y),
+          static_cast<double>(box.width),
+          static_cast<double>(box.height),
+      };
+    }
   } // namespace
 
   using view_detail::toplevelSurfaceTreeNode;
@@ -36,8 +45,8 @@ namespace umbriel {
   void View::cancelPositionAnimation() {
     // Freeze wherever the node currently sits; callers use this to take over
     // positioning (drags, layout snaps) without a jump.
-    m_posX.snap(layoutX());
-    m_posY.snap(layoutY());
+    m_posX.snap(layoutX() + m_fractionalX);
+    m_posY.snap(layoutY() + m_fractionalY);
   }
 
   bool View::fadeComposited() const {
@@ -159,20 +168,18 @@ namespace umbriel {
     return m_mapped && !m_inScratchpad && layoutFullscreen() && m_fade.animating() && m_fade.target() > m_fade.from();
   }
 
-  wlr_box View::openingInsetBox(const wlr_box& box) const {
-    wlr_box presented = box;
+  wlr_fbox View::openingInsetBox(const wlr_fbox& box) const {
+    wlr_fbox presented = box;
     if (openingInsetActive()) {
       const double progress = std::clamp(m_fade.current(), 0.0, 1.0);
       const double scale = std::lerp(m_openingScale, 1.0, progress);
-      presented.width = static_cast<int>(std::lround(box.width * scale));
-      presented.height = static_cast<int>(std::lround(box.height * scale));
+      presented.width = box.width * scale;
+      presented.height = box.height * scale;
       presented.x = box.x + (box.width - presented.width) / 2;
-      presented.y = box.y
-          + (box.height - presented.height) / 2
-          + static_cast<int>(std::lround(std::lerp(m_openingSlide, 0.0, progress)));
+      presented.y = box.y + (box.height - presented.height) / 2 + std::lerp(m_openingSlide, 0.0, progress);
     }
-    presented.width = std::max(1, presented.width);
-    presented.height = std::max(1, presented.height);
+    presented.width = std::max(1.0, presented.width);
+    presented.height = std::max(1.0, presented.height);
     return presented;
   }
 
@@ -186,8 +193,10 @@ namespace umbriel {
     return fullscreenArea();
   }
 
-  std::optional<wlr_box> View::openingLayoutBox() const {
-    if (!tiledOpeningActive() || m_presentedTiledBox.width <= 0 || m_presentedTiledBox.height <= 0) {
+  std::optional<wlr_fbox> View::tiledMotionPresentationBox() const {
+    if ((!tiledOpeningActive() && !m_layoutMotion)
+        || m_presentedTiledBox.width <= 0
+        || m_presentedTiledBox.height <= 0) {
       return std::nullopt;
     }
     return m_presentedTiledBox;
@@ -348,6 +357,11 @@ namespace umbriel {
 
   void View::finishSizeAnimation() {
     if ((!currentFullscreen() && m_tiled) || m_floating.pendingSize() || m_openingFloatingSize) {
+      if (!m_layoutMotion) {
+        // An opener's last frame may already round to the resting size. track()
+        // preserves those fractional dimensions, so explicitly release them at rest.
+        m_presentation.setSize(m_presentation.width(), m_presentation.height());
+      }
       resetPresentedSurface();
       applyPresentedSize();
       return;
@@ -604,18 +618,24 @@ namespace umbriel {
     }
   }
 
-  void View::presentTiledBox(const wlr_box& box) {
+  void View::presentTiledBox(const wlr_box& box) { presentTiledBox(fractionalBox(box)); }
+
+  void View::presentTiledBox(const wlr_fbox& box) {
     m_presentedTiledBox = box;
     presentBox(box);
   }
 
-  void View::placePresentedBox(const wlr_box& box) {
-    const wlr_box presented = openingInsetBox(box);
+  void View::placePresentedBox(const wlr_box& box) { placePresentedBox(fractionalBox(box)); }
+
+  void View::placePresentedBox(const wlr_fbox& box) {
+    const wlr_fbox presented = openingInsetBox(box);
     setScenePosition(presented.x, presented.y);
     m_presentation.setSize(presented.width, presented.height);
   }
 
-  void View::presentBox(const wlr_box& box) {
+  void View::presentBox(const wlr_box& box) { presentBox(fractionalBox(box)); }
+
+  void View::presentBox(const wlr_fbox& box) {
     if ((tiledOpeningActive() || fullscreenOpeningActive()) && m_presentation.animating()) {
       // windows_in owns lifecycle composition. A resize tween started by the admitting arrange would otherwise win
       // shader selection and apply a second windows_move over the workspace-owned logical presentation.
@@ -790,6 +810,8 @@ namespace umbriel {
     if (fromX == x && fromY == y) {
       m_posX.snap(x);
       m_posY.snap(y);
+      // The integer node can reach the target before its fractional correction does.
+      setScenePosition(x, y);
       return;
     }
     const auto& animation = config().animation;
@@ -801,11 +823,11 @@ namespace umbriel {
     // Animate from wherever the node visually is, not from the last target. A running tween already sits there and
     // keeps its speed through the retarget.
     if (!m_posX.animating()) {
-      m_posX.snap(fromX);
+      m_posX.snap(fromX + m_fractionalX);
     }
     m_posX.retarget(x, move.durationMs, move.curve);
     if (!m_posY.animating()) {
-      m_posY.snap(fromY);
+      m_posY.snap(fromY + m_fractionalY);
     }
     m_posY.retarget(y, move.durationMs, move.curve);
     scheduleFrame();
@@ -912,6 +934,49 @@ namespace umbriel {
   bool View::tickAnimations(double nowMsec) {
     bool active = false;
     bool openingFinished = false;
+    const Output* animationOutput = currentOutput();
+    const double pixelsPerUnit = animationOutput != nullptr ? animationOutput->wlr()->scale : 1.0;
+    const wlr_box outputBox = animationOutput != nullptr ? animationOutput->layoutBox() : wlr_box{};
+    int parentX = 0;
+    int parentY = 0;
+    if (m_sceneTree->node.parent != nullptr) {
+      wlr_scene_node_coords(&m_sceneTree->node.parent->node, &parentX, &parentY);
+    }
+    const double originX = outputBox.x - parentX;
+    const double originY = outputBox.y - parentY;
+    const double shownWidth = !presentsCommittedSize() && m_presentation.width() == m_presentedBox.width
+        ? std::max(1.0, m_presentation.fractionalWidth())
+        : m_presentedBox.width;
+    const double shownHeight = !presentsCommittedSize() && m_presentation.height() == m_presentedBox.height
+        ? std::max(1.0, m_presentation.fractionalHeight())
+        : m_presentedBox.height;
+    m_positionAlignmentX.update(m_posX, shownWidth, pixelsPerUnit, originX, sizeAnimating());
+    m_positionAlignmentY.update(m_posY, shownHeight, pixelsPerUnit, originY, sizeAnimating());
+    const auto& positionAlignmentX = m_positionAlignmentX;
+    const auto& positionAlignmentY = m_positionAlignmentY;
+
+    // Size alignment uses the position endpoints, not a grid that moves on every tick.
+    const auto sizeOrigins = [pixelsPerUnit](
+                                 const AnimatedValue& position, double origin, double shown,
+                                 const PositionPixelAlignment& alignment
+                             ) {
+      if (!position.animating()) {
+        return ViewPresentation::PositionOrigins{origin - shown, origin - shown, origin - shown, origin - shown};
+      }
+
+      const double from = position.pixelAlignedCurrent(pixelsPerUnit, origin, alignment.target, alignment.from);
+      const double to =
+          origin + alignment.target.value_or(std::round((position.target() - origin) * pixelsPerUnit)) / pixelsPerUnit;
+      return ViewPresentation::PositionOrigins{
+          origin - position.current(),
+          origin - position.target(),
+          origin - from,
+          origin - to,
+      };
+    };
+
+    auto sizeOriginsX = sizeOrigins(m_posX, originX, m_sceneTree->node.x + m_fractionalX, positionAlignmentX);
+    auto sizeOriginsY = sizeOrigins(m_posY, originY, m_sceneTree->node.y + m_fractionalY, positionAlignmentY);
 
     // Disable sibling size animations during a tiled resize, so they do not
     // trail the pointer while clients acknowledge successive configures.
@@ -925,13 +990,19 @@ namespace umbriel {
 
     const bool movedX = m_posX.tick(nowMsec);
     const bool movedY = m_posY.tick(nowMsec);
-    // A carried-speed spring settles on its own solver; stop it once no pixel can change.
-    static_cast<void>(m_posX.finishSpringTail(1.0));
-    static_cast<void>(m_posY.finishSpringTail(1.0));
+    // A fixed-size move shares the near and far edges' rounding cells. During
+    // resizing, ViewPresentation reserves the other half of the rounding margin.
+    static_cast<void>(m_posX.finishPixelAlignedSpringTail(
+        pixelsPerUnit, originX, positionAlignmentX.target, positionAlignmentX.from, positionAlignmentX.roundingMargin
+    ));
+    static_cast<void>(m_posY.finishPixelAlignedSpringTail(
+        pixelsPerUnit, originY, positionAlignmentY.target, positionAlignmentY.from, positionAlignmentY.roundingMargin
+    ));
     if (movedX || movedY) {
-      const int cx = static_cast<int>(std::lround(m_posX.current()));
-      const int cy = static_cast<int>(std::lround(m_posY.current()));
-      setScenePosition(cx, cy);
+      setScenePosition(
+          m_posX.pixelAlignedCurrent(pixelsPerUnit, originX, positionAlignmentX.target, positionAlignmentX.from),
+          m_posY.pixelAlignedCurrent(pixelsPerUnit, originY, positionAlignmentY.target, positionAlignmentY.from)
+      );
       // Clips are derived from the node's current position; refresh them as the
       // node moves or partial-visibility trims land displaced.
       syncOwnedPresentation();
@@ -941,7 +1012,41 @@ namespace umbriel {
       active = m_posX.animating() || m_posY.animating();
     }
 
-    if (m_presentation.tick(nowMsec)) {
+    // A position can settle on this tick. Keep the resize's starting origins,
+    // but use the logical endpoint now actually shown by the scene node.
+    if (!m_posX.animating()) {
+      sizeOriginsX.to = originX - (m_sceneTree->node.x + m_fractionalX);
+      sizeOriginsX.presentedTo = sizeOriginsX.to;
+    }
+    if (!m_posY.animating()) {
+      sizeOriginsY.to = originY - (m_sceneTree->node.y + m_fractionalY);
+      sizeOriginsY.presentedTo = sizeOriginsY.to;
+    }
+    sizeOriginsX.animating = m_posX.animating();
+    sizeOriginsY.animating = m_posY.animating();
+
+    std::optional<double> targetWidthPixels;
+    std::optional<double> targetHeightPixels;
+    if (animationOutput != nullptr
+        && scheduledFullscreen()
+        && m_presentation.targeting(outputBox.width, outputBox.height)) {
+      int width = 0;
+      int height = 0;
+      wlr_output_transformed_resolution(animationOutput->wlr(), &width, &height);
+
+      // Only a fullscreen endpoint at this output's origin owns its exact last pixel.
+      if (layoutTargetX() + parentX == outputBox.x) {
+        targetWidthPixels = width;
+      }
+      if (layoutTargetY() + parentY == outputBox.y) {
+        targetHeightPixels = height;
+      }
+    }
+
+    if (m_presentation.tick(
+            nowMsec, pixelsPerUnit, sizeOriginsX.from, sizeOriginsY.from, targetWidthPixels, targetHeightPixels,
+            sizeOriginsX, sizeOriginsY
+        )) {
       applyPresentedSize();
       if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
         overview->onViewPresentationChanged(this);
@@ -1138,6 +1243,10 @@ namespace umbriel {
       return kInvalidCloseSnapshot;
     }
     wlr_scene_node_set_position(&snap->node, m_presentedBox.x, m_presentedBox.y);
+    if (!wlr_scene_node_copy_fractional_transform_for_snapshot(&snap->node, &m_sceneTree->node)) {
+      wlr_scene_node_destroy(&snap->node);
+      return kInvalidCloseSnapshot;
+    }
     if (!umbrielfx_scene_node_share_capture_policy(&snap->node, &m_sceneTree->node)) {
       wlr_scene_node_destroy(&snap->node);
       return kInvalidCloseSnapshot;
@@ -1345,5 +1454,6 @@ namespace umbriel {
     updateBlur(content.width, content.height);
     syncModalShade();
     layoutAttachments();
+    syncFractionalPresentation();
   }
 } // namespace umbriel

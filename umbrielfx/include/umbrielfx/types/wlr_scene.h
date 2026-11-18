@@ -355,6 +355,10 @@ struct wlr_scene_buffer {
   struct wlr_color_transform* decode_transform;
   // Outputs whose capture composition sampled this buffer in their latest frame.
   uint64_t capture_outputs;
+  // Sample against fractional presentation geometry instead of its rounded raster bounds.
+  bool continuous_sampling;
+  // Fixed desktop destination extent in source-buffer axes, for continuous mirrors.
+  int sampling_reference_width, sampling_reference_height;
 };
 
 /** A viewport for an output in the scene-graph */
@@ -460,6 +464,28 @@ void wlr_scene_node_set_enabled(struct wlr_scene_node* node, bool enabled);
  * Set the position of the node relative to its parent.
  */
 void wlr_scene_node_set_position(struct wlr_scene_node* node, int x, int y);
+
+/**
+ * Apply a fractional presentation correction to this node and its descendants.
+ * Translation is in node-local logical coordinates, before ancestor transforms.
+ * Logical positions and sizes are unchanged. Identity (0, 0, 1, 1) clears it.
+ * Returns false on allocation failure.
+ */
+bool wlr_scene_node_set_fractional_transform(
+    struct wlr_scene_node* node, double x, double y, double scale_x, double scale_y
+);
+
+/** Map a layout-coordinate box through this node's effective presentation without rounding. */
+void wlr_scene_node_get_presentation_box(
+    struct wlr_scene_node* node, const struct wlr_box* box, struct wlr_fbox* presented
+);
+
+/**
+ * Freeze the source's effective presentation, including ancestor corrections,
+ * onto a snapshot. Their local origins present at the same layout point.
+ * Compensates for the snapshot parent's transform. Returns false on allocation failure.
+ */
+bool wlr_scene_node_copy_fractional_transform_for_snapshot(struct wlr_scene_node* node, struct wlr_scene_node* source);
 /**
  * Move the node right above the specified sibling.
  * Asserts that node and sibling are distinct and share the same parent.
@@ -1039,6 +1065,16 @@ void wlr_scene_buffer_set_opacity(struct wlr_scene_buffer* scene_buffer, float o
  * Sets the filter mode to use when scaling the buffer
  */
 void wlr_scene_buffer_set_filter_mode(struct wlr_scene_buffer* scene_buffer, enum wlr_scale_filter_mode filter_mode);
+
+/** Preserve continuous texture coordinates while fractional presentation bounds animate. */
+void wlr_scene_buffer_set_continuous_sampling(struct wlr_scene_buffer* scene_buffer, bool enabled);
+
+/**
+ * Match the desktop's near-1:1 source adjustment without following animated raster
+ * sizes. Reference dimensions are physical pixels in source-buffer axes. Zero
+ * clears the reference and keeps the original source extent.
+ */
+void wlr_scene_buffer_set_sampling_reference_size(struct wlr_scene_buffer* scene_buffer, int width, int height);
 
 /**
  * Sets the corner radius of all corners to round of this buffer

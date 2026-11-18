@@ -668,9 +668,111 @@ static struct scene_node_clip* scene_node_clip_try_get(const struct wlr_scene_no
   return clip;
 }
 
+// Corrections live in addons to preserve the embedded wlroots scene structs' ABI.
+struct scene_fractional_transform {
+  struct wlr_addon addon;
+  double x, y, scale_x, scale_y;
+};
+
+static void scene_fractional_transform_destroy(struct wlr_addon* addon) {
+  struct scene_fractional_transform* transform = wl_container_of(addon, transform, addon);
+  wlr_addon_finish(addon);
+  free(transform);
+}
+
+static const struct wlr_addon_interface scene_fractional_transform_impl = {
+    .name = "scene_fractional_transform",
+    .destroy = scene_fractional_transform_destroy,
+};
+
+static struct scene_fractional_transform* scene_fractional_transform_get(struct wlr_scene_node* node) {
+  struct wlr_addon* addon =
+      wlr_addon_find(&node->addons, &scene_fractional_transform_impl, &scene_fractional_transform_impl);
+  struct scene_fractional_transform* transform = NULL;
+  return addon != NULL ? wl_container_of(addon, transform, addon) : NULL;
+}
+
+// Composed map from logical to presented layout coordinates.
+struct scene_presentation {
+  double x, y, scale_x, scale_y;
+  // Ancestor clips still transform when a child's correction cancels their map.
+  bool active;
+};
+
+static struct scene_presentation scene_presentation_transform(struct wlr_scene_node* node) {
+  struct scene_presentation map = {.scale_x = 1, .scale_y = 1};
+  int x, y;
+  wlr_scene_node_coords(node, &x, &y);
+  for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
+    const struct scene_fractional_transform* transform = scene_fractional_transform_get(node);
+    if (transform != NULL) {
+      map.x = x + transform->x + (map.x - x) * transform->scale_x;
+      map.y = y + transform->y + (map.y - y) * transform->scale_y;
+      map.scale_x *= transform->scale_x;
+      map.scale_y *= transform->scale_y;
+      map.active = true;
+    }
+    x -= node->x;
+    y -= node->y;
+  }
+  return map;
+}
+
+static struct wlr_fbox presentation_box(const struct wlr_box* box, const struct scene_presentation* map) {
+  return (struct wlr_fbox){
+      .x = box->x * map->scale_x + map->x,
+      .y = box->y * map->scale_y + map->y,
+      .width = box->width * map->scale_x,
+      .height = box->height * map->scale_y,
+  };
+}
+
+void wlr_scene_node_get_presentation_box(
+    struct wlr_scene_node* node, const struct wlr_box* box, struct wlr_fbox* presented
+) {
+  const struct scene_presentation map = scene_presentation_transform(node);
+  *presented = presentation_box(box, &map);
+}
+
+static struct wlr_box presentation_bounds(const struct wlr_fbox* box, bool outward) {
+  const int x = outward ? floor(box->x) : ceil(box->x);
+  const int y = outward ? floor(box->y) : ceil(box->y);
+  const int right = outward ? ceil(box->x + box->width) : floor(box->x + box->width);
+  const int bottom = outward ? ceil(box->y + box->height) : floor(box->y + box->height);
+  return (struct wlr_box){x, y, right > x ? right - x : 0, bottom > y ? bottom - y : 0};
+}
+
+static void scene_presentation_region(struct wlr_scene_node* node, pixman_region32_t* region, bool outward) {
+  const struct scene_presentation map = scene_presentation_transform(node);
+  if (!map.active) {
+    return;
+  }
+  pixman_region32_t result;
+  pixman_region32_init(&result);
+  int count;
+  const pixman_box32_t* rects = pixman_region32_rectangles(region, &count);
+  for (int i = 0; i < count; ++i) {
+    const struct wlr_box box = {rects[i].x1, rects[i].y1, rects[i].x2 - rects[i].x1, rects[i].y2 - rects[i].y1};
+    const struct wlr_fbox presented = presentation_box(&box, &map);
+    const struct wlr_box bounds = presentation_bounds(&presented, outward);
+    pixman_region32_union_rect(&result, &result, bounds.x, bounds.y, bounds.width, bounds.height);
+  }
+  pixman_region32_copy(region, &result);
+  pixman_region32_fini(&result);
+}
+
+void scene_presentation_bounds(struct wlr_scene_node* node, struct wlr_box* box) {
+  const struct scene_presentation map = scene_presentation_transform(node);
+  if (!map.active) {
+    return;
+  }
+  const struct wlr_fbox presented = presentation_box(box, &map);
+  *box = presentation_bounds(&presented, true);
+}
+
 // Copies this node's combined clip in layout coordinates. Unlike an empty
 // rectangle passed to the rectangular API, an empty region clips everything.
-static bool scene_node_local_clip(struct wlr_scene_node* node, int lx, int ly, pixman_region32_t* region) {
+static bool scene_node_logical_clip(struct wlr_scene_node* node, int lx, int ly, pixman_region32_t* region) {
   struct scene_node_clip* clip = scene_node_clip_try_get(node);
   struct scene_tree_clip* rectangle =
       node->type == WLR_SCENE_NODE_TREE ? scene_tree_clip_try_get(wlr_scene_tree_from_node(node)) : NULL;
@@ -691,6 +793,14 @@ static bool scene_node_local_clip(struct wlr_scene_node* node, int lx, int ly, p
   }
   pixman_region32_translate(region, lx, ly);
   return true;
+}
+
+static bool scene_node_local_clip(struct wlr_scene_node* node, int lx, int ly, pixman_region32_t* region) {
+  const bool clipped = scene_node_logical_clip(node, lx, ly, region);
+  if (clipped) {
+    scene_presentation_region(node, region, true);
+  }
+  return clipped;
 }
 
 typedef bool (*scene_node_box_iterator_func_t)(
@@ -738,6 +848,7 @@ static bool _scene_nodes_in_box(
   case WLR_SCENE_NODE_BLUR:;
     struct wlr_box node_box = {.x = lx, .y = ly};
     scene_node_get_size(node, &node_box.width, &node_box.height);
+    scene_presentation_bounds(node, &node_box);
     found = wlr_box_intersection(&node_box, &node_box, box) && iterator(node, lx, ly, acc_clip, user_data);
     break;
   }
@@ -818,7 +929,7 @@ create_corner_location_region(struct fx_corner_radii corners, int x, int y, int 
 // when the scene has none). Transient animations keep the conservative
 // scene-wide policy. A persistent effect only exempts its own subtree: the
 // program may expose pixels its input would have covered.
-static void scene_node_opaque_region(
+static void scene_node_logical_opaque_region(
     const struct scene_effects* effects, struct wlr_scene_node* node, int x, int y, pixman_region32_t* opaque
 ) {
   if (effects != NULL
@@ -914,6 +1025,49 @@ static void scene_node_opaque_region(
 
   pixman_region32_fini(opaque);
   pixman_region32_init_rect(opaque, x, y, width, height);
+}
+
+static void scene_node_opaque_region(
+    const struct scene_effects* effects, struct wlr_scene_node* node, int x, int y, pixman_region32_t* opaque
+) {
+  const struct scene_presentation map = scene_presentation_transform(node);
+  if (map.scale_x != 1 || map.scale_y != 1) {
+    // Quads scale with presentation, but rendered radii retain their logical size.
+    // Scaled corner exclusions cannot safely describe the resulting opaque region.
+    if (node->type == WLR_SCENE_NODE_RECT) {
+      const struct wlr_scene_rect* rect = wlr_scene_rect_from_node(node);
+      if (!fx_corner_radii_is_empty(&rect->corners) || !fx_corner_radii_is_empty(&rect->clipped_region.corners)) {
+        return;
+      }
+    } else if (
+        node->type == WLR_SCENE_NODE_BUFFER && !fx_corner_radii_is_empty(&wlr_scene_buffer_from_node(node)->corners)
+    ) {
+      return;
+    }
+  }
+  scene_node_logical_opaque_region(effects, node, x, y, opaque);
+  if (!map.active) {
+    return;
+  }
+  int lx, ly;
+  wlr_scene_node_coords(node, &lx, &ly);
+  pixman_region32_translate(opaque, lx - x, ly - y);
+  scene_presentation_region(node, opaque, false);
+  int cx = lx, cy = ly;
+  for (struct wlr_scene_node* ancestor = node; ancestor != NULL;
+       ancestor = ancestor->parent != NULL ? &ancestor->parent->node : NULL) {
+    pixman_region32_t clip;
+    pixman_region32_init(&clip);
+    if (scene_node_logical_clip(ancestor, cx, cy, &clip)) {
+      // Visibility clips enclose fractional edges; only their interior may occlude.
+      scene_presentation_region(ancestor, &clip, false);
+      pixman_region32_intersect(opaque, opaque, &clip);
+    }
+    pixman_region32_fini(&clip);
+    cx -= ancestor->x;
+    cy -= ancestor->y;
+  }
+  pixman_region32_translate(opaque, x - lx, y - ly);
 }
 
 struct scene_update_data {
@@ -1031,6 +1185,95 @@ static void transform_output_box(struct wlr_box* box, const struct render_data* 
   wlr_box_transform(box, box, transform, data->trans_width, data->trans_height);
   box->x += data->capture_x;
   box->y += data->capture_y;
+}
+
+static struct wlr_fbox node_output_box(
+    const struct wlr_box* box, const struct render_data* data, const struct scene_presentation* presentation
+) {
+  struct wlr_box logical = *box;
+  logical.x += data->logical.x;
+  logical.y += data->logical.y;
+  struct wlr_fbox presented = presentation_box(&logical, presentation);
+  presented.x -= data->logical.x;
+  presented.y -= data->logical.y;
+  const bool touches_right = presented.width > 0 && presented.x + presented.width == data->logical.width;
+  const bool touches_bottom = presented.height > 0 && presented.y + presented.height == data->logical.height;
+  presented.x *= data->scale;
+  presented.y *= data->scale;
+  presented.width *= data->scale;
+  presented.height *= data->scale;
+  // Match transform_output_box's last output pixel for both coverage and sampling.
+  if (touches_right) {
+    presented.width = data->trans_width - presented.x;
+  }
+  if (touches_bottom) {
+    presented.height = data->trans_height - presented.y;
+  }
+  return presented;
+}
+
+static void transform_node_box(struct wlr_box* box, const struct render_data* data, struct wlr_scene_node* node) {
+  const struct scene_presentation map = scene_presentation_transform(node);
+  if (!map.active) {
+    transform_output_box(box, data);
+    return;
+  }
+  const struct wlr_fbox presented = node_output_box(box, data, &map);
+  const int x = round(presented.x);
+  const int y = round(presented.y);
+  *box = (struct wlr_box){
+      x,
+      y,
+      round(presented.x + presented.width) - x,
+      round(presented.y + presented.height) - y,
+  };
+  wlr_box_transform(box, box, wlr_output_transform_invert(data->transform), data->trans_width, data->trans_height);
+  box->x += data->capture_x;
+  box->y += data->capture_y;
+}
+
+static struct wlr_fbox node_sampling_box(
+    const struct wlr_box* box, const struct render_data* data, const struct scene_presentation* presentation
+) {
+  struct wlr_fbox sampled = node_output_box(box, data, presentation);
+  wlr_fbox_transform(
+      &sampled, &sampled, wlr_output_transform_invert(data->transform), data->trans_width, data->trans_height
+  );
+  sampled.x += data->capture_x;
+  sampled.y += data->capture_y;
+  return sampled;
+}
+
+// Cached visibility uses enclosing logical pixels. Apply the actual clips at
+// physical resolution so that fractional edges cannot leak into adjacent trees.
+static void
+scene_presentation_clip(struct wlr_scene_node* node, const struct render_data* data, pixman_region32_t* region) {
+  int lx, ly;
+  wlr_scene_node_coords(node, &lx, &ly);
+  for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
+    pixman_region32_t logical, physical;
+    pixman_region32_init(&logical);
+    pixman_region32_init(&physical);
+    if (scene_node_logical_clip(node, lx, ly, &logical)) {
+      int count;
+      const pixman_box32_t* rects = pixman_region32_rectangles(&logical, &count);
+      for (int i = 0; i < count; ++i) {
+        struct wlr_box box = {
+            rects[i].x1 - data->logical.x,
+            rects[i].y1 - data->logical.y,
+            rects[i].x2 - rects[i].x1,
+            rects[i].y2 - rects[i].y1,
+        };
+        transform_node_box(&box, data, node);
+        pixman_region32_union_rect(&physical, &physical, box.x, box.y, box.width, box.height);
+      }
+      pixman_region32_intersect(region, region, &physical);
+    }
+    pixman_region32_fini(&physical);
+    pixman_region32_fini(&logical);
+    lx -= node->x;
+    ly -= node->y;
+  }
 }
 
 static void scene_output_damage(struct wlr_scene_output* scene_output, const pixman_region32_t* damage) {
@@ -1267,7 +1510,11 @@ static bool scene_node_update_iterator(
   const bool keep_input = animation != NULL && animation->persistent;
   pixman_region32_subtract(&node->visible, &node->visible, data->update_region);
   pixman_region32_union(&node->visible, &node->visible, keep_input ? data->update_region : data->visible);
-  pixman_region32_intersect_rect(&node->visible, &node->visible, lx, ly, box.width, box.height);
+  struct wlr_box presented = box;
+  scene_presentation_bounds(node, &presented);
+  pixman_region32_intersect_rect(
+      &node->visible, &node->visible, presented.x, presented.y, presented.width, presented.height
+  );
 
   if (acc_clip != NULL) {
     // An ancestor tree clips this node. Folding the clip into the visible
@@ -1342,7 +1589,11 @@ static void scene_node_bounds(struct wlr_scene_node* node, int x, int y, pixman_
 
   int width, height;
   scene_node_get_size(node, &width, &height);
-  pixman_region32_union_rect(visible, visible, x, y, width, height);
+  int lx, ly;
+  wlr_scene_node_coords(node, &lx, &ly);
+  struct wlr_box box = {lx, ly, width, height};
+  scene_presentation_bounds(node, &box);
+  pixman_region32_union_rect(visible, visible, box.x + x - lx, box.y + y - ly, box.width, box.height);
 }
 
 bool wlr_scene_node_effect_bounds(struct wlr_scene_node* node, struct wlr_box* box) {
@@ -2705,6 +2956,16 @@ void wlr_scene_buffer_set_buffer_with_options(
     return;
   }
 
+  const struct scene_presentation presentation = scene_presentation_transform(&scene_buffer->node);
+  if (presentation.active) {
+    // Resampling can spread a buffer-local update across fractional edges.
+    if (options->damage == NULL || pixman_region32_not_empty(options->damage)) {
+      scene_node_note_update(&scene_buffer->node);
+      scene_damage_outputs(scene_node_get_root(&scene_buffer->node), &scene_buffer->node.visible);
+    }
+    return;
+  }
+
   pixman_region32_t fallback_damage;
   pixman_region32_init_rect(&fallback_damage, 0, 0, buffer->width, buffer->height);
   const pixman_region32_t* damage = options->damage;
@@ -2880,6 +3141,24 @@ void wlr_scene_buffer_set_filter_mode(struct wlr_scene_buffer* scene_buffer, enu
   }
 
   scene_buffer->filter_mode = filter_mode;
+  scene_node_update(&scene_buffer->node, NULL);
+}
+
+void wlr_scene_buffer_set_continuous_sampling(struct wlr_scene_buffer* scene_buffer, bool enabled) {
+  if (scene_buffer->continuous_sampling == enabled) {
+    return;
+  }
+  scene_buffer->continuous_sampling = enabled;
+  scene_node_update(&scene_buffer->node, NULL);
+}
+
+void wlr_scene_buffer_set_sampling_reference_size(struct wlr_scene_buffer* scene_buffer, int width, int height) {
+  assert(width >= 0 && height >= 0);
+  if (scene_buffer->sampling_reference_width == width && scene_buffer->sampling_reference_height == height) {
+    return;
+  }
+  scene_buffer->sampling_reference_width = width;
+  scene_buffer->sampling_reference_height = height;
   scene_node_update(&scene_buffer->node, NULL);
 }
 
@@ -3115,6 +3394,58 @@ void wlr_scene_node_set_position(struct wlr_scene_node* node, int x, int y) {
   scene_node_update(node, NULL);
 }
 
+bool wlr_scene_node_set_fractional_transform(
+    struct wlr_scene_node* node, double x, double y, double scale_x, double scale_y
+) {
+  assert(isfinite(x) && isfinite(y) && isfinite(scale_x) && isfinite(scale_y));
+  assert(scale_x > 0 && scale_y > 0);
+  struct scene_fractional_transform* transform = scene_fractional_transform_get(node);
+  if (x == 0 && y == 0 && scale_x == 1 && scale_y == 1) {
+    if (transform != NULL) {
+      scene_fractional_transform_destroy(&transform->addon);
+      scene_node_update(node, NULL);
+    }
+    return true;
+  }
+  if (transform != NULL
+      && transform->x == x
+      && transform->y == y
+      && transform->scale_x == scale_x
+      && transform->scale_y == scale_y) {
+    return true;
+  }
+  if (transform == NULL) {
+    transform = calloc(1, sizeof(*transform));
+    if (transform == NULL) {
+      return false;
+    }
+    wlr_addon_init(
+        &transform->addon, &node->addons, &scene_fractional_transform_impl, &scene_fractional_transform_impl
+    );
+  }
+  transform->x = x;
+  transform->y = y;
+  transform->scale_x = scale_x;
+  transform->scale_y = scale_y;
+  scene_node_update(node, NULL);
+  return true;
+}
+
+bool wlr_scene_node_copy_fractional_transform_for_snapshot(struct wlr_scene_node* node, struct wlr_scene_node* source) {
+  const struct scene_presentation source_map = scene_presentation_transform(source);
+  const struct scene_presentation parent_map = node->parent != NULL
+      ? scene_presentation_transform(&node->parent->node)
+      : (struct scene_presentation){.scale_x = 1, .scale_y = 1};
+  int sx, sy, dx, dy;
+  wlr_scene_node_coords(source, &sx, &sy);
+  wlr_scene_node_coords(node, &dx, &dy);
+  return wlr_scene_node_set_fractional_transform(
+      node, (sx * source_map.scale_x + source_map.x - parent_map.x) / parent_map.scale_x - dx,
+      (sy * source_map.scale_y + source_map.y - parent_map.y) / parent_map.scale_y - dy,
+      source_map.scale_x / parent_map.scale_x, source_map.scale_y / parent_map.scale_y
+  );
+}
+
 void wlr_scene_node_place_above(struct wlr_scene_node* node, struct wlr_scene_node* sibling) {
   assert(node != sibling);
   assert(node->parent == sibling->parent);
@@ -3267,6 +3598,7 @@ scene_dim_visible_iterator(struct wlr_scene_node* node, int lx, int ly, const pi
   const struct wlr_box* box = data;
   struct wlr_box bounds = {.x = lx, .y = ly};
   scene_node_get_size(node, &bounds.width, &bounds.height);
+  scene_presentation_bounds(node, &bounds);
   if (!wlr_box_intersection(&bounds, &bounds, box)) {
     return false;
   }
@@ -3383,8 +3715,34 @@ scene_node_at_iterator(struct wlr_scene_node* node, int lx, int ly, const pixman
     return false;
   }
 
-  double rx = at_data->lx - lx;
-  double ry = at_data->ly - ly;
+  const struct scene_presentation map = scene_presentation_transform(node);
+  double rx = (at_data->lx - map.x) / map.scale_x - lx;
+  double ry = (at_data->ly - map.y) / map.scale_y - ly;
+  int width, height;
+  scene_node_get_size(node, &width, &height);
+  if (rx < 0 || ry < 0 || rx >= width || ry >= height) {
+    return false;
+  }
+  if (map.active) {
+    int cx = lx, cy = ly;
+    for (struct wlr_scene_node* ancestor = node; ancestor != NULL;
+         ancestor = ancestor->parent != NULL ? &ancestor->parent->node : NULL) {
+      pixman_region32_t clip;
+      pixman_region32_init(&clip);
+      const struct scene_presentation ancestor_map = scene_presentation_transform(ancestor);
+      const bool outside = scene_node_logical_clip(ancestor, cx, cy, &clip)
+          && !pixman_region32_contains_point(
+                               &clip, floor((at_data->lx - ancestor_map.x) / ancestor_map.scale_x),
+                               floor((at_data->ly - ancestor_map.y) / ancestor_map.scale_y), NULL
+          );
+      pixman_region32_fini(&clip);
+      if (outside) {
+        return false;
+      }
+      cx -= ancestor->x;
+      cy -= ancestor->y;
+    }
+  }
 
   if (node->type == WLR_SCENE_NODE_BUFFER) {
     struct wlr_scene_buffer* scene_buffer = wlr_scene_buffer_from_node(node);
@@ -3495,6 +3853,10 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
   pixman_region32_copy(&render_region, entry->capture_visible != NULL ? entry->capture_visible : &node->visible);
   pixman_region32_translate(&render_region, -data->logical.x, -data->logical.y);
   logical_to_buffer_coords(&render_region, data, true);
+  const struct scene_presentation presentation = scene_presentation_transform(node);
+  if (presentation.active) {
+    scene_presentation_clip(node, data, &render_region);
+  }
   pixman_region32_intersect(&render_region, &render_region, &data->damage);
   if (pixman_region32_empty(&render_region)) {
     pixman_region32_fini(&render_region);
@@ -3509,7 +3871,8 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
       .y = y,
   };
   scene_node_get_size(node, &dst_box.width, &dst_box.height);
-  transform_output_box(&dst_box, data);
+  const struct wlr_box logical_dst_box = dst_box;
+  transform_node_box(&dst_box, data, node);
 
   pixman_region32_t opaque;
   pixman_region32_init(&opaque);
@@ -3550,7 +3913,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     rect_clipped_region_box.x += x;
     rect_clipped_region_box.y += y;
 
-    transform_output_box(&rect_clipped_region_box, data);
+    transform_node_box(&rect_clipped_region_box, data, node);
     fx_corner_radii_transform(node_transform, &rect_clipped_corners);
 
     struct fx_render_rect_options rect_options = {
@@ -3594,7 +3957,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
 
     border_clipped_region_box.x += x;
     border_clipped_region_box.y += y;
-    transform_output_box(&border_clipped_region_box, data);
+    transform_node_box(&border_clipped_region_box, data, node);
     fx_corner_radii_transform(node_transform, &border_clipped_corners);
     fx_corner_radii_transform(node_transform, &border_seam_corners);
     fx_corner_radii_transform(node_transform, &border_outer_corners);
@@ -3679,7 +4042,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
       // Node relative -> Root relative
       corner_box.x += x;
       corner_box.y += y;
-      transform_output_box(&corner_box, data);
+      transform_node_box(&corner_box, data, node);
       fx_corner_radii_transform(node_transform, &buffer_corners);
     } else {
       fx_corner_radii_transform(transform, &buffer_corners);
@@ -3771,6 +4134,12 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     int src_dst_width = dst_box.width;
     int src_dst_height = dst_box.height;
     wlr_output_transform_coords(transform, &src_dst_width, &src_dst_height);
+    // Mirrors use the desktop's raster extent, not this animation frame's. This
+    // retains continuous sampling while matching the live draw at the handoff.
+    if (scene_buffer->continuous_sampling) {
+      src_dst_width = scene_buffer->sampling_reference_width;
+      src_dst_height = scene_buffer->sampling_reference_height;
+    }
     if (src_dst_width > 0 && fabs(snapped_src_box.width - src_dst_width) <= 1.0) {
       snapped_src_box.width = src_dst_width;
     }
@@ -3796,6 +4165,14 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
               && sample_box.x + sample_box.width < texture->width)
           || (snapped_src_box.y + snapped_src_box.height > sample_box.y + sample_box.height
               && sample_box.y + sample_box.height < texture->height);
+    }
+    // Fractional sampling can put an edge fragment within half a texel of an
+    // integer crop boundary. Bilinear filtering must not pull in CSD padding.
+    if (scene_buffer->continuous_sampling && !wlr_fbox_empty(&sample_box)) {
+      crosses_crop_edge |= sample_box.x > 0
+          || sample_box.y > 0
+          || sample_box.x + sample_box.width < texture->width
+          || sample_box.y + sample_box.height < texture->height;
     }
     if (!crosses_crop_edge) {
       sample_box = (struct wlr_fbox){0};
@@ -3826,6 +4203,8 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .corners = fx_corner_radii_scale(buffer_corners, data->scale),
         .clipped_region = {0},
         .sample_box = sample_box,
+        .sampling_box = scene_buffer->continuous_sampling ? node_sampling_box(&logical_dst_box, data, &presentation)
+                                                          : (struct wlr_fbox){0},
         .luminances = scene_buffer->luminances.reference > 0.0f ? &scene_buffer->luminances : NULL,
         .map_hdr_to_sdr = !data->hdr
             && (source_tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ
@@ -3876,7 +4255,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     shadow_clipped_region_box.x += x;
     shadow_clipped_region_box.y += y;
 
-    transform_output_box(&shadow_clipped_region_box, data);
+    transform_node_box(&shadow_clipped_region_box, data, node);
     fx_corner_radii_transform(node_transform, &shadow_clipped_corners);
 
     struct fx_render_box_shadow_options shadow_options = {
@@ -3954,7 +4333,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     struct fx_corner_radii blur_clip_corners = blur->clipped_region.corners;
     blur_clip_box.x += x;
     blur_clip_box.y += y;
-    transform_output_box(&blur_clip_box, data);
+    transform_node_box(&blur_clip_box, data, node);
     fx_corner_radii_transform(node_transform, &blur_clip_corners);
 
     struct fx_render_blur_pass_options blur_options = {
@@ -4080,6 +4459,10 @@ static bool render_animation_shadow(struct render_list_entry* entry, const struc
   pixman_region32_copy(&clip, &entry->node->visible);
   pixman_region32_translate(&clip, -data->logical.x, -data->logical.y);
   logical_to_buffer_coords(&clip, data, true);
+  const struct scene_presentation presentation = scene_presentation_transform(entry->node);
+  if (presentation.active) {
+    scene_presentation_clip(entry->node, data, &clip);
+  }
   pixman_region32_intersect(&clip, &clip, &data->damage);
   struct wlr_scene_shadow* node = shadow->shadow;
   struct wlr_box origin = {.width = 1, .height = 1};
@@ -4100,9 +4483,10 @@ static bool render_animation_shadow(struct render_list_entry* entry, const struc
 
 // The border node a border slot composites: the node itself, or the single
 // enabled border child of a tree (a view's border tree). `hole` comes back in
-// logical coordinates relative to the extents' origin (the animated node's bounds).
+// buffer coordinates relative to the composite's origin, in unrotated texture axes.
 static bool scene_border_geometry(
-    struct wlr_scene_node* node, int lx, int ly, const pixman_box32_t* extents, struct fx_effect_geometry* geometry
+    struct wlr_scene_node* node, int lx, int ly, const struct render_data* data, const struct wlr_box* box,
+    struct fx_effect_geometry* geometry
 ) {
   struct wlr_scene_border* border = NULL;
   int bx = lx, by = ly;
@@ -4124,13 +4508,19 @@ static bool scene_border_geometry(
   if (border == NULL) {
     return false;
   }
-  geometry->hole = border->clipped_region.area;
-  geometry->hole.x += bx - extents->x1;
-  geometry->hole.y += by - extents->y1;
-  geometry->radius[0] = border->clipped_region.corners.top_left;
-  geometry->radius[1] = border->clipped_region.corners.top_right;
-  geometry->radius[2] = border->clipped_region.corners.bottom_right;
-  geometry->radius[3] = border->clipped_region.corners.bottom_left;
+  struct wlr_box hole = border->clipped_region.area;
+  hole.x += bx - data->logical.x;
+  hole.y += by - data->logical.y;
+  transform_node_box(&hole, data, &border->node);
+  hole.x -= box->x;
+  hole.y -= box->y;
+  // Shader UVs undo the output transform, including reflections.
+  wlr_box_transform(&hole, &hole, data->transform, box->width, box->height);
+  geometry->hole = hole;
+  geometry->radius[0] = border->clipped_region.corners.top_left * data->scale;
+  geometry->radius[1] = border->clipped_region.corners.top_right * data->scale;
+  geometry->radius[2] = border->clipped_region.corners.bottom_right * data->scale;
+  geometry->radius[3] = border->clipped_region.corners.bottom_left * data->scale;
   return true;
 }
 
@@ -4142,8 +4532,10 @@ static bool region_touches_box(const pixman_region32_t* region, const struct wlr
 // The in-place mask's corner radii: a rect's or buffer's own, or a tree's
 // first enabled buffer (the toplevel surface). When that buffer has a corner
 // box (its content inside client-side margins), `box` receives it in layout
-// coordinates; otherwise `box` is empty.
-static bool in_place_shape(struct wlr_scene_node* node, int lx, int ly, float corners[4], struct wlr_box* box) {
+// coordinates; otherwise it receives the node's own rectangle. Return its owner
+// so the mask includes corrections below the animated tree.
+static struct wlr_scene_node*
+in_place_shape(struct wlr_scene_node* node, int lx, int ly, float corners[4], struct wlr_box* box) {
   *box = (struct wlr_box){0};
   if (node->type == WLR_SCENE_NODE_TREE) {
     struct wlr_scene_node* child;
@@ -4155,7 +4547,7 @@ static bool in_place_shape(struct wlr_scene_node* node, int lx, int ly, float co
       }
     }
     if (surface == NULL) {
-      return false;
+      return NULL;
     }
     node = surface;
     lx += surface->x;
@@ -4174,13 +4566,17 @@ static bool in_place_shape(struct wlr_scene_node* node, int lx, int ly, float co
     }
   }
   if (radii == NULL) {
-    return false;
+    return NULL;
+  }
+  if (wlr_box_empty(box)) {
+    *box = (struct wlr_box){.x = lx, .y = ly};
+    scene_node_get_size(node, &box->width, &box->height);
   }
   corners[0] = radii->top_left;
   corners[1] = radii->top_right;
   corners[2] = radii->bottom_right;
   corners[3] = radii->bottom_left;
-  return true;
+  return node;
 }
 
 // Runs the node's in-place slots over what its subtree has drawn into the
@@ -4206,8 +4602,14 @@ static void render_in_place_slots(
     }
     if (!shape_known) {
       struct wlr_box corner_box;
-      corner_radius = in_place_shape(animation->node, lx, ly, corners, &corner_box) ? corners : NULL;
-      if (!wlr_box_empty(&corner_box)) {
+      struct wlr_scene_node* shape_node = in_place_shape(animation->node, lx, ly, corners, &corner_box);
+      corner_radius = shape_node != NULL ? corners : NULL;
+      if (shape_node != NULL) {
+        struct wlr_box physical_corner = corner_box;
+        physical_corner.x -= data->logical.x;
+        physical_corner.y -= data->logical.y;
+        transform_node_box(&physical_corner, data, shape_node);
+        scene_presentation_bounds(shape_node, &corner_box);
         corner_box.x -= data->logical.x;
         corner_box.y -= data->logical.y;
         // The node bounds can cut edges off the corner box (a client buffer lagging a resize);
@@ -4229,17 +4631,30 @@ static void render_in_place_slots(
         if (!wlr_box_intersection(&shape_logical, &corner_box, logical_box)) {
           return;
         }
-        shape_box = shape_logical;
-        transform_output_box(&shape_box, data);
+        if (!wlr_box_intersection(&shape_box, &physical_corner, box)) {
+          return;
+        }
       }
       if (!region_touches_box(clip, &shape_box)) {
         return;
       }
+      // Conservative logical bounds can have a different aspect ratio from the
+      // raster rectangle. Express the mask in physical pixels on both axes.
+      shape_logical.width = shape_box.width;
+      shape_logical.height = shape_box.height;
+      wlr_output_transform_coords(data->transform, &shape_logical.width, &shape_logical.height);
+      if (corner_radius != NULL) {
+        for (unsigned corner = 0; corner < 4; ++corner) {
+          corners[corner] *= data->scale;
+        }
+      }
       shape_known = true;
     }
+    struct fx_animation_parameters parameters = animation->parameters[slot];
+    parameters.scale = (parameters.scale > 0.0F ? parameters.scale : 1.0F) * data->scale;
     const struct fx_effect_composite composite = {
         .shader = shader,
-        .parameters = &animation->parameters[slot],
+        .parameters = &parameters,
         .audio = data->audio,
         .box = shape_box,
         .logical_box = shape_logical,
@@ -4349,7 +4764,7 @@ static void render_animated_range(
       output_box = animation->output_clip;
       output_box.x += lx - data->logical.x;
       output_box.y += ly - data->logical.y;
-      transform_output_box(&output_box, data);
+      transform_node_box(&output_box, data, animation->node);
     }
     pixman_region32_t ancestor_clip;
     pixman_region32_init(&ancestor_clip);
@@ -4440,6 +4855,10 @@ static void render_animated_range(
     if (has_clip) {
       pixman_region32_intersect(&clip, &clip, &ancestor_clip);
     }
+    const struct scene_presentation presentation = scene_presentation_transform(animation->node);
+    if (presentation.active) {
+      scene_presentation_clip(animation->node, data, &clip);
+    }
     render_in_place_slots(animation, data, lx, ly, &box, &logical_box, &clip);
     pixman_region32_t output_clip;
     bool has_output_clip = false;
@@ -4474,7 +4893,7 @@ static void render_animated_range(
         struct fx_effect_geometry geometry;
         const bool has_geometry = slot == FX_SLOT_BORDER_EFFECT
             && fx_effect_shader_kind(animation->shaders[slot]) == FX_EFFECT_BORDER
-            && scene_border_geometry(animation->node, lx, ly, extents, &geometry);
+            && scene_border_geometry(animation->node, lx, ly, data, &box, &geometry);
         const struct fx_effect_composite composite = {
             .shader = animation->shaders[slot],
             .parameters = &animation->parameters[slot],
@@ -5721,6 +6140,7 @@ capture_list_iterator(struct wlr_scene_node* node, int lx, int ly, const pixman_
   int width, height;
   scene_node_get_size(node, &width, &height);
   pixman_region32_init_rect(visible, lx, ly, width, height);
+  scene_presentation_region(node, visible, true);
   bool ok =
       pixman_region32_intersect_rect(visible, visible, list->box.x, list->box.y, list->box.width, list->box.height);
   if (clip != NULL) {
@@ -5810,12 +6230,20 @@ static bool construct_render_list_iterator(
     return false;
   }
 
+  bool cull_background = data->cull_background;
+  if (cull_background && (node->type == WLR_SCENE_NODE_RECT || node->type == WLR_SCENE_NODE_BUFFER)) {
+    // Conservative fractional occlusion leaves lower nodes drawing at the edges,
+    // so a clear at the beginning of the pass cannot replace this node there.
+    const struct scene_presentation presentation = scene_presentation_transform(node);
+    cull_background = !presentation.active;
+  }
+
   // The clear paints the scene's background color, so a rect that matches it
   // exactly renders nothing the clear would not. Skip it, and everything it
   // covers, except under fractional scale where the damage region is expanded
   // and the rect has to be drawn to cover the seam.
   if (node->type == WLR_SCENE_NODE_RECT
-      && data->cull_background
+      && cull_background
       && (!data->fractional_scale || data->render_list->size == 0)
       && !(data->persistent_effects && effect_over_node(node) != NULL)) {
     struct wlr_scene_rect* rect = wlr_scene_rect_from_node(node);
@@ -5827,7 +6255,7 @@ static bool construct_render_list_iterator(
 
   // Same for a single-pixel buffer of that color
   if (node->type == WLR_SCENE_NODE_BUFFER
-      && data->cull_background
+      && cull_background
       && (!data->fractional_scale || data->render_list->size == 0)
       && !(data->persistent_effects && effect_over_node(node) != NULL)) {
     struct wlr_scene_buffer* scene_buffer = wlr_scene_buffer_from_node(node);
@@ -5969,7 +6397,8 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
   struct wlr_scene_output* scene_output = data->output;
   struct wlr_scene_node* node = entry->node;
 
-  if (data->transient_effects || data->persistent_visible) {
+  const struct scene_presentation presentation = scene_presentation_transform(node);
+  if (data->transient_effects || data->persistent_visible || presentation.active) {
     *status = WLR_SCENE_DIRECT_SCANOUT_EFFECTS;
     return SCANOUT_INELIGIBLE;
   }
@@ -7190,6 +7619,7 @@ static void scene_output_for_each_scene_buffer(
   if (node->type == WLR_SCENE_NODE_BUFFER) {
     struct wlr_box node_box = {.x = lx, .y = ly};
     scene_node_get_size(node, &node_box.width, &node_box.height);
+    scene_presentation_bounds(node, &node_box);
 
     struct wlr_box intersection;
     if (wlr_box_intersection(&intersection, output_box, &node_box)) {

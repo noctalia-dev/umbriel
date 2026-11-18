@@ -192,6 +192,14 @@ namespace umbriel {
     }
   }
 
+  bool ViewDecoration::setShadowFractionalTransform(double x, double y, double scaleX, double scaleY) {
+    return m_shadowContainer == nullptr
+        || wlr_scene_node_set_fractional_transform(
+               &m_shadowContainer->node, m_shadowPooled ? x : 0.0, m_shadowPooled ? y : 0.0,
+               m_shadowPooled ? scaleX : 1.0, m_shadowPooled ? scaleY : 1.0
+        );
+  }
+
   void ViewDecoration::updateShadow(
       int contentWidth, int contentHeight, int borderInset, int cornerRadius, int topExtension
   ) {

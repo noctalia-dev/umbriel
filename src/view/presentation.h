@@ -6,7 +6,9 @@ extern "C" {
 #include <wlr/util/box.h>
 }
 
+#include <cmath>
 #include <cstdint>
+#include <optional>
 
 struct wlr_scene_node;
 struct wlr_scene_rect;
@@ -15,22 +17,39 @@ struct wlr_surface;
 
 namespace umbriel {
 
+  // Pixel endpoints belong to a position transition, not to this frame's resize state.
+  struct PositionPixelAlignment {
+    std::optional<double> from;
+    std::optional<double> target;
+    double roundingMargin = 0.25;
+
+    void update(const AnimatedValue& position, double extent, double scale, double origin, bool resizing);
+
+  private:
+    uint64_t m_transitionId = 0;
+    double m_scale = 0.0;
+    double m_origin = 0.0;
+  };
+
   // The size a view is currently *drawn* at, which can differ from the committed size: an unacked layout configure, a
   // resize animation, or fullscreen (a mismatched buffer is centered, not scaled). Borders, shadow, blur and output
   // clipping must read this, not the committed geometry. Holds no reference back to its View.
   class ViewPresentation {
   public:
     // Presented size
-    int width() const { return m_width; }
-    int height() const { return m_height; }
+    int width() const { return static_cast<int>(std::lround(m_width)); }
+    int height() const { return static_cast<int>(std::lround(m_height)); }
+    double fractionalWidth() const { return m_width; }
+    double fractionalHeight() const { return m_height; }
     // Adopt a size outright: map, animation end, or an interactive resize that
     // owns the size itself.
-    void setSize(int width, int height);
+    void setSize(double width, double height);
     // Adopt a size only if it is real and no animation currently owns it.
     void track(int width, int height);
 
     // Size animation
-    bool animating() const { return m_animW.animating() || m_animH.animating(); }
+    // A finished resize still owns its fractional size while the accompanying move runs.
+    bool animating() const { return m_animW.animating() || m_animH.animating() || m_alignmentHeld; }
     const AnimatedValue& animation() const { return m_animW.animating() ? m_animW : m_animH; }
     // True when an animation is already heading exactly here, so a repeated
     // layout pass does not restart it from the current interpolated size.
@@ -39,9 +58,23 @@ namespace umbriel {
     // retargets must continue from what is on screen.
     void animateTo(int width, int height, int durationMs, const AnimationCurve& curve = AnimationCurve{});
     void setRegion(int width, int height);
+    // Output-grid origins relative to a position transition's logical and presented endpoints.
+    struct PositionOrigins {
+      double from;
+      double to;
+      double presentedFrom;
+      double presentedTo;
+      bool animating = false;
+    };
     // Advance both axes. Returns true when the presented size moved this tick,
     // which is the caller's cue to re-derive everything drawn from it.
-    bool tick(double nowMsec);
+    // Origins locate the output grid relative to the near edges. Moving positions supply both
+    // endpoints and their running state. Optional physical far edges preserve fullscreen coverage.
+    bool tick(
+        double nowMsec, double pixelsPerUnit = 1.0, double originX = 0.0, double originY = 0.0,
+        std::optional<double> targetWidthPixels = std::nullopt, std::optional<double> targetHeightPixels = std::nullopt,
+        std::optional<PositionOrigins> positionX = std::nullopt, std::optional<PositionOrigins> positionY = std::nullopt
+    );
 
     // Fullscreen
     void createBackdrop(wlr_scene_tree* parent);
@@ -72,10 +105,19 @@ namespace umbriel {
     void resetCrop(wlr_scene_tree* tree, wlr_surface* surface) const;
 
   private:
-    int m_width = 0;
-    int m_height = 0;
+    double m_width = 0;
+    double m_height = 0;
     AnimatedValue m_animW;
     AnimatedValue m_animH;
+    struct PixelAlignment {
+      double scale;
+      double origin;
+      double fromPixels;
+      double targetPixels;
+    };
+    std::optional<PixelAlignment> m_alignmentW;
+    std::optional<PixelAlignment> m_alignmentH;
+    bool m_alignmentHeld = false;
     wlr_scene_rect* m_backdrop = nullptr;
     int m_offsetX = 0;
     int m_offsetY = 0;
