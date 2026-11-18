@@ -185,7 +185,10 @@ namespace umbriel {
                 const auto value = node.value<std::string>();
                 OutputMode mode;
                 if (!value || !parseOutputMode(*value, mode)) {
-                  warnAt(node.source(), R"(ignoring {} (expected "WIDTHxHEIGHT" or "WIDTHxHEIGHT@HZ"))", path);
+                  warnAt(
+                      node.source(),
+                      R"(ignoring {} (expected "WIDTHxHEIGHT", "WIDTHxHEIGHT@HZ", "highrr" or "highres"))", path
+                  );
                 } else {
                   target.mode = mode;
                 }

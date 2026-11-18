@@ -24,10 +24,44 @@ namespace umbriel {
     return populated(output->make) || populated(output->model) || populated(output->serial);
   }
 
+  static bool
+  isBetterForTarget(OutputModeTarget target, const wlr_output_mode* current, const wlr_output_mode* candidate) {
+    if (current == nullptr || candidate == nullptr) {
+      return false;
+    }
+
+    const bool higherRefreshRate = candidate->refresh > current->refresh;
+    const bool higherResolution = (candidate->width >= current->width && candidate->height >= current->height)
+        && (candidate->width != current->width || candidate->height != current->height);
+
+    const bool betterPreference = candidate->preferred && !current->preferred;
+    const bool samePreference = candidate->preferred == current->preferred;
+
+    if (target == OutputModeTarget::HighRefreshRate) {
+      const bool tieBreaker = betterPreference || (samePreference && higherResolution);
+
+      return higherRefreshRate || (candidate->refresh == current->refresh && tieBreaker);
+    }
+    if (target == OutputModeTarget::HighResolution) {
+      const bool tieBreaker = betterPreference || (samePreference && higherRefreshRate);
+
+      return higherResolution
+          || (candidate->width == current->width && candidate->height == current->height && tieBreaker);
+    }
+
+    return false;
+  }
+
   wlr_output_mode* selectOutputMode(wlr_output* output, const OutputMode& configured) {
     wlr_output_mode* selected = nullptr;
     wlr_output_mode* mode = nullptr;
     wl_list_for_each(mode, &output->modes, link) {
+      if (configured.target != OutputModeTarget::None
+          && (selected == nullptr || isBetterForTarget(configured.target, selected, mode))) {
+        selected = mode;
+        continue;
+      }
+
       if (mode->width != configured.width || mode->height != configured.height) {
         continue;
       }

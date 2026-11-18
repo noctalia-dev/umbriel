@@ -42,7 +42,19 @@ namespace umbriel {
     return true;
   }
 
-  bool parseOutputMode(std::string_view text, OutputMode& output) {
+  bool parseOutputMode(std::string_view text, OutputMode& output, bool allowKeywords) {
+    if (allowKeywords) {
+      if (text == "highrr") {
+        output.target = OutputModeTarget::HighRefreshRate;
+        return true;
+      }
+
+      if (text == "highres") {
+        output.target = OutputModeTarget::HighResolution;
+        return true;
+      }
+    }
+
     const size_t widthEnd = text.find('x');
     if (widthEnd == std::string_view::npos) {
       return false;
