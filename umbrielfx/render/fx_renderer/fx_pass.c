@@ -920,15 +920,17 @@ static void draw_animation_texture(
   if (shader->kind == FX_EFFECT_BORDER) {
     static const struct fx_effect_geometry no_hole = {0};
     const struct fx_effect_geometry* border = geometry != NULL ? geometry : &no_hole;
+    int width = box->width, height = box->height;
+    wlr_output_transform_coords(transform, &width, &height);
     struct fx_uniform hole = {.name = "umbriel_border_hole", .type = FX_UNIFORM_VEC4, .count = 1};
-    hole.floats[0] = logical_box->width > 0 ? (float)border->hole.x / logical_box->width : 0;
-    hole.floats[1] = logical_box->height > 0 ? (float)border->hole.y / logical_box->height : 0;
-    hole.floats[2] = logical_box->width > 0 ? (float)border->hole.width / logical_box->width : 0;
-    hole.floats[3] = logical_box->height > 0 ? (float)border->hole.height / logical_box->height : 0;
+    hole.floats[0] = width > 0 ? (float)border->hole.x / width : 0;
+    hole.floats[1] = height > 0 ? (float)border->hole.y / height : 0;
+    hole.floats[2] = width > 0 ? (float)border->hole.width / width : 0;
+    hole.floats[3] = height > 0 ? (float)border->hole.height / height : 0;
     fx_effect_shader_bind_uniform(shader, &hole);
     struct fx_uniform radius = {.name = "umbriel_border_radius", .type = FX_UNIFORM_VEC4, .count = 1};
     for (unsigned i = 0; i < 4; i++) {
-      radius.floats[i] = border->radius[i] / effect_scale;
+      radius.floats[i] = border->radius[i] / (animation_box_scale(box, logical_box) * effect_scale);
     }
     fx_effect_shader_bind_uniform(shader, &radius);
   }
@@ -1360,15 +1362,7 @@ static void effect_composite(
   const float* corner_radius = composite->corner_radius;
   const struct wlr_box* box = &composite->box;
   const struct wlr_box* logical_box = &composite->logical_box;
-  // The hole is relative to the node box; the drawn box grew by `expand`.
-  struct fx_effect_geometry shifted;
-  const struct fx_effect_geometry* geometry = NULL;
-  if (composite->geometry != NULL) {
-    shifted = *composite->geometry;
-    shifted.hole.x += expand;
-    shifted.hole.y += expand;
-    geometry = &shifted;
-  }
+  const struct fx_effect_geometry* geometry = composite->geometry;
   struct fx_renderer* renderer = pass->buffer->renderer;
   struct fx_animation_output_history* output_history = NULL;
   struct wlr_texture* previous_texture = NULL;
@@ -1513,6 +1507,16 @@ void fx_render_pass_end_workspace(struct fx_gles_render_pass* pass, const struct
 void fx_render_pass_end_effect(struct fx_gles_render_pass* pass, const struct fx_effect_composite* composite) {
   struct fx_effect_composite drawn = *composite;
   expand_animation_boxes(&drawn.box, &drawn.logical_box, composite->expand);
+  struct fx_effect_geometry shifted;
+  if (composite->geometry != NULL) {
+    shifted = *composite->geometry;
+    int dx = (drawn.box.width - composite->box.width) / 2;
+    int dy = (drawn.box.height - composite->box.height) / 2;
+    wlr_output_transform_coords(composite->transform, &dx, &dy);
+    shifted.hole.x += dx;
+    shifted.hole.y += dy;
+    drawn.geometry = &shifted;
+  }
   struct wlr_texture* texture = pop_animation_capture(pass);
   if (pass->isolation_content && pass->animation_depth == pass->isolation_depth) {
     fx_render_pass_cancel_isolation(pass);
@@ -2096,6 +2100,13 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   } else {
     pixman_region32_init_rect(&clip_region, dst_box.x, dst_box.y, dst_box.width, dst_box.height);
   }
+  if (!fx_corner_fradii_is_empty(&fx_options->corners)) {
+    // Corner antialiasing extends outside the rounding rectangle. A corner
+    // box inside a larger texture must still confine content to its raster edges.
+    pixman_region32_intersect_rect(
+        &clip_region, &clip_region, clip_box->x, clip_box->y, clip_box->width, clip_box->height
+    );
+  }
   const struct wlr_box clipped_region_box = fx_options->clipped_region.area;
   struct fx_corner_fradii clipped_region_corners = fx_options->clipped_region.corners;
   apply_clip_region(&clip_region, &clipped_region_box, &clipped_region_corners, fx_options->clipped_region.inside);
@@ -2200,7 +2211,22 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   }
 
   set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
-  set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
+  if (!wlr_fbox_empty(&fx_options->sampling_box)) {
+    const struct wlr_fbox sampling_box = fx_options->sampling_box;
+    float tex_matrix[9];
+    make_tex_matrix(tex_matrix, options->transform, &src_fbox);
+    // Rasterize whole pixels, but map their centers through the continuous
+    // rectangle. Refitting the texture to dst_box makes stationary details
+    // wobble when opposite edges round on different frames.
+    wlr_matrix_translate(
+        tex_matrix, (dst_box.x - sampling_box.x) / sampling_box.width,
+        (dst_box.y - sampling_box.y) / sampling_box.height
+    );
+    wlr_matrix_scale(tex_matrix, dst_box.width / sampling_box.width, dst_box.height / sampling_box.height);
+    glUniformMatrix3fv(shader->tex_proj, 1, GL_FALSE, tex_matrix);
+  } else {
+    set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
+  }
 
   render(&dst_box, &clip_region, shader->pos_attrib);
   pixman_region32_fini(&clip_region);

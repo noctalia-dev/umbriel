@@ -544,8 +544,11 @@ namespace umbriel {
         int topExtension = 0
     );
     // Place a snapshot's captured box at a canvas origin in output-root coordinates, or hide it while its workspace
-    // is not showing.
-    void presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible);
+    // is not showing. Fractional offsets adjust the frozen presentation relative to capture time.
+    void presentCloseSnapshot(
+        CloseSnapshotId id, int canvasX, int canvasY, bool visible, double fractionalOffsetX = 0.0,
+        double fractionalOffsetY = 0.0
+    );
     // Fold an owner's fade (a scratchpad's backdrop) into a snapshot's opacity, relative to the fade its capture
     // already baked in. A reaped id is a no-op.
     void setCloseSnapshotFade(CloseSnapshotId id, float fade);
@@ -869,7 +872,7 @@ namespace umbriel {
       void release() { m_held = false; }
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
-      void present(int canvasX, int canvasY, bool visible);
+      void present(int canvasX, int canvasY, bool visible, double fractionalOffsetX, double fractionalOffsetY);
       // Fold the owner's fade into this snapshot's opacity, without touching its own timeline.
       void setPadFade(float fade);
       // The owner's fade at capture time, which the captured nodes already carry.
@@ -902,6 +905,11 @@ namespace umbriel {
       wlr_box m_captured{};
       int m_canvasX = 0;
       int m_canvasY = 0;
+      // Frozen node-local correction: x/y translation and width/height scale.
+      wlr_fbox m_capturedPresentation{0, 0, 1, 1};
+      wlr_fbox m_capturedShadowPresentation{0, 0, 1, 1};
+      double m_fractionalOffsetX = 0.0;
+      double m_fractionalOffsetY = 0.0;
       bool m_visible = true;
       // A snapshot under the output's background layer is part of the shared blur input until its final frame.
       bool m_blurBackground = false;

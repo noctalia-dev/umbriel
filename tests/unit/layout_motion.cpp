@@ -3,6 +3,7 @@
 #include "check.h"
 
 #include <algorithm>
+#include <cmath>
 #include <span>
 #include <vector>
 
@@ -14,12 +15,12 @@ namespace {
 
   constexpr int kGap = 12;
 
-  bool sameBox(const wlr_box& a, const wlr_box& b) {
+  bool sameBox(const wlr_fbox& a, const auto& b) {
     return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
   }
 
   // True when the interiors intersect; touching edges do not count.
-  bool overlaps(const wlr_box& a, const wlr_box& b) {
+  bool overlaps(const wlr_fbox& a, const wlr_fbox& b) {
     if (a.width <= 0 || a.height <= 0 || b.width <= 0 || b.height <= 0) {
       return false;
     }
@@ -27,7 +28,7 @@ namespace {
   }
 
   // The largest gap separating two boxes along one axis; negative when they overlap on both.
-  int separation(const wlr_box& a, const wlr_box& b) {
+  double separation(const wlr_fbox& a, const wlr_fbox& b) {
     return std::max({b.x - (a.x + a.width), a.x - (b.x + b.width), b.y - (a.y + a.height), a.y - (b.y + b.height)});
   }
 
@@ -37,10 +38,10 @@ namespace {
       const double progress = step * 0.05;
       for (size_t i = 0; i < members.size(); ++i) {
         for (size_t j = i + 1; j < members.size(); ++j) {
-          const wlr_box a = interpolateBox(members[i].from, members[i].to, progress);
-          const wlr_box b = interpolateBox(members[j].from, members[j].to, progress);
+          const wlr_fbox a = interpolateBox(members[i].from, members[i].to, progress);
+          const wlr_fbox b = interpolateBox(members[j].from, members[j].to, progress);
           CHECK(!overlaps(a, b));
-          CHECK(separation(a, b) >= minGap);
+          CHECK(separation(a, b) >= minGap - 0.000001);
         }
       }
     }
@@ -70,10 +71,10 @@ UMBRIEL_TEST(interpolateBoxEndpointsAreExact) {
 UMBRIEL_TEST(interpolateBoxEdgesMoveMonotonically) {
   const wlr_box from{0, 0, 7, 7};
   const wlr_box to{100, 0, 13, 7};
-  int lastLeft = from.x;
-  int lastRight = from.x + from.width;
+  double lastLeft = from.x;
+  double lastRight = from.x + from.width;
   for (int step = 1; step <= 20; ++step) {
-    const wlr_box box = interpolateBox(from, to, step * 0.05);
+    const wlr_fbox box = interpolateBox(from, to, step * 0.05);
     CHECK(box.x >= lastLeft);
     CHECK(box.x + box.width >= lastRight);
     lastLeft = box.x;
@@ -92,6 +93,37 @@ UMBRIEL_TEST(interpolateBoxSplitsPositionFromSize) {
     const double progress = step * 0.05;
     CHECK(sameBox(interpolateBox(from, to, progress, progress), interpolateBox(from, to, progress)));
   }
+}
+
+UMBRIEL_TEST(presentationEdgesReachEveryPhysicalPixel) {
+  const wlr_box from{0, 0, 100, 50};
+  const wlr_box to{2, 0, 102, 50};
+  // At 150%, each third of this two-logical-pixel move is one physical pixel.
+  for (int step = 0; step <= 3; ++step) {
+    const double progress = step / 3.0;
+    const wlr_fbox box = interpolateBox(from, to, progress, progress);
+    CHECK(std::lround(box.x * 1.5) == step);
+    CHECK(std::lround((box.x + box.width) * 1.5) == 150 + 2 * step);
+  }
+  const wlr_fbox a = interpolateBox(from, to, 0.2, 0.2);
+  const wlr_fbox b = interpolateBox({100, 0, 50, 50}, {104, 0, 50, 50}, 0.2, 0.2);
+  CHECK(std::abs(a.x + a.width - b.x) < 0.000001);
+}
+
+UMBRIEL_TEST(presentationMotionKeepsAlignedEndpointsAndRetargets) {
+  constexpr double scale = 1.5;
+  const wlr_box output{100, -20, 1706, 1066};
+  const wlr_box from{110, -10, 100, 100};
+  const wlr_box to{111, -9, 101, 101};
+  const wlr_fbox nearEnd = umbriel::interpolatePresentationBox(from, to, 0.999, 0.999, scale, output, 2560, 1600);
+  CHECK_EQ(std::lround((nearEnd.x - output.x) * scale), 17);
+  CHECK_EQ(std::lround((nearEnd.y - output.y) * scale), 17);
+  const wlr_fbox resumed = umbriel::interpolatePresentationBox(to, output, 0, 0, scale, output, 2560, 1600, &nearEnd);
+  CHECK(sameBox(resumed, nearEnd));
+  const wlr_fbox full = umbriel::interpolatePresentationBox(to, output, 0.99999, 0.99999, scale, output, 2560, 1600);
+  CHECK_EQ(std::lround((full.x + full.width - output.x) * scale), 2560);
+  CHECK_EQ(std::lround((full.y + full.height - output.y) * scale), 1600);
+  CHECK(sameBox(umbriel::interpolatePresentationBox(to, output, 1, 1, scale, output, 2560, 1600), output));
 }
 
 UMBRIEL_TEST(establishedColumnsStaySeparateDuringInsertionReflow) {
