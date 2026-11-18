@@ -1344,6 +1344,7 @@ namespace umbriel {
     } input;
 
     std::vector<Keybind> keybinds;
+    std::map<std::string, std::map<std::string, std::string>> globalShortcuts;
     std::vector<OutputRule> outputs;
     std::vector<WindowRule> windowRules;
     std::vector<LayerRule> layerRules;

@@ -87,7 +87,7 @@ namespace umbriel {
     m_fadeAlpha = std::clamp(alpha, 0.0F, 1.0F);
     applyEffectiveOpacity();
     const float effective = effectiveOpacity();
-    m_decoration.setBorderRawColors(m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effective);
+    applyBorderColors();
     // The analytic fallback still follows the lifecycle fade. Shader-shaped
     // shadows get their opacity from captured pixels instead of this multiplier.
     const float shadowOpacity = fadeComposited() ? effective * m_fadeAlpha : effective;
@@ -1025,9 +1025,7 @@ namespace umbriel {
     const bool innerChanged = m_borderColorAnim.tick(nowMsec);
     const bool outerChanged = m_outerBorderColorAnim.tick(nowMsec);
     if (innerChanged || outerChanged) {
-      m_decoration.setBorderRawColors(
-          m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effectiveOpacity()
-      );
+      applyBorderColors();
       active = active || m_borderColorAnim.animating() || m_outerBorderColorAnim.animating();
     }
     if (m_dragPhysics.active() || m_dragPhysics.grabbed()) {

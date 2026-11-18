@@ -404,6 +404,10 @@ namespace umbriel {
     // `usable` less the margin a maximized tile keeps (struts, then gap and border), so the border stays on screen.
     // A client capped below that box by its maximum size keeps the capped size, centered in it.
     wlr_box floatingMaximizedBox(const wlr_box& usable, const ResolvedLayoutConfig* layout = nullptr) const;
+    // Opening configures use resolved rules before the view's live maximize and title-bar state is installed.
+    wlr_box floatingMaximizedBox(
+        const wlr_box& usable, bool maximizedToEdges, int barHeight, const ResolvedLayoutConfig* layout
+    ) const;
     // The usable area inside the layout struts and the gap plus border margin; `usable` when that leaves nothing.
     wlr_box floatingMarginArea(const wlr_box& usable, const ResolvedLayoutConfig* layout = nullptr) const;
     // Put a maximized float back in the box its settings give it now, after a layout, border, strut, or usable area
@@ -846,6 +850,7 @@ namespace umbriel {
     // `resolved` lets a caller that already resolved the rules pass them in, avoiding a second regex pass.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
     void updateBorderColor(bool focusChanged);
+    void applyBorderColors();
     void refreshStartupRuleEffects();
     // Applies or undoes the alone size effect after the workspace's tiled set changes.
     bool notifyAloneStateChanged();

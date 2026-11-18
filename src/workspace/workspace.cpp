@@ -683,6 +683,15 @@ namespace umbriel {
       containers->setTabbed(view, *view->m_ruleColumnDisplay == ColumnDisplay::Tabbed);
     }
 
+    if (m_layoutMode == LayoutMode::Master || m_layoutMode == LayoutMode::Dwindle) {
+      // These layouts share the output between tiles, so an existing edge maximize would cover the joining tile.
+      for (View* other : m_views) {
+        if (other != view && other->tiled() && other->maximizedToEdges()) {
+          other->setMaximizedToEdges(false);
+        }
+      }
+    }
+
     if (scrolling != nullptr && !placement) {
       const int column = scrolling->columnOf(view);
       if (initialExtentPx) {

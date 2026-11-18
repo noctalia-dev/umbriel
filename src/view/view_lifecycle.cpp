@@ -1074,14 +1074,19 @@ namespace umbriel {
         m_pendingFloatingHeight = rule.defaultFloatingHeight;
         m_pendingFloatingPosition = rule.defaultPosition;
       } else {
-        const SizeHints hints = sizeHints();
         if (wantMaximized) {
-          const wlr_box usable = openingUsableArea(targetOutput);
-          requestFloatingSize(usable.width, usable.height);
+          const int barHeight = wantsTitleBar(rule.titleBar.value_or(config().appearance.titleBar.mode))
+              ? config().appearance.titleBar.height
+              : 0;
+          const wlr_box box = floatingMaximizedBox(
+              openingUsableArea(targetOutput), wantMaximizeToEdges, barHeight,
+              target != nullptr ? &target->layoutConfig() : nullptr
+          );
+          requestFloatingSize(box.width, box.height);
           setMaximizedState(true);
         } else {
           const wlr_box usable = openingUsableArea(targetOutput);
-          m_openingFloatingRuleSize = floatingRuleSize(rule, hints, usable);
+          m_openingFloatingRuleSize = floatingRuleSize(rule, sizeHints(), usable);
           requestFloatingSize(m_openingFloatingRuleSize[0], m_openingFloatingRuleSize[1]);
         }
 

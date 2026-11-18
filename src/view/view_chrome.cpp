@@ -133,6 +133,7 @@ namespace umbriel {
     m_ssdFrame->setMaximized(scheduledMaximized() || floatingMaximized());
     m_ssdFrame->setFocused(m_borderFocusedState);
     m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
+    applyBorderColors();
     m_ssdFrame->setBlurOptions(blurOptions());
     m_ssdFrame->setBlurLive(m_server->cursor() != nullptr && m_server->cursor()->isDraggingView(this));
     m_ssdFrame->setContentSurface(rootSurface(), geometryBox());
@@ -227,7 +228,25 @@ namespace umbriel {
     };
     update(m_borderColorAnim, targetBase, true);
     update(m_outerBorderColorAnim, colors.outer, false);
-    m_decoration.setBorderRawColors(m_borderColorAnim.current(), m_outerBorderColorAnim.current(), effectiveOpacity());
+    applyBorderColors();
+  }
+
+  void View::applyBorderColors() {
+    const auto& inner = m_borderColorAnim.current();
+    const auto& outer = m_outerBorderColorAnim.current();
+    const float opacity = effectiveOpacity();
+    m_decoration.setBorderRawColors(inner, outer, opacity);
+    if (m_ssdFrame != nullptr) {
+      int inset = 0;
+      // Only opaque rings adjacent to the content can hide the title fill's overlap.
+      if (m_decoration.borderWidth() == 0 || inner[3] * opacity >= 1.0F) {
+        inset = m_decoration.borderWidth();
+        if (outer[3] * opacity >= 1.0F) {
+          inset += m_decoration.outerBorderWidth();
+        }
+      }
+      m_ssdFrame->setOpaqueBorderInset(inset);
+    }
   }
 
   void View::settleFocusChrome() {

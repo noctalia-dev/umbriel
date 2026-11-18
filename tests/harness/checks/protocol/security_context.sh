@@ -45,6 +45,7 @@ readonly -a NORMAL_GLOBALS=(
 )
 
 readonly -a RESTRICTED_GLOBALS=(
+  umbriel_global_shortcuts_manager_v1
   wp_security_context_manager_v1
   zxdg_output_manager_v1
   zxdg_importer_v2

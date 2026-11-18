@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="umbriel_global_shortcuts_v1">
+  <copyright>
+    Copyright 2026 Umbriel contributors
+    SPDX-License-Identifier: MIT
+  </copyright>
+  <description summary="compositor-controlled portal global shortcuts">
+    Private bridge for the GlobalShortcuts portal backend. Application labels
+    are untrusted. Binding new shortcut IDs requires physical approval, or a
+    compositor-issued credential covering the application and shortcut IDs.
+    Credentials must remain private to the backend and compositor.
+  </description>
+  <interface name="umbriel_global_shortcuts_manager_v1" version="1">
+    <request name="destroy" type="destructor"/>
+    <request name="create_session">
+      <description summary="create an unapproved session">
+        The application is a nonempty UTF-8 identifier of at most 256 bytes.
+        A bridge client may have 16 live sessions, with 64 compositor-wide.
+        Invalid identifiers and exhausted capacity produce a closed session,
+        without disconnecting the client. Destroy closed objects normally.
+        Destroying the manager does not destroy its sessions.
+      </description>
+      <arg name="session" type="new_id" interface="umbriel_global_shortcuts_session_v1"/>
+      <arg name="application" type="string"/>
+    </request>
+  </interface>
+  <interface name="umbriel_global_shortcuts_session_v1" version="1">
+    <description summary="one approval-scoped shortcut registration">
+      Status values are zero for success, one for cancellation, and two for
+      failure. A bind may be attempted once, including failure or cancellation.
+      Restore may be attempted once, before bind or the first list. Destroying
+      the session cancels pending approval and releases its live chords, while
+      retaining durable approval. Closed sessions accept only failing operations.
+
+      Request IDs are scoped to this session and must be unique while pending.
+      Only bind can remain pending. Reusing its ID fails the original bind,
+      cancels its approval, and ignores the duplicate operation. A second bind
+      with a different ID fails without cancelling the pending operation.
+      Cancellation and destruction prevent late approval from issuing a grant.
+    </description>
+    <request name="destroy" type="destructor"/>
+    <request name="restore">
+      <description summary="consume and replace a private approval credential">
+        A successful restore emits grant before restored. Invalid credentials
+        leave the session unapproved; its one bind may request fresh approval.
+        Restore creates no live bindings. Application labels alone never restore
+        approval. The backend must save the replacement credential before
+        completing the corresponding public request.
+      </description>
+      <arg name="request_id" type="uint"/>
+      <arg name="credential" type="string"/>
+    </request>
+    <request name="add_shortcut">
+      <description summary="stage one shortcut for binding">
+        Stage at most 128 shortcuts with unique nonempty UTF-8 IDs of at most
+        256 bytes. Descriptions are UTF-8 of at most 1024 bytes; preferred
+        triggers are UTF-8 of at most 256 bytes, using the shortcuts specification
+        grammar. An empty trigger means absent. Invalid or disallowed preferred
+        triggers leave the shortcut unassigned. Invalid staging fails the next
+        bind. Bind always clears staging. Session and entry limits also bound
+        total staged data and pending operations per client and compositor.
+      </description>
+      <arg name="id" type="string"/>
+      <arg name="description" type="string"/>
+      <arg name="preferred_trigger" type="string"/>
+    </request>
+    <request name="bind"><arg name="request_id" type="uint"/></request>
+    <request name="list">
+      <description summary="list successful bindings without activating them">
+        Before bind, return only previously successful bindings from a restored
+        grant. After bind, return the current live subset. Shortcut events precede
+        listed, including an empty successful list. Trigger descriptions are
+        human-readable. An unassigned shortcut is omitted from bound results.
+      </description>
+      <arg name="request_id" type="uint"/>
+    </request>
+    <request name="cancel">
+      <description summary="cancel a pending bind by request ID">
+        A matching pending bind completes once with cancellation status.
+        Unknown and already completed request IDs have no effect.
+      </description>
+      <arg name="request_id" type="uint"/>
+    </request>
+    <event name="grant">
+      <arg name="request_id" type="uint"/>
+      <arg name="credential" type="string"/>
+    </event>
+    <event name="restored"><arg name="request_id" type="uint"/><arg name="status" type="uint"/></event>
+    <event name="shortcut">
+      <arg name="request_id" type="uint"/>
+      <arg name="id" type="string"/>
+      <arg name="description" type="string"/>
+      <arg name="trigger_description" type="string"/>
+    </event>
+    <event name="bound"><arg name="request_id" type="uint"/><arg name="status" type="uint"/></event>
+    <event name="listed"><arg name="request_id" type="uint"/><arg name="status" type="uint"/></event>
+    <event name="activated"><arg name="id" type="string"/><arg name="time_msec" type="uint"/></event>
+    <event name="deactivated"><arg name="id" type="string"/><arg name="time_msec" type="uint"/></event>
+    <event name="changed">
+      <description summary="one entry in a complete replacement snapshot">
+        Each batch ends with changes_done, even when empty. A removed active
+        binding is deactivated before the replacement snapshot is published.
+      </description>
+      <arg name="id" type="string"/>
+      <arg name="description" type="string"/>
+      <arg name="trigger_description" type="string"/>
+    </event>
+    <event name="changes_done"/>
+    <event name="closed"/>
+  </interface>
+</protocol>

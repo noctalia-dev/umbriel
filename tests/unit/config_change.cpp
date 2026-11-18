@@ -37,10 +37,22 @@ UMBRIEL_TEST(aFirstLoadReportsEverything) {
   CHECK(change.input);
   CHECK(change.outputs);
   CHECK(change.scratchpads);
+  CHECK(change.globalShortcuts);
 }
 
 UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   const Config before;
+
+  {
+    Config after;
+    after.globalShortcuts["org.test.App"]["talk"] = "Mod+M";
+    const ConfigChange change = ConfigChange::between(before, after);
+    CHECK(change.any());
+    CHECK(change.globalShortcuts);
+    CHECK(!change.keybinds);
+    CHECK(!ConfigEffects::between(before, after).any());
+    CHECK_EQ(change.summary(), std::string("global shortcuts"));
+  }
 
   {
     Config after;

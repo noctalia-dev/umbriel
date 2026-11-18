@@ -155,6 +155,7 @@ namespace umbriel {
   registry::Field<Config> inputTable();
   registry::Field<Config> outputTable();
   registry::Field<Config> keybindsTable();
+  registry::Field<Config> globalShortcutsTable();
 
   // Checks that need every table read.
   void validateEffectReferences(Config& loaded, std::vector<EffectReference>& references);
