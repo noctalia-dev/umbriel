@@ -1437,9 +1437,10 @@ UMBRIEL_TEST(overviewZoomPresetsValidateAndPreserveOrder) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
   store.setRootPath(file.path(), true);
-  file.write("[overview]\nzoom_presets = [0.25, 0.75, 0.1, 0.25]\n");
+  file.write("[overview]\nzoom_presets = [0.25, 0.75, 0.1, 0.25]\nzoom_scroll_factor = 0.5\n");
   CHECK(store.reload().success);
   CHECK_EQ(store.config().overview.zoomPresets, (std::vector<double>{0.25, 0.75, 0.1}));
+  CHECK_EQ(store.config().overview.zoomScrollFactor, 0.5);
   file.write("[overview]\nzoom_presets = []\n");
   CHECK(store.reload().success);
   CHECK(store.config().overview.zoomPresets.empty());

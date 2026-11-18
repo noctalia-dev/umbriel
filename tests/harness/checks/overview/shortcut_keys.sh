@@ -162,4 +162,24 @@ if [[ $(active_title) != shortcut-first ]]; then
   exit 1
 fi
 
+# Zooming out exposes farther workspaces and gives their cards usable shortcut badges.
+"$UMBRIEL" msg overview-close > /dev/null
+finish
+"$UMBRIEL" msg workspace-switch 4 > /dev/null
+"$CLIENT" shortcut-distant 600 400 > "$UMBRIEL_RUNTIME_DIR/shortcut-distant.log" 2>&1 &
+wait_for_count 5
+write_config $'zoom = 0.75\nzoom_presets = [0.75, 0.1]'
+focus_title shortcut-first
+finish
+"$UMBRIEL" msg overview-open > /dev/null
+finish
+"$UMBRIEL" msg overview-zoom-out > /dev/null
+finish
+pointer tap 6
+finish
+if [[ $(active_title) != shortcut-distant ]]; then
+  echo "zooming out did not assign shortcut 5 to the newly visible distant card: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
 echo "overview shortcuts keep stable IDs through mapping, scrolling, and drag-drop while honoring opt-out"

@@ -131,7 +131,7 @@ namespace umbriel {
     }
   }
 
-  bool Server::executeAction(const Keybind& bind, std::string* error, bool* cooldownBlocked) {
+  bool Server::executeAction(const Keybind& bind, std::string* error, bool* cooldownBlocked, double scrollNotches) {
     if (error != nullptr) {
       error->clear();
     }
@@ -159,6 +159,13 @@ namespace umbriel {
     const std::optional<SubmapArg> submapAfter = bind.submapAfter;
     Overview* overview = this->overview();
     bool handled = overview != nullptr && overview->handleKeybindAction(bind.action);
+    if (!handled
+        && overview != nullptr
+        && scrollNotches > 0.0
+        && (bind.action == KeybindAction::OverviewZoomIn || bind.action == KeybindAction::OverviewZoomOut)) {
+      overview->changeZoom(bind.action, scrollNotches);
+      handled = true;
+    }
     if (!handled) {
       handled = handler(*this, bind, error);
     }
@@ -374,6 +381,11 @@ namespace umbriel {
   }
 
   bool Server::handleWheelBind(WheelDirection direction, uint32_t modifiers) {
+    const Keybind* bind = matchWheelBind(direction, modifiers);
+    return bind != nullptr && executeAction(*bind);
+  }
+
+  const Keybind* Server::matchWheelBind(WheelDirection direction, uint32_t modifiers) const {
     const uint32_t effective = modifiers & ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
     const std::string_view currentSubmap = m_activeSubmaps.empty() ? std::string_view{} : m_activeSubmaps.back();
 
@@ -391,10 +403,10 @@ namespace umbriel {
       if (effective != expected) {
         continue;
       }
-      return executeAction(bind);
+      return &bind;
     }
 
-    return false;
+    return nullptr;
   }
 
   const Keybind* Server::matchMouseBind(uint32_t button, uint32_t modifiers, bool onRelease) const {

@@ -2113,6 +2113,19 @@ namespace umbriel {
       eventDir = rawDelta < 0 ? WheelDirection::Left : WheelDirection::Right;
     }
 
+    // Zoom bindings consume each sample before the discrete wheel accumulator or overview navigation.
+    const Keybind* wheelBind = m_server->matchWheelBind(eventDir, modifiers);
+    if (wheelBind != nullptr
+        && (wheelBind->action == KeybindAction::OverviewZoomIn
+            || wheelBind->action == KeybindAction::OverviewZoomOut)) {
+      resetWheelAccumulation();
+      if (rawDelta != 0.0) {
+        const double notches = event->delta_discrete != 0 ? std::abs(rawDelta) / 120.0 : std::abs(rawDelta) / 15.0;
+        m_server->executeAction(*wheelBind, nullptr, nullptr, notches);
+      }
+      return;
+    }
+
     const bool shiftWheel = effective == WLR_MODIFIER_SHIFT && event->source != WL_POINTER_AXIS_SOURCE_FINGER;
     const bool boundShiftWheel = shiftWheel && std::ranges::any_of(config().keybinds, [&](const Keybind& bind) {
                                    return bind.submap == m_server->activeSubmap()

@@ -74,7 +74,7 @@ action overview-zoom-cycle 100 # auto-open at first
 # Bind dispatch must consume modified wheel input without navigating workspaces.
 "$UMBRIEL_POINTER_CLIENT" 1280 720 move 640 360 mod logo notch 1 mod none
 "$UMBRIEL" settle
-measure wheel-out 40
+measure wheel-out 91
 "$UMBRIEL_POINTER_CLIENT" 1280 720 mod logo notch -1 mod none
 "$UMBRIEL" settle
 measure wheel-in 100

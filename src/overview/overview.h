@@ -62,7 +62,7 @@ namespace umbriel {
     void toggle();
     void open();
     // Preset actions apply to every output, and can open or close the overview.
-    void changeZoom(KeybindAction action);
+    void changeZoom(KeybindAction action, double scrollNotches = 0.0);
     // Zoom back into each output's active workspace, restoring normal focus.
     void close();
     // Activate `workspace` (no slide, the real trees are hidden), focus `focus`

@@ -263,6 +263,7 @@ namespace umbriel {
               },
               [](const O& defaults) { return nlohmann::ordered_json(defaults.zoomPresets); }
           ),
+          real("zoom_scroll_factor", 0.1, 10.0, &O::zoomScrollFactor),
           real("scroll_factor_horizontal", 0.1, 10.0, &O::scrollFactorHorizontal),
           real("scroll_factor_vertical", 0.1, 10.0, &O::scrollFactorVertical),
           boolean("background_blur", &O::backgroundBlur),

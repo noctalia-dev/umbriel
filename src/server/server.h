@@ -342,7 +342,9 @@ namespace umbriel {
     View& adoptView(std::unique_ptr<View> view);
 
     // Runs a parsed action, whether a keybind, hot corner, overview shortcut, or IPC request triggered it.
-    bool executeAction(const Keybind& bind, std::string* error = nullptr, bool* cooldownBlocked = nullptr);
+    bool executeAction(
+        const Keybind& bind, std::string* error = nullptr, bool* cooldownBlocked = nullptr, double scrollNotches = 0.0
+    );
     bool cooldownAllows(const Keybind& bind);
     // Re-evaluates alone rules on every workspace whose arrange is still pending.
     void refreshPendingAloneRules();
@@ -446,6 +448,7 @@ namespace umbriel {
     bool toggleKeyboardShortcutsInhibit();
     // Reconcile existing client inhibitors after a window's rule or the user's override changes.
     void refreshKeyboardShortcutsInhibitors();
+    const Keybind* matchWheelBind(WheelDirection direction, uint32_t modifiers) const;
     bool handleWheelBind(WheelDirection direction, uint32_t modifiers);
     // Null when no bind matched or its action declined. A throttled bind still
     // returns its chord so the caller can consume the press.

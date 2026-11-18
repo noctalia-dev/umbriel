@@ -1534,7 +1534,7 @@ namespace umbriel {
       }
     }
 
-    const double z = std::clamp(config().overview.zoom, 0.1, 0.75);
+    const double z = settledZoom();
     std::vector<Card*> eligible;
     for (OutputState* state : orderedStates) {
       PreviewMetrics metrics{};
@@ -1844,7 +1844,7 @@ namespace umbriel {
     startAnimation(1.0, false);
   }
 
-  void Overview::changeZoom(KeybindAction action) {
+  void Overview::changeZoom(KeybindAction action, double scrollNotches) {
     const auto& presets = config().overview.zoomPresets;
     if (presets.empty() || dragging() || m_server->sessionLocked()) {
       return;
@@ -1873,6 +1873,15 @@ namespace umbriel {
     } else if (cycle) {
       const auto current = std::ranges::find(presets, target);
       target = current == presets.end() || std::next(current) == presets.end() ? presets.front() : *std::next(current);
+    } else if (scrollNotches > 0.0) {
+      const auto [smallest, largest] = std::ranges::minmax(presets);
+      const double travel = scrollNotches * config().overview.zoomScrollFactor * (zoomIn ? 1.0 : -1.0);
+      target *= std::pow(1.1, travel);
+      if (zoomIn && target > largest + 1e-9) {
+        close();
+        return;
+      }
+      target = std::clamp(target, smallest, largest);
     } else {
       std::optional<double> next;
       for (const double preset : presets) {
@@ -1895,8 +1904,12 @@ namespace umbriel {
     cancelNavigation();
     m_pressCard = nullptr;
     m_pressWorkspace = nullptr;
+    // Convert the previous normalized velocity to zoom units before changing the animation span.
+    const double velocity = (m_presetTarget - m_presetFrom) * m_presetAnim.velocity();
     m_presetFrom = m_presetZoom;
     m_presetTarget = target;
+    m_shortcutInput.clear();
+    m_shortcutsDirty = true;
     const auto& animation = config().animation;
     const auto& overview = animation.overview;
     if (!animation.enabled || !overview.enabled || m_presetFrom == target) {
@@ -1907,7 +1920,7 @@ namespace umbriel {
     }
     m_presetAnim.snap(0.0);
     if (overview.curve.easing == Easing::Spring) {
-      m_presetAnim.settleSpring(1.0, overview.curve.spring);
+      m_presetAnim.settleSpring(1.0, overview.curve.spring, velocity / (target - m_presetFrom));
     } else {
       m_presetAnim.retarget(1.0, overview.durationMs, overview.curve);
     }

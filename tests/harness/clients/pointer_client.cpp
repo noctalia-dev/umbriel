@@ -8,6 +8,7 @@
 // 1 right mod <name|none> hold one modifier (shift, control, alt, or logo) tap <key> press and release one evdev key
 // pause <ms> keep the pointer connection and current input state. Commands run in order, each followed by a frame and
 // a roundtrip so the compositor has processed one before the next is sent.
+// wheel <horizontal|vertical> <delta> sends fractional wheel input.
 // axis <horizontal|vertical> <delta> sends smooth finger input; axis-stop <horizontal|vertical> ends it.
 // mark <label> prints the label on its own stdout line once every earlier command has been processed, so a check polls
 // for it instead of sleeping. hold keeps the current input state until a line or end of input arrives on stdin, so a
@@ -233,6 +234,7 @@ int main(int argc, char** argv) {
             || command == "click"
             || command == "notch"
             || command == "notch-horizontal"
+            || command == "wheel"
             || command == "axis"
             || command == "axis-stop")) {
       std::println(stderr, "pointer-client: '{}' needs a pointer, which keyboard-only does not create", command);
@@ -282,8 +284,8 @@ int main(int argc, char** argv) {
       // discrete half is the one that matters here, but sending only that is not something a wheel does.
       zwlr_virtual_pointer_v1_axis_source(pointer, WL_POINTER_AXIS_SOURCE_WHEEL);
       zwlr_virtual_pointer_v1_axis_discrete(pointer, nextTime(), axis, wl_fixed_from_double(dir * 15.0), dir);
-    } else if (command == "axis" || command == "axis-stop") {
-      needs(command == "axis" ? 2 : 1);
+    } else if (command == "wheel" || command == "axis" || command == "axis-stop") {
+      needs(command == "axis-stop" ? 1 : 2);
       const std::string& orientation = args[i + 1];
       if (orientation != "horizontal" && orientation != "vertical") {
         std::println(stderr, "pointer-client: unknown axis '{}'", orientation);
@@ -291,8 +293,10 @@ int main(int argc, char** argv) {
       }
       const uint32_t axis =
           orientation == "horizontal" ? WL_POINTER_AXIS_HORIZONTAL_SCROLL : WL_POINTER_AXIS_VERTICAL_SCROLL;
-      zwlr_virtual_pointer_v1_axis_source(pointer, WL_POINTER_AXIS_SOURCE_FINGER);
-      if (command == "axis") {
+      zwlr_virtual_pointer_v1_axis_source(
+          pointer, command == "wheel" ? WL_POINTER_AXIS_SOURCE_WHEEL : WL_POINTER_AXIS_SOURCE_FINGER
+      );
+      if (command != "axis-stop") {
         const double delta = std::stod(args[i + 2].c_str());
         i += 2;
         zwlr_virtual_pointer_v1_axis(pointer, nextTime(), axis, wl_fixed_from_double(delta));
