@@ -253,33 +253,63 @@ namespace umbriel {
     return touched;
   }
 
-  double SsdFrame::sampleLeftFraction() const {
-    if (m_sampleWidth <= 0 || m_geometry.contentWidth <= 0) {
+  double SsdFrame::sampleLeftFraction(const SampleSpan& span) const {
+    if (span.empty() || m_geometry.contentWidth <= 0) {
       return 0.0;
     }
-    return std::clamp(static_cast<double>(m_sampleLeft) / static_cast<double>(m_geometry.contentWidth), 0.0, 1.0);
+    return std::clamp(static_cast<double>(span.left) / static_cast<double>(m_geometry.contentWidth), 0.0, 1.0);
   }
 
-  double SsdFrame::sampleWidthFraction() const {
-    if (m_sampleWidth <= 0 || m_geometry.contentWidth <= 0) {
+  double SsdFrame::sampleWidthFraction(const SampleSpan& span) const {
+    if (span.empty() || m_geometry.contentWidth <= 0) {
       return 1.0;
     }
-    const double width = static_cast<double>(m_sampleWidth) / static_cast<double>(m_geometry.contentWidth);
-    return std::clamp(width, 0.0, 1.0 - sampleLeftFraction());
+    const double width = static_cast<double>(span.width) / static_cast<double>(m_geometry.contentWidth);
+    return std::clamp(width, 0.0, 1.0 - sampleLeftFraction(span));
   }
 
-  void SsdFrame::cacheSampleWidth(const TabLabel* label, int labelX) {
-    m_sampleLeft = 0;
-    m_sampleWidth = 0;
-    if (label == nullptr || m_geometry.contentWidth <= 0) {
-      return;
+  void SsdFrame::cacheSampleSpans(const TitleBarLayout& layout, int labelX, int labelWidth) {
+    std::array<SampleSpan, 1 + kTitleBarButtonCount> spans{};
+    if (m_geometry.contentWidth > 0) {
+      // Wherever the title sits, its own span plus a little slack: a centered or right-aligned title is not under the
+      // leading edge, so a readback from there would judge the bar against the wrong part of the window. The label and
+      // the strip are both logical pixels.
+      if (labelWidth > 0) {
+        spans[0] = titleBarSampleSpan(
+            labelX - kAdaptiveSamplePadding, labelWidth + 2 * kAdaptiveSamplePadding, m_geometry.contentWidth
+        );
+      }
+      // A bare symbol is judged against the edge under its own button, which a mirrored bar can colour differently
+      // from the title's span. A button that paints its own colour never reads that edge, so it adds no span. The
+      // button boxes are in the bar's coordinates, like the label.
+      const auto& colors = config().colors.titleBar;
+      const bool backgrounds = config().appearance.titleBar.buttonBackground;
+      const auto symbolOnBar = [&](TitleBarButton which) {
+        if (!backgrounds) {
+          return true;
+        }
+        switch (which) {
+        case TitleBarButton::Close:
+          return colors.close[3] <= 0.0F;
+        case TitleBarButton::Maximize:
+          return colors.maximize[3] <= 0.0F;
+        case TitleBarButton::Minimize:
+          return colors.minimize[3] <= 0.0F;
+        }
+        return true;
+      };
+      for (size_t index = 0; index < kTitleBarButtonCount; ++index) {
+        const auto which = static_cast<TitleBarButton>(index);
+        const std::optional<wlr_box>& button = layout.buttons[index];
+        if (!button.has_value() || !symbolOnBar(which)) {
+          continue;
+        }
+        spans[1 + index] = titleBarSampleSpan(
+            button->x - kAdaptiveSamplePadding, button->width + 2 * kAdaptiveSamplePadding, m_geometry.contentWidth
+        );
+      }
     }
-    // Wherever the title sits, its own span plus a little slack: a centered or right-aligned title is not under the
-    // leading edge, so a readback from there would judge the bar against the wrong part of the window. The label and
-    // the strip are both logical pixels.
-    m_sampleLeft = std::clamp(labelX - kAdaptiveSamplePadding, 0, m_geometry.contentWidth);
-    const int right = std::clamp(labelX + label->width + kAdaptiveSamplePadding, m_sampleLeft, m_geometry.contentWidth);
-    m_sampleWidth = right - m_sampleLeft;
+    m_sampleSpans = spans;
   }
 
   void SsdFrame::armStripFallback(std::uint32_t delayMsec) {
@@ -363,19 +393,48 @@ namespace umbriel {
     m_adaptiveBuffer = nullptr;
   }
 
-  SsdFrame::StripSample SsdFrame::averageStrip(const wlr_fbox& strip) {
+  std::array<SsdFrame::StripSample, 1 + kTitleBarButtonCount>
+  SsdFrame::readSampleRegions(const std::array<wlr_fbox, 1 + kTitleBarButtonCount>& boxes) {
     // The only readback in this class, and the only cost average mode cannot avoid: wlroots finishes the frame first.
-    // A preview shows what its window resolved, so reading back per card would only multiply that cost.
+    // One read covers every region, so a symbol judged against the edge under its own button costs no second frame. A
+    // preview shows what its window resolved, so reading back per card would only multiply that cost.
+    std::array<StripSample, 1 + kTitleBarButtonCount> results{};
     if (m_preview || m_content == nullptr || m_content->buffer == nullptr || m_content->buffer->texture == nullptr) {
-      return {StripSample::State::Refused, std::nullopt};
+      return results;
     }
-    const int left = static_cast<int>(std::floor(strip.x));
-    const int top = static_cast<int>(std::floor(strip.y));
-    const int right = static_cast<int>(std::ceil(strip.x + strip.width));
-    const int bottom = static_cast<int>(std::ceil(strip.y + strip.height));
-    const wlr_box box{left, top, std::max(0, right - left), std::max(0, bottom - top)};
-    if (box.width <= 0 || box.height <= 0) {
-      return {StripSample::State::Empty, std::nullopt};
+    double unionLeft = 0.0;
+    double unionTop = 0.0;
+    double unionRight = 0.0;
+    double unionBottom = 0.0;
+    bool unionSet = false;
+    for (const wlr_fbox& box : boxes) {
+      if (box.width <= 0.0 || box.height <= 0.0) {
+        continue;
+      }
+      if (!unionSet) {
+        unionLeft = box.x;
+        unionTop = box.y;
+        unionRight = box.x + box.width;
+        unionBottom = box.y + box.height;
+        unionSet = true;
+        continue;
+      }
+      unionLeft = std::min(unionLeft, box.x);
+      unionTop = std::min(unionTop, box.y);
+      unionRight = std::max(unionRight, box.x + box.width);
+      unionBottom = std::max(unionBottom, box.y + box.height);
+    }
+    if (!unionSet) {
+      return results;
+    }
+    // Round outward: the strip is fractional at fractional scales.
+    const int left = static_cast<int>(std::floor(unionLeft));
+    const int top = static_cast<int>(std::floor(unionTop));
+    const int right = static_cast<int>(std::ceil(unionRight));
+    const int bottom = static_cast<int>(std::ceil(unionBottom));
+    const wlr_box readBox{left, top, std::max(0, right - left), std::max(0, bottom - top)};
+    if (readBox.width <= 0 || readBox.height <= 0) {
+      return results;
     }
     // Ask which format the renderer can read: assuming BGRA silently disables the mode without EXT_read_format_bgra.
     const uint32_t format = wlr_texture_preferred_read_format(m_content->buffer->texture);
@@ -397,27 +456,44 @@ namespace umbriel {
       break;
     }
     if (!order.has_value()) {
-      return {StripSample::State::Refused, std::nullopt};
+      return results;
     }
-    m_stripPixels.resize(static_cast<size_t>(box.width) * static_cast<size_t>(box.height));
+    m_stripPixels.resize(static_cast<size_t>(readBox.width) * static_cast<size_t>(readBox.height));
     const wlr_texture_read_pixels_options options{
         .data = m_stripPixels.data(),
         .format = format,
-        .stride = static_cast<uint32_t>(box.width) * 4U,
+        .stride = static_cast<uint32_t>(readBox.width) * 4U,
         .dst_x = 0,
         .dst_y = 0,
-        .src_box = box,
+        .src_box = readBox,
     };
     // Refused for a protected or external-only buffer; the last color, or the palette, stays.
     if (!wlr_texture_read_pixels(m_content->buffer->texture, &options)) {
-      return {StripSample::State::Refused, std::nullopt};
+      return results;
     }
-    auto mean = averagePixels(m_stripPixels.data(), m_stripPixels.size(), *order);
-    if (!mean.has_value()) {
-      return {StripSample::State::Empty, std::nullopt};
+    for (size_t index = 0; index < boxes.size(); ++index) {
+      const wlr_fbox& box = boxes[index];
+      if (box.width <= 0.0 || box.height <= 0.0) {
+        continue;
+      }
+      const int regionLeft = std::max(readBox.x, static_cast<int>(std::floor(box.x)));
+      const int regionTop = std::max(readBox.y, static_cast<int>(std::floor(box.y)));
+      const int regionRight = std::min(readBox.x + readBox.width, static_cast<int>(std::ceil(box.x + box.width)));
+      const int regionBottom = std::min(readBox.y + readBox.height, static_cast<int>(std::ceil(box.y + box.height)));
+      if (regionRight <= regionLeft || regionBottom <= regionTop) {
+        continue;
+      }
+      const size_t offset = static_cast<size_t>(regionTop - readBox.y) * static_cast<size_t>(readBox.width)
+          + static_cast<size_t>(regionLeft - readBox.x);
+      const auto mean = averagePixelsRect(
+          m_stripPixels.data() + offset, static_cast<size_t>(readBox.width),
+          static_cast<size_t>(regionRight - regionLeft), static_cast<size_t>(regionBottom - regionTop), *order
+      );
+      results[index] = mean.has_value() ? StripSample{StripSample::State::Fresh, mean}
+                                        : StripSample{StripSample::State::Empty, std::nullopt};
     }
-    logDebug("[title_bar] averaged a {}x{} strip read back from the window", box.width, box.height);
-    return {StripSample::State::Fresh, mean};
+    logDebug("[title_bar] averaged a {}x{} strip read back from the window", readBox.width, readBox.height);
+    return results;
   }
 
   TitleBarColorSource SsdFrame::colorSource() const {
@@ -443,6 +519,19 @@ namespace umbriel {
       break;
     }
     return palette;
+  }
+
+  std::optional<std::array<float, 4>> SsdFrame::glyphBackground(TitleBarButton which) const {
+    const auto index = static_cast<size_t>(which);
+    if (m_glyphSamples[index].has_value()) {
+      return m_glyphSamples[index];
+    }
+    if (m_glyphSampleEmpty[index]) {
+      // A transparent edge shows the palette through the mirrored bar, which is what the symbol sits on.
+      const auto& colors = config().colors.titleBar;
+      return m_focused ? colors.background : colors.backgroundUnfocused;
+    }
+    return barFillColor();
   }
 
   std::array<float, 4> SsdFrame::resolvedTitleColor() const {
@@ -483,15 +572,19 @@ namespace umbriel {
   bool SsdFrame::refreshFill(bool fromCommit) {
     const std::array<float, 4> title = resolvedTitleColor();
     const auto fill = barFillColor();
+    const auto glyphs = m_glyphSamples;
+    const auto glyphEmpty = m_glyphSampleEmpty;
     updateAdaptive(fromCommit);
     // Only the contrast rule turns a resolved color into a repaint; the mirror follows the commit on its own. A symbol
-    // on its own button color never sees the fill, so with backgrounds painted only the title can move.
+    // on its own button color never sees a sample, but a bare one does, so a sample under any button can move it.
     const auto& style = config().appearance.titleBar;
     if (!style.titleContrast) {
       return false;
     }
-    const bool bareSymbols = !style.buttonBackground;
-    if (resolvedTitleColor() == title && (!bareSymbols || barFillColor() == fill)) {
+    if (resolvedTitleColor() == title
+        && barFillColor() == fill
+        && m_glyphSamples == glyphs
+        && m_glyphSampleEmpty == glyphEmpty) {
       return false;
     }
     redraw();
@@ -519,10 +612,12 @@ namespace umbriel {
         m_averageColor.reset();
         m_contrastSample.reset();
         m_contrastSampleEmpty = false;
+        m_glyphSamples = {};
+        m_glyphSampleEmpty = {};
         m_stripDeferred = false;
         m_sampling.reset();
       }
-      m_sampledStrip = {};
+      m_sampleBoxes = {};
       m_stripPixels.clear();
       m_stripPixels.shrink_to_fit();
       return;
@@ -565,9 +660,11 @@ namespace umbriel {
     const bool samplingChanged = m_contrastSampling != sampling;
     m_contrastSampling = sampling;
     if (!sampling) {
-      // A kept sample would keep reversing the title against an edge nothing reads any more.
+      // A kept sample would keep reversing the title or a symbol against an edge nothing reads any more.
       m_contrastSample.reset();
       m_contrastSampleEmpty = false;
+      m_glyphSamples = {};
+      m_glyphSampleEmpty = {};
       if (!average) {
         m_stripDeferred = false;
       }
@@ -578,18 +675,41 @@ namespace umbriel {
     }
     // Both modes pay the same readback: "average" paints it, "window" judges the title against it. Only the mirror is
     // free, so the read covers the title and a little slack instead of the whole edge. A mirror still needs all of it.
-    const double sampleStart = sampleLeftFraction();
-    const double sampleFraction = sampleWidthFraction();
-    const wlr_fbox sampleBox = sampleStart <= 0.0 && sampleFraction >= 1.0
-        ? strip
-        : titleBarStripSourceBox(
-              base, buffer->width, buffer->height, m_contentGeometry, m_content->current.width,
-              m_content->current.height, static_cast<uint32_t>(m_content->current.transform), style.colorSourceHeight,
-              sampleFraction, sampleStart
-          );
-    // A title that moved takes its sample with it: where the bar reads from is part of what the read covers.
-    const bool spanMoved = (average || sampling) && !wlr_fbox_equal(&m_sampledStrip, &sampleBox);
-    const bool restrip = (average ? (fromCommit && stripTouched(sampleBox)) : touched)
+    // Bare symbols add one span each, so a symbol is judged against the edge under its own button; all of it comes from
+    // a single read of the union.
+    std::array<wlr_fbox, 1 + kTitleBarButtonCount> sampleBoxes{};
+    if (average || sampling) {
+      const auto spanBox = [&](const SampleSpan& span) {
+        const double start = sampleLeftFraction(span);
+        const double fraction = sampleWidthFraction(span);
+        if (start <= 0.0 && fraction >= 1.0) {
+          return strip;
+        }
+        return titleBarStripSourceBox(
+            base, buffer->width, buffer->height, m_contentGeometry, m_content->current.width, m_content->current.height,
+            static_cast<uint32_t>(m_content->current.transform), style.colorSourceHeight, fraction, start
+        );
+      };
+      sampleBoxes[0] = spanBox(m_sampleSpans[0]);
+      if (sampling) {
+        for (size_t index = 0; index < kTitleBarButtonCount; ++index) {
+          if (!m_sampleSpans[1 + index].empty()) {
+            sampleBoxes[1 + index] = spanBox(m_sampleSpans[1 + index]);
+          }
+        }
+      }
+    }
+    // A title or a button row that moved takes its sample with it: where the bar reads from is part of what it covers.
+    bool spanMoved = false;
+    if (average || sampling) {
+      for (size_t index = 0; index < sampleBoxes.size(); ++index) {
+        if (!wlr_fbox_equal(&m_sampleBoxes[index], &sampleBoxes[index])) {
+          spanMoved = true;
+          break;
+        }
+      }
+    }
+    const bool restrip = (average ? (fromCommit && stripTouched(sampleBoxes[0])) : touched)
         || modeChanged
         || stripMoved
         || spanMoved
@@ -623,10 +743,11 @@ namespace umbriel {
         break;
       case AdaptiveSampling::Action::Read:
       case AdaptiveSampling::Action::ReadAnyway: {
-        const StripSample sample = averageStrip(sampleBox);
+        const auto samples = readSampleRegions(sampleBoxes);
         m_stripDeferred = false;
-        m_sampledStrip = sampleBox;
+        m_sampleBoxes = sampleBoxes;
         if (average) {
+          const StripSample& sample = samples[0];
           if (sample.color.has_value()) {
             m_averageColor = sample.color;
           } else if (sample.state == StripSample::State::Empty) {
@@ -636,17 +757,24 @@ namespace umbriel {
           }
         }
         if (sampling) {
-          if (sample.color.has_value()) {
-            m_contrastSample = sample.color;
-            m_contrastSampleEmpty = false;
-          } else if (sample.state == StripSample::State::Empty) {
-            // A readable edge with nothing in it leaves the palette showing, which is what the title then sits on.
-            m_contrastSample.reset();
-            m_contrastSampleEmpty = true;
-          } else {
-            // Unreadable content is unknown rather than empty: the palette is not what shows behind it.
-            m_contrastSample.reset();
-            m_contrastSampleEmpty = false;
+          const auto applySample = [](const StripSample& sample, std::optional<std::array<float, 4>>& color,
+                                      bool& empty) {
+            if (sample.color.has_value()) {
+              color = sample.color;
+              empty = false;
+            } else if (sample.state == StripSample::State::Empty) {
+              // A readable edge with nothing in it leaves the palette showing, which is what sits behind it.
+              color.reset();
+              empty = true;
+            } else {
+              // Unreadable content is unknown rather than empty: the palette is not what shows behind it.
+              color.reset();
+              empty = false;
+            }
+          };
+          applySample(samples[0], m_contrastSample, m_contrastSampleEmpty);
+          for (size_t index = 0; index < kTitleBarButtonCount; ++index) {
+            applySample(samples[1 + index], m_glyphSamples[index], m_glyphSampleEmpty[index]);
           }
         }
         break;
@@ -870,10 +998,11 @@ namespace umbriel {
       wlr_scene_rect_set_color(rect, color);
       const std::array<float, 4>& configured = enabled && (hovered || pressed) ? hoverGlyph : idleGlyph;
       // A symbol sits on its own button color when backgrounds are painted, and on the bar when they are not or when
-      // that color is fully transparent, so those are the two things it has to stay readable against.
-      const auto glyphBackground = backgrounds && value[3] > 0.0F ? std::optional(value) : barFillColor();
-      const std::array<float, 4> glyphColor = style.titleContrast && glyphBackground.has_value()
-          ? contrastAdjusted(configured, *glyphBackground)
+      // that color is fully transparent. On a mirrored bar that spot is sampled separately, so a symbol is judged
+      // against the edge under its own button rather than the one under the title.
+      const auto symbolBackground = backgrounds && value[3] > 0.0F ? std::optional(value) : glyphBackground(which);
+      const std::array<float, 4> glyphColor = style.titleContrast && symbolBackground.has_value()
+          ? contrastAdjusted(configured, *symbolBackground)
           : configured;
       const bool glyphVisible = style.buttonGlyph == TitleBarButtonGlyph::Always
           || (style.buttonGlyph == TitleBarButtonGlyph::Hover && (hovered || pressed));
@@ -913,8 +1042,7 @@ namespace umbriel {
     wlr_scene_node_set_enabled(&m_gripTree->node, available && m_resizable && !m_preview);
     if (!available) {
       // No bar to sample for: let a later redraw measure the title again before it caps a readback.
-      m_sampleLeft = 0;
-      m_sampleWidth = 0;
+      m_sampleSpans = {};
       updateAdaptive(false);
       updateBlur();
       return;
@@ -942,8 +1070,7 @@ namespace umbriel {
       wlr_scene_node_set_enabled(&m_grips[i]->node, m_resizable && !m_preview);
     }
     if (!shown) {
-      m_sampleLeft = 0;
-      m_sampleWidth = 0;
+      m_sampleSpans = {};
       updateAdaptive(false);
       updateBlur();
       return;
@@ -982,7 +1109,9 @@ namespace umbriel {
     const int labelHeight = label != nullptr ? label->height : 0;
     // Fixed here for the same reason: the shadow follows the title where it sits.
     const int labelX = titleBarLabelX(parts, g.contentWidth, labelWidth, style.titleAlign);
-    cacheSampleWidth(label, labelX);
+    // Only records the spans: `refreshFill` below reads them, sees what moved, and repaints this redraw when the
+    // title's or a symbol's contrast decision changes.
+    cacheSampleSpans(parts, labelX, labelWidth);
     // Any bar can be any color, so the title keeps a dark edge unless it is turned off.
     const bool shadowed = style.titleShadow;
     const TabLabel* shadow = nullptr;
@@ -1158,6 +1287,8 @@ namespace umbriel {
       frame->m_averageColor = m_averageColor;
       frame->m_contrastSample = m_contrastSample;
       frame->m_contrastSampleEmpty = m_contrastSampleEmpty;
+      frame->m_glyphSamples = m_glyphSamples;
+      frame->m_glyphSampleEmpty = m_glyphSampleEmpty;
       frame->m_stripDeferred = m_stripDeferred;
       frame->setColorSource(m_colorSourceOverride);
       frame->setContentSurface(m_content, m_contentGeometry);

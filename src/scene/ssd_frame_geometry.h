@@ -38,6 +38,16 @@ namespace umbriel {
     uint32_t edges = 0;
   };
 
+  // A horizontal run of the bar in logical pixels: the title, or one button.
+  struct SampleSpan {
+    int left = 0;
+    int width = 0;
+    [[nodiscard]] bool empty() const { return width <= 0; }
+  };
+
+  // `left`/`width` clamped into `[0, contentWidth]`. An empty span means there is nothing to sample there.
+  SampleSpan titleBarSampleSpan(int left, int width, int contentWidth);
+
   // Configured button row geometry in logical pixels. A negative `size` derives from the bar height, and a negative
   // `padding` matches the vertical inset.
   struct TitleBarButtonGeometry {

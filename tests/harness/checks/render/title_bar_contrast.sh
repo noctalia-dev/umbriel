@@ -2,7 +2,8 @@
 # harness: outputs=1
 # A title whose color would vanish into the bar reverses to black or white, the dark edge behind it and around its
 # symbols is on in every color_source and one key turns it off, and `color_source = "window"` only reverses — and only
-# reads the edge back — when it is allowed to sample.
+# reads the edge back — when it is allowed to sample. A bare symbol is judged against the edge under its own button,
+# not the one under the title.
 set -euo pipefail
 source "$(dirname "$UMBRIEL_HARNESS_LIB")/title_bar.sh"
 
@@ -13,6 +14,8 @@ readonly FRAME="$UMBRIEL_RUNTIME_DIR/title-bar-contrast.png"
 # button row sits at the bar's right edge, where a short title never reaches.
 readonly BAR="474x26+175+82"
 readonly BUTTONS="90x26+555+82"
+# The title area's trailing end, on the light half of the split edge and clear of the button row.
+readonly TITLE_END="95x26+455+82"
 
 fail() {
   echo "$1"
@@ -113,6 +116,7 @@ configure fixed '#101010FF' '#181818FF'
 mkfifo "$UMBRIEL_RUNTIME_DIR/title-bar-contrast.fifo"
 FILL_COLOR=0xFFFF0000 TOP_BAND_COLOR=0xFFF0F0F0 TOP_BAND_HEIGHT=1 REPAINT_ON_STDIN=1 \
   "$CLIENT" contrast-bar 480 300 < "$UMBRIEL_RUNTIME_DIR/title-bar-contrast.fifo" > "$LOG" 2>&1 &
+CLIENT_PID=$!
 exec 3> "$UMBRIEL_RUNTIME_DIR/title-bar-contrast.fifo"
 shot() {
   "$UMBRIEL" settle
@@ -257,5 +261,35 @@ configure_buttons '#FFFFFFFF' '#FFFFFFFF' 'title_contrast = false
 title_shadow = false'
 shot
 expect_none "$notwhite" "title_shadow = false still shaded the symbols" "$BUTTONS"
+
+# A mirrored bar carries the client's own pixels, so a window that paints its edge in two halves can differ under the
+# title and under the buttons. The title sits on the dark half and its pale text reads there; the symbols sit on the
+# light half and must reverse to black there. Sampling only where the title sits leaves the symbols pale on a light
+# bar, which paints nothing this counts.
+exec 3>&-
+kill "$CLIENT_PID"
+wait "$CLIENT_PID" 2> /dev/null || true
+configure window '#101010FF' '#E8E8E8FF' 'title_shadow = false
+title_contrast_sample = true
+title_align = "left"' 'close_glyph = "#E8E8E8FF"
+maximize_glyph = "#E8E8E8FF"
+minimize_glyph = "#E8E8E8FF"' always
+FILL_COLOR=0xFFFF0000 TOP_BAND_COLOR=0xFF101010 TOP_BAND_SPLIT=0xFFF0F0F0 TOP_BAND_HEIGHT=1 \
+  "$CLIENT" contrast-bar 480 300 < "$UMBRIEL_RUNTIME_DIR/title-bar-contrast.fifo" > "$LOG" 2>&1 &
+CLIENT_PID=$!
+exec 3> "$UMBRIEL_RUNTIME_DIR/title-bar-contrast.fifo"
+await_lines "$LOG" mapped 1
+shot
+expect_at_least "$reversed" 3 "a symbol judged against the edge under its own button" "$BUTTONS"
+
+# Moving the title onto the light half changes what it sits on, and the redraw that measures it must carry the new
+# decision in the same pass: a label left in its old color stays pale on a light bar until something else repaints it.
+configure window '#101010FF' '#E8E8E8FF' 'title_shadow = false
+title_contrast_sample = true
+title_align = "right"' 'close_glyph = "#E8E8E8FF"
+maximize_glyph = "#E8E8E8FF"
+minimize_glyph = "#E8E8E8FF"' always
+shot
+expect_at_least "$reversed" 3 "a title that moved onto the edge under it" "$TITLE_END"
 
 echo "the edge follows title_shadow on the title and the symbols, the title and symbols reverse only when their color would vanish, and window mode reads the edge back only when asked"

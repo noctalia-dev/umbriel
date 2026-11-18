@@ -477,4 +477,20 @@ UMBRIEL_TEST(stripSourceBoxCropsTheWindowGeometryUpright) {
   CHECK_EQ(outside.height, 5.0);
 }
 
+UMBRIEL_TEST(sampleSpanStaysInsideTheBar) {
+  // The title's slack and a button's own span never read past the bar, whichever edge they sit on.
+  const auto leading = titleBarSampleSpan(-8, 40, 480);
+  CHECK_EQ(leading.left, 0);
+  CHECK_EQ(leading.width, 32);
+  const auto trailing = titleBarSampleSpan(470, 40, 480);
+  CHECK_EQ(trailing.left, 470);
+  CHECK_EQ(trailing.width, 10);
+  // A span entirely past the end has nothing to read, and so does a bar with no width.
+  CHECK_EQ(titleBarSampleSpan(480, 40, 480).width, 0);
+  CHECK_EQ(titleBarSampleSpan(0, 40, 0).width, 0);
+  CHECK_EQ(titleBarSampleSpan(10, 0, 480).width, 0);
+  CHECK(titleBarSampleSpan(10, 0, 480).empty());
+  CHECK(!leading.empty());
+}
+
 int main() { return RUN_TESTS(); }

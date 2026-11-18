@@ -95,6 +95,15 @@ namespace umbriel {
     return title.x;
   }
 
+  SampleSpan titleBarSampleSpan(int left, int width, int contentWidth) {
+    if (width <= 0 || contentWidth <= 0) {
+      return {};
+    }
+    const int clampedLeft = std::clamp(left, 0, contentWidth);
+    const int right = std::clamp(left + width, clampedLeft, contentWidth);
+    return {clampedLeft, right - clampedLeft};
+  }
+
   SsdFramePoint ssdFramePointAt(
       int cw, int ch, int h, int b, bool resizable, TitleBarButtonSide side, std::span<const TitleBarButton> shown,
       const TitleBarButtonGeometry& geometry, double x, double y, int radius

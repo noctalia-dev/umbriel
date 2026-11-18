@@ -5,6 +5,7 @@
 #include <cstdint>
 
 using umbriel::averagePixels;
+using umbriel::averagePixelsRect;
 using umbriel::PixelOrder;
 
 namespace {
@@ -65,6 +66,34 @@ UMBRIEL_TEST(averagePixelsHasNothingToShowForAFullyTransparentStrip) {
   CHECK(!averagePixels(strip.data(), strip.size(), PixelOrder::Argb).has_value());
   CHECK(!averagePixels(nullptr, 4, PixelOrder::Argb).has_value());
   CHECK(!averagePixels(strip.data(), 0, PixelOrder::Argb).has_value());
+}
+
+UMBRIEL_TEST(averagePixelsRectAveragesEachRegionOnItsOwnRows) {
+  // Two rows of four: the left half red, the right half green. A strided read must not run the rows together, and the
+  // two regions are what a mirrored bar's title and button row are read as.
+  const std::array<uint32_t, 8> pixels{
+      argb(255, 0, 0, 255), argb(255, 0, 0, 255), argb(0, 255, 0, 255), argb(0, 255, 0, 255),
+      argb(255, 0, 0, 255), argb(255, 0, 0, 255), argb(0, 255, 0, 255), argb(0, 255, 0, 255),
+  };
+  const auto left = averagePixelsRect(pixels.data(), 4, 2, 2, PixelOrder::Argb);
+  CHECK(left.has_value());
+  CHECK_NEAR((*left)[0], 1.0, 0.002);
+  CHECK_NEAR((*left)[1], 0.0, 0.002);
+  CHECK_NEAR((*left)[3], 1.0, 0.002);
+  const auto right = averagePixelsRect(pixels.data() + 2, 4, 2, 2, PixelOrder::Argb);
+  CHECK(right.has_value());
+  CHECK_NEAR((*right)[0], 0.0, 0.002);
+  CHECK_NEAR((*right)[1], 1.0, 0.002);
+}
+
+UMBRIEL_TEST(averagePixelsRectHasNothingToShowForAnEmptyRegion) {
+  const std::array<uint32_t, 2> row{argb(255, 0, 0, 255), argb(0, 0, 0, 0)};
+  CHECK(!averagePixelsRect(row.data(), 2, 0, 2, PixelOrder::Argb).has_value());
+  CHECK(!averagePixelsRect(row.data(), 2, 2, 0, PixelOrder::Argb).has_value());
+  // A stride narrower than the region would read the next row's pixels as this one's.
+  CHECK(!averagePixelsRect(row.data(), 1, 2, 1, PixelOrder::Argb).has_value());
+  const std::array<uint32_t, 1> clear{argb(0, 0, 0, 0)};
+  CHECK(!averagePixelsRect(clear.data(), 1, 1, 1, PixelOrder::Argb).has_value());
 }
 
 int main() { return RUN_TESTS(); }

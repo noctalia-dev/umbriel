@@ -87,15 +87,18 @@ namespace umbriel {
       State state = State::Refused;
       std::optional<std::array<float, 4>> color;
     };
-    StripSample averageStrip(const wlr_fbox& strip);
     // Whether `box` of the client buffer changed in this commit's damage. The caller gates it on a commit.
     bool stripTouched(const wlr_fbox& box) const;
     // Whether this commit's explicit-sync acquire point has signalled, or has no fence at all.
     bool stripFenceSignalled() const;
-    // The part of the edge worth sampling: the title plus a little slack, as a fraction of the visible width.
-    double sampleLeftFraction() const;
-    double sampleWidthFraction() const;
-    void cacheSampleWidth(const TabLabel* label, int labelX);
+    // The part of the edge worth sampling, as a fraction of the visible width. An empty span reads the whole edge.
+    double sampleLeftFraction(const SampleSpan& span) const;
+    double sampleWidthFraction(const SampleSpan& span) const;
+    // Re-measures the sampled spans for this layout: the title first, then one per shown button.
+    void cacheSampleSpans(const TitleBarLayout& layout, int labelX, int labelWidth);
+    // Reads one union box and averages each span out of the same pixels: one readback, one mean per region.
+    std::array<StripSample, 1 + kTitleBarButtonCount>
+    readSampleRegions(const std::array<wlr_fbox, 1 + kTitleBarButtonCount>& boxes);
     // Reads the edge once `delayMsec` has passed, for a fence that outlived its wait or a read the cadence skipped.
     void armStripFallback(std::uint32_t delayMsec);
     static int onStripFallbackTimer(void* data);
@@ -103,6 +106,8 @@ namespace umbriel {
     wlr_buffer* averageBufferFor(const std::array<float, 4>& color);
     // The color the bar shows, which is what the title is drawn on; empty when "window" was not allowed to sample it.
     std::optional<std::array<float, 4>> barFillColor() const;
+    // What a bare symbol on `which` sits on: the edge under that button, or the bar when that region read as empty.
+    std::optional<std::array<float, 4>> glyphBackground(TitleBarButton which) const;
     // The title's color after the contrast rule.
     std::array<float, 4> resolvedTitleColor() const;
     // Let wlroots keep reusing the mirrored client buffer's texture for in-place shm damage, and withdraw that when the
@@ -150,17 +155,20 @@ namespace umbriel {
     // Runs the fallback for a read the loop would otherwise owe until the next commit; a preview has no loop.
     wl_event_loop* m_loop = nullptr;
     wl_event_source* m_stripTimer = nullptr;
-    // The title plus a little slack, in logical pixels from the bar's left edge; a width of 0 samples the whole edge.
-    int m_sampleLeft = 0;
-    int m_sampleWidth = 0;
-    // The region the last read covered, so a title that moves re-reads where it now sits.
-    wlr_fbox m_sampledStrip{};
+    // The title plus a little slack, then one span per shown button, in logical pixels from the bar's left edge. An
+    // empty span (width 0) samples nothing.
+    std::array<SampleSpan, 1 + kTitleBarButtonCount> m_sampleSpans{};
+    // The region the last read covered, per span, so a title or button row that moves re-reads where it now sits.
+    std::array<wlr_fbox, 1 + kTitleBarButtonCount> m_sampleBoxes{};
     // What the strip node last mirrored, so an unrelated commit costs nothing.
     wlr_buffer* m_adaptiveBuffer = nullptr;
     wlr_fbox m_adaptiveStrip{};
     std::optional<std::array<float, 4>> m_averageColor;
     // What "window" paid a strip readback for, taken once per edge change.
     std::optional<std::array<float, 4>> m_contrastSample;
+    // The same for each button drawn straight on the bar, so a symbol is judged against the edge under it.
+    std::array<std::optional<std::array<float, 4>>, kTitleBarButtonCount> m_glyphSamples{};
+    std::array<bool, kTitleBarButtonCount> m_glyphSampleEmpty{};
     // The last read found an edge with no color in it, so the palette is what shows and `barFillColor()` returns it
     // live.
     bool m_contrastSampleEmpty = false;
