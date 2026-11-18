@@ -3,7 +3,6 @@
   config,
   pkgs,
   lib,
-  modulesPath,
   ...
 }:
 let
@@ -57,7 +56,7 @@ in
         # Plain systemPackages .desktop files are not enough; NixOS aggregates via this.
         services.displayManager.sessionPackages = [ cfg.package ];
         systemd.packages = [ cfg.package ];
-        
+
         systemd.user.services.umbriel = {
           restartIfChanged = false;
           enableDefaultPath = false;
