@@ -596,11 +596,10 @@ namespace umbriel {
   }
 
   void View::applyPendingFocusWarp() {
-    if (!m_pendingFocusWarp) {
-      return;
-    }
     m_pendingFocusWarp = false;
     const Workspace* workspace = m_workspace;
+    // Attached dialogs focus their placement root and may already have no workspace of their own, so they never
+    // receive the initial keyboard focus themselves and do not warp.
     if (!m_mapped || workspace == nullptr || workspace->focusedView() != this) {
       return;
     }

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# follows_focus carries the pointer along with the focused window: a swap or a floating move puts the pointer at the
-# window's center. A new window that takes focus away from the pointer leaves the pointer where it is, so
-# a launcher click can be followed by another.
+# follows_focus carries the pointer along with the focused window: a swap, a floating move, or a window that takes
+# focus when it opens puts the pointer at the window's center.
 set -euo pipefail
 
 readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
@@ -109,12 +108,12 @@ kept_leaves=$(events follow-float-kept pointer-leave)
 (($(events follow-float-kept pointer-leave) == kept_leaves)) || { echo "the pointer stayed behind after the move"; exit 1; }
 expect_motion_at follow-float-kept 150 100 "after the floating move"
 
-# A window that opens away from the pointer takes focus without pulling the pointer along.
+# A window that opens away from the pointer takes focus and pulls the pointer to it.
 kept_leaves=$(events follow-float-kept pointer-leave)
 spawn follow-float-new
 "$UMBRIEL" settle
 wait_for_active follow-float-new
-(($(events follow-float-new pointer-enter) == 0)) || { echo "the pointer followed the new window"; exit 1; }
-(($(events follow-float-kept pointer-leave) == kept_leaves)) || { echo "the pointer left follow-float-kept"; exit 1; }
+(($(events follow-float-new pointer-enter) >= 1)) || { echo "the pointer did not follow the new window"; exit 1; }
+(($(events follow-float-kept pointer-leave) > kept_leaves)) || { echo "the pointer stayed on the previous window"; exit 1; }
 
-echo "follows_focus carries the pointer with swaps and floating moves, and stays put when a window opens"
+echo "follows_focus carries the pointer with swaps, floating moves, and windows that take focus on open"
