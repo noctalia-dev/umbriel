@@ -23,7 +23,7 @@ namespace umbriel {
       // Client surfaces and popups keep input priority over invisible resize grips.
       wlr_scene_node_place_below(&m_gripTree->node, &parent->node);
     }
-    // The fill continues beneath the border's antialiased inner edge.
+    // The fill overlaps opaque borders at their antialiased inner edge.
     wlr_scene_node_lower_to_bottom(&m_backgroundTree->node);
     const float clear[4]{};
     m_background = wlr_scene_rect_create(m_backgroundTree, 1, 1, clear);
@@ -67,6 +67,16 @@ namespace umbriel {
     redraw();
   }
   void SsdFrame::setAlpha(float alpha) { setAlphas(alpha, alpha); }
+  void SsdFrame::setOpaqueBorderInset(int inset) {
+    if (m_opaqueBorderInset == inset) {
+      return;
+    }
+    m_opaqueBorderInset = inset;
+    wlr_scene_rect_set_clipped_region(
+        m_background, frameClip(m_background->node.x, m_background->node.y, m_opaqueBorderInset)
+    );
+    updateBlur();
+  }
   void SsdFrame::setAlphas(float chromeAlpha, float blurAlpha) {
     chromeAlpha = std::clamp(chromeAlpha, 0.0F, 1.0F);
     blurAlpha = std::clamp(blurAlpha, 0.0F, 1.0F);
@@ -170,8 +180,8 @@ namespace umbriel {
 
   int SsdFrame::zoomed(int value) const { return static_cast<int>(std::lround(value * m_geometry.zoom)); }
 
-  clipped_region SsdFrame::frameClip(int x, int y, bool underBorder) const {
-    const int outset = underBorder ? m_geometry.borderInset : 0;
+  clipped_region SsdFrame::frameClip(int x, int y, int outset) const {
+    outset = std::clamp(outset, 0, m_geometry.borderInset);
     const int radius = zoomed(nestedRadius(m_geometry.cornerRadius, m_geometry.borderInset - outset));
     if (radius <= 0) {
       return {};
@@ -341,7 +351,9 @@ namespace umbriel {
       return;
     }
     place(m_background, {0, -h, g.contentWidth, h});
-    wlr_scene_rect_set_clipped_region(m_background, frameClip(m_background->node.x, m_background->node.y, true));
+    wlr_scene_rect_set_clipped_region(
+        m_background, frameClip(m_background->node.x, m_background->node.y, m_opaqueBorderInset)
+    );
     const auto& style = config().appearance.titleBar;
     const int radius = nestedRadius(g.cornerRadius, g.borderInset);
     TitleBarLayout parts =
@@ -484,6 +496,7 @@ namespace umbriel {
       frame->setButtons(m_buttons);
       frame->setMaximized(m_maximized);
       frame->setFocused(m_focused);
+      frame->setOpaqueBorderInset(m_opaqueBorderInset);
       frame->setBlurOptions(m_blurOptions);
       frame->reloadConfig();
     }
