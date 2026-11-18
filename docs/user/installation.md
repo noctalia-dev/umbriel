@@ -11,6 +11,8 @@ Umbriel is packaged for several Linux distributions. Prefer a distribution packa
 ```sh
 yay -S umbriel-git
 ```
+For **Artix Linux**, you will need to edit the PKGBUILD to pass the 'systemd-libs' flag. 
+To do this, you'll need to add `-Dlocaled=disabled` to the meson setup arguments. If using an AUR Helper, you can git commit so it builds with your change and git merges it into future upgrades. 
 
 ## Fedora
 
