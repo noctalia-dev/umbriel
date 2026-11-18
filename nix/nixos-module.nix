@@ -36,6 +36,9 @@ in
       {
         hardware.graphics.enable = lib.mkDefault true;
 
+        security.polkit.enable = lib.mkDefault true;
+        programs.dconf.enable = lib.mkDefault true;
+
         assertions = [
           {
             assertion = cfg.package != null;
