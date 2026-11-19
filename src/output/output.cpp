@@ -954,7 +954,7 @@ namespace umbriel {
     std::string_view pendingHdrFail = earlyHdrFail;
     std::string_view pendingSdr10Fail;
     bool hdrRejected = !earlyHdrFail.empty();
-    bool seqRetry = false;
+    bool deferredForPageFlip = false;
 
     if (enabled) {
       const FormatSequenceParams seqParams{
@@ -1049,6 +1049,7 @@ namespace umbriel {
             lock->handleOutputCommit(*this, m_output->commit_seq);
           }
         }
+        const bool modesetAllowed = frameState.allow_reconfiguration;
         wlr_output_state_finish(&frameState);
         switch (commitResult) {
         case RenderedStateCommitResult::Committed:
@@ -1057,7 +1058,8 @@ namespace umbriel {
           // A commit that keeps the live mode can fail because a page-flip is still pending, this is a transient
           // failure. The next frame can retry after the flip completes. Actual permanent format rejections are caught
           // earlier in the test phase and do not reach here.
-          if (keptLiveMode != nullptr) {
+          if (m_output->enabled && m_pageFlipRetry.shouldDefer(m_output->frame_pending, modesetAllowed)) {
+            deferredForPageFlip = true;
             return FormatCommitResult::Retry;
           }
           return FormatCommitResult::Rejected;
@@ -1111,7 +1113,6 @@ namespace umbriel {
       };
 
       const FormatSequenceResult seq = runFormatSequence(seqParams, seqOps);
-      seqRetry = seq.retry;
       anyCommitted = seq.committed;
       usedModeFallback = seq.usedModeFallback;
       if (seq.usedLiveModeRetry) {
@@ -1144,6 +1145,16 @@ namespace umbriel {
 
     const bool imageDescriptionCommitted = (state.committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) != 0;
     wlr_output_state_finish(&state);
+    if (deferredForPageFlip) {
+      m_pageFlipRetry.defer(stageGeometry);
+      updateSceneSdrWhite();
+      markBlurBackgroundDirty();
+      m_server->updateColorPreferences();
+      kLog.info("output '{}': page flip pending, deferring configured state to the next frame)", m_output->name);
+      scheduleFullFrame();
+      return true;
+    }
+    m_pageFlipRetry.reset();
     m_hdrTransition.recordCommit(enabled, hdrRequested, anyCommitted);
     if (anyCommitted) {
       m_server->connectorHdrState().recordCommit(
@@ -1180,9 +1191,7 @@ namespace umbriel {
     } else {
       if (!hdrRequested) {
         setHdrFallbackReason({});
-      } else if (enabled && !(seqRetry && hdrRequested)) {
-        // Skip permanent HDR disable on a transient failure (page-flip already pending).
-        // The request stays pending and will be retried at the next frame boundary.
+      } else if (enabled) {
         if (!pendingHdrFail.empty()) {
           m_hdrAvailable = false;
         }
@@ -2217,23 +2226,28 @@ namespace umbriel {
         cursor->refreshPointerContents(this);
       }
     }
-    const bool hdrTransitionPending = m_hdrTransition.pending(m_output->enabled, hdrRequested());
-    if (hdrTransitionPending) {
-      // Run at the frame boundary, after the previous page flip completed. The
-      // configured-state commit builds the scene into the same state as the
-      // image-description and render-format switch.
+    // HDR transitions and page-flip-deferred applies both run at the frame boundary
+    // after the previous flip has completed.
+    const std::optional<bool> deferredApply = m_pageFlipRetry.take();
+    const bool frameApplyPending =
+        m_hdrTransition.pending(m_output->enabled, hdrRequested()) || deferredApply.has_value();
+    if (frameApplyPending) {
+      const bool stageGeometry = deferredApply.value_or(false);
       m_inFrame = true;
-      const bool committed = applyConfiguredState(false);
+      const bool committed = applyConfiguredState(stageGeometry);
       m_inFrame = false;
       commitFailed = !committed;
       if (committed) {
         if (effectFrame) {
           ++m_effectFrames;
         }
+        if (stageGeometry) {
+          markDirty(Dirty::LayerArrange | Dirty::Banner);
+        }
         m_server->updateOutputManagerConfig();
       }
     }
-    if (!hdrTransitionPending && (sceneChanged || m_gammaDirty || m_vrrPending)) {
+    if (!frameApplyPending && (sceneChanged || m_gammaDirty || m_vrrPending)) {
       m_inFrame = true;
       if (effectFrame) {
         ++m_effectFrames;
