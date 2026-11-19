@@ -134,6 +134,7 @@ namespace umbriel {
         if (lhs.appIdPatterns != rhs.appIdPatterns
             || lhs.titlePatterns != rhs.titlePatterns
             || lhs.xdgTagPatterns != rhs.xdgTagPatterns
+            || lhs.outputPatterns != rhs.outputPatterns
             || lhs.matchContentType != rhs.matchContentType
             || lhs.matchFocused != rhs.matchFocused
             || lhs.matchFloating != rhs.matchFloating

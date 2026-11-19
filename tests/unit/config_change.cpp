@@ -922,6 +922,10 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   changedTagMatcher.windowRules[0].xdgTagPatterns = RegexPatterns{}.add("^game-launcher$");
   CHECK(ConfigEffects::between(forcedByRule, changedTagMatcher).tearingPolicy);
 
+  Config changedOutputMatcher = forcedByRule;
+  changedOutputMatcher.windowRules[0].outputPatterns = RegexPatterns{}.add("^HDMI-A-1$");
+  CHECK(ConfigEffects::between(forcedByRule, changedOutputMatcher).tearingPolicy);
+
   Config unrelatedRule = before;
   WindowRule translucent;
   translucent.appIdPatterns.add("^terminal$");

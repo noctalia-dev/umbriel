@@ -24,6 +24,7 @@ extern "C" {
 // clang-format off
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <utility>
 #include "wlr.h"
 // clang-format on
@@ -225,9 +226,7 @@ namespace umbriel {
     }
     Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
     const bool launchRuleOverride = m_launchPlacementPending
-        && (rule.defaultOutput.has_value()
-            || rule.defaultWorkspace.has_value()
-            || rule.defaultScratchpad.has_value());
+        && (rule.defaultOutput.has_value() || rule.defaultWorkspace.has_value() || rule.defaultScratchpad.has_value());
     Workspace* target = nullptr;
     if (!launchRuleOverride) {
       if (m_workspace != nullptr) {
@@ -255,30 +254,51 @@ namespace umbriel {
   }
 
   ResolvedWindowRule View::resolveRulesForOpening(WindowRuleState state) const {
-    // The first pass runs without an output: the placement rules alone pick where the window opens, which is the
-    // output `match.output` then tests. A rule that moves the window to another output re-selects the match, so
-    // resolve again against the predicted output until the prediction stops moving.
-    ResolvedWindowRule rule = resolveWindowRules(
-        config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, state, m_server->uptimeMs(), nullptr
-    );
-    Output* predicted = predictedRuleOutput(rule);
-    for (int pass = 0; pass < 8; ++pass) {
+    const auto resolveForOutput = [&](const Output* output) {
       std::optional<OutputIdentity> identity;
-      if (predicted != nullptr) {
-        identity = predicted->identity();
+      if (output != nullptr) {
+        identity = output->identity();
       }
-      ResolvedWindowRule next = resolveWindowRules(
+      return resolveWindowRules(
           config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, state, m_server->uptimeMs(),
           identity ? &*identity : nullptr
       );
-      Output* nextOutput = predictedRuleOutput(next);
-      rule = std::move(next);
-      if (nextOutput == predicted) {
+    };
+
+    // The first pass runs without an output: the placement rules alone pick where the window opens, which is the
+    // output `match.output` then tests. Follow the placement each resolution predicts until it settles. Configs whose
+    // output rules move the window in a circle have no fixed point, so remember the first move and fall back to the
+    // rules on its destination with that move's placement fields preserved.
+    Output* openingOutput = predictedRuleOutput(resolveForOutput(nullptr));
+    Output* current = openingOutput;
+    std::set<Output*> visited;
+    ResolvedWindowRule openingRule;
+    Output* openingDestination = nullptr;
+    while (true) {
+      if (!visited.insert(current).second) {
         break;
       }
-      predicted = nextOutput;
+      ResolvedWindowRule candidate = resolveForOutput(current);
+      Output* next = predictedRuleOutput(candidate);
+      if (current == openingOutput) {
+        openingRule = candidate;
+        openingDestination = next;
+      }
+      if (next == current) {
+        return candidate;
+      }
+      if (visited.count(next) != 0) {
+        break;
+      }
+      current = next;
     }
-    return rule;
+
+    ResolvedWindowRule fallback = resolveForOutput(openingDestination);
+    fallback.defaultOutput = openingRule.defaultOutput;
+    fallback.defaultWorkspace = openingRule.defaultWorkspace;
+    fallback.defaultScratchpad = openingRule.defaultScratchpad;
+    fallback.defaultPinned = openingRule.defaultPinned;
+    return fallback;
   }
 
   void View::handleMap() {
