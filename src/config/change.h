@@ -25,6 +25,7 @@ namespace umbriel {
     bool events = false;
     bool input = false;
     bool keybinds = false;
+    bool globalShortcuts = false;
     bool outputs = false;
     bool windowRules = false;
     bool layerRules = false;
@@ -47,6 +48,7 @@ namespace umbriel {
           || events
           || input
           || keybinds
+          || globalShortcuts
           || outputs
           || windowRules
           || layerRules

@@ -130,10 +130,12 @@ namespace umbriel {
 
   enum class WheelDirection;
   struct Keybind;
+  struct GlobalShortcutBind;
 
   class Cursor;
   class EisInput;
   class InputCapture;
+  class GlobalShortcuts;
   class BackendManager;
   class DrmLeaseManager;
   class FocusManager;
@@ -187,6 +189,7 @@ namespace umbriel {
     Xwayland* xwayland() const { return m_xwayland.get(); }
     EisInput* eisInput() const { return m_eisInput.get(); }
     InputCapture* inputCapture() const { return m_inputCapture.get(); }
+    GlobalShortcuts* globalShortcuts() const { return m_globalShortcuts.get(); }
     bool physicalInputDevice(const wlr_input_device* device) const;
     bool keyboardKeyConsumed(wlr_keyboard* keyboard, uint32_t keycode) const;
     wlr_backend* backend() const { return m_backend; }
@@ -293,6 +296,8 @@ namespace umbriel {
     void confirmScreenCastDynamic();
     void confirmInputEmulation();
     void confirmInputCapture(bool remember = false);
+    void confirmGlobalShortcuts();
+    void failGlobalShortcuts();
     void dismissConfirmation();
     // Owners register themselves for the frame tick. The registry is kept in phase order, so the three traversals above
     // never re-state which owners exist or in what order they run.
@@ -554,6 +559,8 @@ namespace umbriel {
     void requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode);
     void cancelInputCapture(uint64_t id);
     void inputCaptureStateChanged(bool active);
+    void requestGlobalShortcuts(uint64_t id, std::string_view application, const GlobalShortcutBind& bind);
+    void cancelGlobalShortcuts(uint64_t id);
     static void onSessionActive(wl_listener* listener, void* data);
     void updateDrmLeaseState();
     friend class Output;
@@ -967,6 +974,8 @@ namespace umbriel {
     std::unique_ptr<Xwayland> m_xwayland;
     std::unique_ptr<EisInput> m_eisInput;
     std::unique_ptr<InputCapture> m_inputCapture;
+    std::unique_ptr<GlobalShortcuts> m_globalShortcuts;
+    uint64_t m_pendingGlobalShortcutsId = 0;
     uint64_t m_pendingCaptureId = 0;
     uint32_t m_inputCaptureCapabilities = 0;
     uint64_t m_pendingInputId = 0;

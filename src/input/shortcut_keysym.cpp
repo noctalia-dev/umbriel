@@ -1,5 +1,10 @@
 #include "input/shortcut_keysym.h"
 
+#include <cmath>
+extern "C" {
+#include <wlr/types/wlr_keyboard.h>
+}
+
 #include <cstdint>
 
 namespace umbriel {
@@ -42,6 +47,15 @@ namespace umbriel {
     }
 
     return active;
+  }
+
+  bool matchesShortcutKeysym(
+      uint32_t expectedModifiers, xkb_keysym_t expectedKeysym, uint32_t modifiers, xkb_keysym_t keysym,
+      xkb_keysym_t rawKeysym
+  ) {
+    const uint32_t effective = modifiers & ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
+    return effective == expectedModifiers
+        && (xkb_keysym_to_lower(keysym) == expectedKeysym || rawKeysym == expectedKeysym);
   }
 
 } // namespace umbriel

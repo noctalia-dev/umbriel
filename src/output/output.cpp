@@ -1773,6 +1773,7 @@ namespace umbriel {
         || layoutUsableArea.width != logged.width
         || layoutUsableArea.height != logged.height) {
       m_loggedUsableArea = layoutUsableArea;
+      markDirty(Dirty::QuitConfirm);
       kLog.debug(
           "{} usable={}x{}+{}+{}", m_output->name, layoutUsableArea.width, layoutUsableArea.height, layoutUsableArea.x,
           layoutUsableArea.y

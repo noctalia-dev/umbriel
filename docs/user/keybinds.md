@@ -11,6 +11,8 @@ Configure bindings under `[keybinds]`. See [Actions](actions.md) for the complet
 "Mod+I" = "overview-toggle"
 ```
 
+Application global shortcuts use a separate [`global_shortcuts` table](configuration.md#global-shortcuts). Configured keybinds in the default submap always take priority over application shortcuts, including explicit overrides.
+
 ## Default keybinds
 
 The packaged starting configuration ([`examples/config.toml`](https://github.com/noctalia-dev/umbriel/blob/main/examples/config.toml)) binds these, among others. `Mod` is Super on a native session and Alt when Umbriel runs nested in another desktop (see [Modifiers](#modifiers)).

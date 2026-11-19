@@ -41,11 +41,22 @@ assert_box() {
   local title=$1 expected=$2 actual=
   for _ in $(seq 80); do
     actual="$(field_of "$title" w)x$(field_of "$title" h)+$(field_of "$title" x)+$(field_of "$title" y)"
-    [[ $actual == "$expected" ]] && return 0
+    [[ $actual == "$expected" ]] && break
     sleep 0.1
   done
-  echo "expected '$title' at $expected, got $actual: $3"
-  return 1
+  if [[ $actual != "$expected" ]]; then
+    echo "expected '$title' at $expected, got $actual: $3"
+    return 1
+  fi
+  "$UMBRIEL" settle
+  local image="$UMBRIEL_RUNTIME_DIR/refit.png" x y w h
+  grim -o HEADLESS-1 "$image"
+  read -r x y w h < <("$UMBRIEL_PIXEL_PROBE" "$image" bbox 'r < 0.1 && (g > 0.5 || b > 0.5)')
+  actual="${w}x${h}+${x}+${y}"
+  if [[ $actual != "$expected" ]]; then
+    echo "expected '$title' pixels at $expected, got $actual: $3"
+    return 1
+  fi
 }
 
 # Defaults: gap 8 and border 2 give an edge pad of 10 on the 1280x720 output.

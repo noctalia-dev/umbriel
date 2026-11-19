@@ -25,6 +25,8 @@ Use `umbriel -c <path>` to select one exact file. Umbriel never creates or modif
 
 Configuration warnings and errors appear in a panel on the primary output. Errors keep the previous working configuration active. A warning-only panel closes after ten seconds; an error remains until the next successful reload.
 
+Every configuration diagnostic is also written to `umbriel.log` with the same file, line, and column, so a session started without a terminal still records what the panel showed after it closes. Diagnostics are logged where a load's outcome is decided: for the configuration about to be applied, and for a reload that was rejected. A refused `umbriel config set` or `config replace` writes nothing because its load is rolled back.
+
 Check a file without starting the compositor:
 
 ```sh
@@ -233,6 +235,22 @@ disable_dynamic_confirmation = false
 | Key                            | Type | Default | Description                                                                                                                                     |
 | ------------------------------ | ---- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `disable_dynamic_confirmation` | bool | `false` | Apply set and follow actions immediately without first confirming them. This can expose another window or output after an accidental key press. |
+
+## Global shortcuts
+
+Override an application's registered shortcuts by its exact application ID and shortcut IDs:
+
+```toml
+[global_shortcuts."org.example.App"]
+"push-to-talk" = "Mod+Shift+M"
+"toggle-overlay" = ""
+```
+
+Values use the keyboard chord syntax from [Keybinds](keybinds.md); an empty string disables the shortcut. Mouse buttons, wheel events, modifier-only chords, and submaps are rejected. Invalid entries reject the configuration load, so a failed reload keeps the current configuration.
+
+An override takes priority over the approved stored trigger and the application's preferred trigger. It does not change the stored preference; removing it restores that preference. New shortcut IDs still require [physical approval](security.md#global-shortcut-approval). Explicit overrides can assign printable keys, so choose them carefully.
+
+Configured keybinds in the default submap, Ctrl+Alt+Escape, and VT-switch chords remain reserved. Live shortcut conflicts follow registration order. Reloading rebinds affected sessions and stops any held activation whose binding changed. `Mod` follows `general.mod_key`, including its native or nested default.
 
 ## Scratchpads
 

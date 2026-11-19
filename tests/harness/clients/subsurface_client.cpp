@@ -8,10 +8,11 @@
 // main surface is inset and its corners are interior to the window; the child then sits below the parent.
 // STALE_GEOMETRY declares the window geometry once, at the first size, while still redrawing both buffers at every
 // configured size. FIXED_SIZE pins the toplevel's minimum and maximum size to the fallback dimensions, like the size
-// hints Wine gives an X11 game window. CHILD_ON_STDIN reads commands: `h` attaches a null buffer to the child, `d` also
-// destroys its subsurface role while the surface lives on, and `s` maps it again, as a subsurface of the parent once
-// more after `d`. `p` maps an empty green popup of the window, and after `d`, `m` makes the child a subsurface of that
-// popup instead. Each prints child-hidden, child-detached, child-shown, popup-mapped or child-moved once applied.
+// hints Wine gives an X11 game window. HOLD_SIZE acknowledges configures while keeping the fallback dimensions.
+// CHILD_ON_STDIN reads commands: `h` attaches a null buffer to the child, `d` also destroys its subsurface role while
+// the surface lives on, and `s` maps it again, as a subsurface of the parent once more after `d`. `p` maps an empty
+// green popup of the window, and after `d`, `m` makes the child a subsurface of that popup instead. Each prints
+// child-hidden, child-detached, child-shown, popup-mapped or child-moved once applied.
 // Usage: subsurface-client [title [width height [animate]]]. The dimensions are a fallback: a configure adopts it.
 
 #include "xdg-shell-client-protocol.h"
@@ -58,6 +59,7 @@ namespace {
     bool animateChild = false;
     bool initialFullscreen = false;
     bool fixedSize = false;
+    bool holdSize = false;
     bool fullscreenBeforeMap = false;
     bool transparentContent = false;
     bool translucentContent = false;
@@ -290,10 +292,10 @@ namespace {
       std::fflush(stdout);
       state.reportedFirstConfigure = true;
     }
-    if (width > 0) {
+    if (width > 0 && !state.holdSize) {
       state.width = width;
     }
-    if (height > 0) {
+    if (height > 0 && !state.holdSize) {
       state.height = height;
     }
   }
@@ -342,6 +344,7 @@ int main(int argc, char** argv) {
   State state;
   state.initialFullscreen = std::getenv("INITIAL_FULLSCREEN") != nullptr;
   state.fixedSize = std::getenv("FIXED_SIZE") != nullptr;
+  state.holdSize = std::getenv("HOLD_SIZE") != nullptr;
   state.fullscreenBeforeMap = std::getenv("FULLSCREEN_BEFORE_MAP") != nullptr;
   state.transparentContent = std::getenv("TRANSPARENT_CONTENT") != nullptr;
   state.translucentContent = std::getenv("TRANSLUCENT_CONTENT") != nullptr;

@@ -392,7 +392,15 @@ namespace umbriel {
   }
 
   bool Workspace::liftedAboveFullscreen(const View* view) const {
-    if (m_layoutMode != LayoutMode::Scrolling || view != m_focusedView || view->scheduledFullscreen()) {
+    if (view != m_focusedView || !view->tiled() || view->scheduledFullscreen()) {
+      return false;
+    }
+    if (std::ranges::any_of(m_views, [](const View* member) {
+          return member->mapped() && member->floating() && !member->pinned() && member->scheduledFullscreen();
+        })) {
+      return true;
+    }
+    if (m_layoutMode != LayoutMode::Scrolling) {
       return false;
     }
     const int column = m_layout->columnOf(view);
@@ -428,11 +436,16 @@ namespace umbriel {
 
   void Workspace::restackFloatingViews() {
     syncFloatingLayer();
+    std::vector<View*> raised;
     for (View* view : m_floatingStack) {
       if (view != nullptr && view->workspace() == this && view->floating()) {
-        view->raiseToTop();
+        raised.push_back(view);
       }
     }
+    if (m_focusedView != nullptr && liftedAboveFullscreen(m_focusedView)) {
+      raised.push_back(m_focusedView);
+    }
+    View::raiseInOrder(raised);
     raiseFloatingLayer();
   }
 
@@ -670,6 +683,15 @@ namespace umbriel {
     if (TabbedContainers* containers = m_layout->tabbedContainers();
         containers != nullptr && origin == LayoutAttachOrigin::OpeningView && view->m_ruleColumnDisplay) {
       containers->setTabbed(view, *view->m_ruleColumnDisplay == ColumnDisplay::Tabbed);
+    }
+
+    if (m_layoutMode == LayoutMode::Master || m_layoutMode == LayoutMode::Dwindle) {
+      // These layouts share the output between tiles, so an existing edge maximize would cover the joining tile.
+      for (View* other : m_views) {
+        if (other != view && other->tiled() && other->maximizedToEdges()) {
+          other->setMaximizedToEdges(false);
+        }
+      }
     }
 
     if (scrolling != nullptr && !placement) {
@@ -1016,7 +1038,7 @@ namespace umbriel {
       }
     } heldRelease{*this};
     refreshAloneRuleStates();
-    // Whether the focused tile is lifted above a fullscreen window depends on its column.
+    // Column membership and floating fullscreen windows determine whether the focused tile is lifted.
     if (m_focusedView != nullptr) {
       m_focusedView->syncTransientSceneParent();
     }

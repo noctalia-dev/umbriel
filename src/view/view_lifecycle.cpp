@@ -452,13 +452,13 @@ namespace umbriel {
 
     // Opening state is compositor-owned. Clients may restore a saved maximized
     // flag during this transition; only an explicit window rule or an honored
-    // restore overrides the layout's initial size. A tiled restore under the
-    // workspace's client_maximize = "edges" lands in the edges, above any rule column.
+    // restore overrides the layout's initial size. Tiled and stacking restores
+    // follow client_maximize; a tile's rule-owned full-width column stays below the edges.
     const bool ruleMaximized = !openingParented() && rule.defaultMaximize && *rule.defaultMaximize;
     const bool restoredMaximized = config().general.honorRestoredMaximize && requestedMaximized();
     const bool restoreToEdges = restoredMaximized
-        && m_tiled
         && m_workspace != nullptr
+        && (m_tiled || m_workspace->layoutMode() == LayoutMode::Stacking)
         && m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges;
     if (placed && !assignedScratchpad && (ruleMaximized || (restoredMaximized && !restoreToEdges))) {
       setMaximized(true);
@@ -1076,14 +1076,19 @@ namespace umbriel {
         m_pendingFloatingHeight = rule.defaultFloatingHeight;
         m_pendingFloatingPosition = rule.defaultPosition;
       } else {
-        const SizeHints hints = sizeHints();
         if (wantMaximized) {
-          const wlr_box usable = openingUsableArea(targetOutput);
-          requestFloatingSize(usable.width, usable.height);
+          const int barHeight = wantsTitleBar(rule.titleBar.value_or(config().appearance.titleBar.mode))
+              ? config().appearance.titleBar.height
+              : 0;
+          const wlr_box box = floatingMaximizedBox(
+              openingUsableArea(targetOutput), wantMaximizeToEdges, barHeight,
+              target != nullptr ? &target->layoutConfig() : nullptr
+          );
+          requestFloatingSize(box.width, box.height);
           setMaximizedState(true);
         } else {
           const wlr_box usable = openingUsableArea(targetOutput);
-          m_openingFloatingRuleSize = floatingRuleSize(rule, hints, usable);
+          m_openingFloatingRuleSize = floatingRuleSize(rule, sizeHints(), usable);
           requestFloatingSize(m_openingFloatingRuleSize[0], m_openingFloatingRuleSize[1]);
         }
 

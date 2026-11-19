@@ -2,9 +2,15 @@
 
 #include "check.h"
 
+#include <cmath>
+extern "C" {
+#include <wlr/types/wlr_keyboard.h>
+}
+
 #include <cstdint>
 #include <linux/input-event-codes.h>
 
+using umbriel::matchesShortcutKeysym;
 using umbriel::rawShortcutKeysym;
 
 namespace {
@@ -87,6 +93,28 @@ UMBRIEL_TEST(doesNotInventAnUnconfiguredLatinLayout) {
   const xkb_keycode_t keycode = xkbKeycode(KEY_A);
   CHECK_EQ(levelZero(keymap.get(), keycode, 0), xkb_keysym_t{XKB_KEY_Cyrillic_ef});
   CHECK_EQ(rawShortcutKeysym(keymap.get(), keycode, 0), xkb_keysym_t{XKB_KEY_Cyrillic_ef});
+}
+
+UMBRIEL_TEST(chordMatchingIgnoresOnlyCapsAndNumLock) {
+  CHECK(matchesShortcutKeysym(
+      WLR_MODIFIER_CTRL, XKB_KEY_m, WLR_MODIFIER_CTRL | WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2, XKB_KEY_M,
+      XKB_KEY_NoSymbol
+  ));
+  CHECK(!matchesShortcutKeysym(WLR_MODIFIER_CTRL, XKB_KEY_m, 0, XKB_KEY_m, XKB_KEY_m));
+  CHECK(
+      !matchesShortcutKeysym(WLR_MODIFIER_CTRL, XKB_KEY_m, WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT, XKB_KEY_M, XKB_KEY_m)
+  );
+  CHECK(
+      !matchesShortcutKeysym(WLR_MODIFIER_CTRL, XKB_KEY_m, WLR_MODIFIER_CTRL | WLR_MODIFIER_MOD3, XKB_KEY_m, XKB_KEY_m)
+  );
+}
+
+UMBRIEL_TEST(chordMatchingUsesBothEffectiveAndRawSymbols) {
+  CHECK(matchesShortcutKeysym(WLR_MODIFIER_LOGO, XKB_KEY_a, WLR_MODIFIER_LOGO, XKB_KEY_Cyrillic_ef, XKB_KEY_a));
+  CHECK(
+      matchesShortcutKeysym(WLR_MODIFIER_LOGO, XKB_KEY_Cyrillic_ef, WLR_MODIFIER_LOGO, XKB_KEY_Cyrillic_EF, XKB_KEY_a)
+  );
+  CHECK(!matchesShortcutKeysym(WLR_MODIFIER_LOGO, XKB_KEY_a, WLR_MODIFIER_LOGO, XKB_KEY_Cyrillic_ef, XKB_KEY_b));
 }
 
 int main() { return RUN_TESTS(); }

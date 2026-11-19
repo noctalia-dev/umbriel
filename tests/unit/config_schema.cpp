@@ -185,6 +185,7 @@ UMBRIEL_TEST(jsonIsSortedAndTyped) {
   std::string previous;
   bool sawUnsetKey = false;
   bool sawReleaseKey = false;
+  bool sawGlobalShortcut = false;
   for (const auto& option : json["options"]) {
     const std::string path = option["path"];
     if (!(previous < path)) {
@@ -206,9 +207,16 @@ UMBRIEL_TEST(jsonIsSortedAndTyped) {
       CHECK(option["format"] == "action");
       CHECK(!option.contains("default"));
     }
+    if (path == "global_shortcuts.<name>.<name>") {
+      sawGlobalShortcut = true;
+      CHECK(option["type"] == "string");
+      CHECK(option["format"] == "chord");
+      CHECK(!option.contains("default"));
+    }
   }
   CHECK(sawUnsetKey);
   CHECK(sawReleaseKey);
+  CHECK(sawGlobalShortcut);
 }
 
 // Every value a key lists is one its reader accepts without complaint.

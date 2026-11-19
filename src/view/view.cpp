@@ -676,13 +676,41 @@ namespace umbriel {
   }
 
   void View::raiseToTop() {
-    View* root = this;
-    while (View* parent = root->transientParent()) {
-      root = parent;
+    View* self = this;
+    raiseInOrder(std::span(&self, 1));
+  }
+
+  void View::raiseInOrder(std::span<View* const> views) {
+    std::vector<wlr_scene_node*> frames;
+    for (View* view : views) {
+      View* root = view;
+      while (View* parent = root->transientParent()) {
+        root = parent;
+      }
+      root->collectTransientTree(frames);
     }
-    root->raiseTransientTree();
-    if (Workspace* home = workspace()) {
-      home->raiseFloatingLayer();
+    // Raising each frame in turn would briefly lift a window over the ones it ends below. Xwayland mirrors every
+    // restack, so the X11 window under the pointer would receive crossing events, and a client can end the drag its
+    // press started. Only a frame's last raise decides its place, so frames are placed from the top down instead: each
+    // one moves only past frames that end below it, and frames already in order stay put.
+    std::vector<wlr_scene_node*> placed;
+    for (wlr_scene_node* frame : std::views::reverse(frames)) {
+      if (std::ranges::contains(placed, frame)) {
+        continue;
+      }
+      // Placement runs downward, so the sibling placed last is the lowest one placed so far.
+      const auto above = std::ranges::find(placed.rbegin(), placed.rend(), frame->parent, &wlr_scene_node::parent);
+      if (above != placed.rend()) {
+        wlr_scene_node_place_below(frame, *above);
+      } else {
+        wlr_scene_node_raise_to_top(frame);
+      }
+      placed.push_back(frame);
+    }
+    for (View* view : views) {
+      if (Workspace* home = view->workspace()) {
+        home->raiseFloatingLayer();
+      }
     }
   }
 
@@ -781,19 +809,19 @@ namespace umbriel {
     setSceneParent(target);
   }
 
-  void View::raiseTransientTree() {
+  void View::collectTransientTree(std::vector<wlr_scene_node*>& frames) {
     // An attached dialog stacks inside its parent's frame, which its parent's own raise already carried.
     if (attached()) {
       return;
     }
     syncTransientSceneParent();
-    wlr_scene_node_raise_to_top(&m_sceneTree->node);
+    frames.push_back(&m_sceneTree->node);
 
     const auto views = m_server->registry().all();
     for (const auto& view : std::views::reverse(views)) {
       View* child = view.get();
       if (child != nullptr && child != this && child->transientParent() == this) {
-        child->raiseTransientTree();
+        child->collectTransientTree(frames);
       }
     }
   }

@@ -42,6 +42,12 @@ unit_tests = [
   ['surface-layouts', ['unit/surface_layouts.cpp'], []],
   ['shortcuts-inhibit', ['unit/shortcuts_inhibit.cpp'], []],
   ['shortcut-keysym', ['unit/shortcut_keysym.cpp'], []],
+  ['global-shortcut-trigger', ['unit/global_shortcut_trigger.cpp'], []],
+  ['global-shortcuts-registry', ['unit/global_shortcuts_registry.cpp'], [umbriel_core_dep]],
+  ['global-shortcuts-input', ['unit/global_shortcuts_input.cpp'], [umbriel_core_dep]],
+  ['shortcut-approval', ['unit/shortcut_approval.cpp'], [umbriel_core_dep]],
+  ['global-shortcuts-store', ['unit/global_shortcuts_store.cpp'], [umbriel_core_dep], [], ['-Wl,--wrap=renameat']],
+  ['global-shortcuts-bridge', ['unit/global_shortcuts_bridge.cpp', global_shortcuts_client_h], [umbriel_core_dep]],
   ['xcursor-matcher', ['unit/xcursor_matcher.cpp'], []],
   ['output-direction', ['unit/output_direction.cpp'], []],
   ['output-identity', ['unit/output_identity.cpp'], []],
@@ -552,10 +558,16 @@ input_capture_client = executable(
   ['harness/clients/input_capture_client.cpp', input_capture_client_h, input_capture_protocol_c],
   dependencies: [wayland_client_dep, dependency('libei-1.0', version: '>=1.3')],
 )
+global_shortcuts_client = executable(
+  'global-shortcuts-client',
+  ['harness/clients/global_shortcuts_client.cpp', global_shortcuts_client_h],
+  dependencies: [umbriel_core_dep],
+)
 
 harness_client_targets = [
   input_capture_compositor,
   input_capture_client,
+  global_shortcuts_client,
   color_feedback_client,
   pixel_probe,
   capture_client,

@@ -1,6 +1,7 @@
 #include "input/input_capture_permissions.h"
 
 #include "check.h"
+#include "core/private_state_file.h"
 
 #include <algorithm>
 #include <array>
@@ -17,6 +18,7 @@
 #include <unistd.h>
 
 using umbriel::InputCapturePermissions;
+using umbriel::PrivateStateFileLock;
 
 namespace {
   constexpr std::string_view kId = "11111111111111111111111111111111";
@@ -76,6 +78,35 @@ namespace {
     CHECK(fixture.read() == before);
   }
 } // namespace
+
+UMBRIEL_TEST(separateStateFilesUseIndependentNamedLocks) {
+  Fixture fixture;
+  const auto other = fixture.path.parent_path() / "other.json";
+  {
+    PrivateStateFileLock first(fixture.path, ".first.lock");
+    CHECK(static_cast<bool>(first));
+    PrivateStateFileLock contender(fixture.path, ".first.lock");
+    CHECK(!contender);
+    PrivateStateFileLock independent(other, ".other.lock");
+    CHECK(static_cast<bool>(independent));
+  }
+  PrivateStateFileLock reacquired(fixture.path, ".first.lock");
+  CHECK(static_cast<bool>(reacquired));
+}
+
+UMBRIEL_TEST(privateStateNamesCannotEscapeTheirOwnedDirectory) {
+  Fixture fixture;
+  for (const std::string_view name : {"", ".", "..", "../escaped", "subdir/file"}) {
+    PrivateStateFileLock lock(fixture.path, name);
+    CHECK(!lock);
+    CHECK(!umbriel::writePrivateStateFile(fixture.path, "data", name));
+  }
+  const std::string_view embeddedNull{"name\0suffix", 11};
+  PrivateStateFileLock lock(fixture.path, embeddedNull);
+  CHECK(!lock);
+  CHECK(!umbriel::writePrivateStateFile(fixture.path, "data", embeddedNull));
+  CHECK(!std::filesystem::exists(fixture.path.parent_path()));
+}
 
 UMBRIEL_TEST(ephemeralRestoreRotatesTheTokenAndExpiresOnlyItsOwningPeer) {
   Fixture fixture;
