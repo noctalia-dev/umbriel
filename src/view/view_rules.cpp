@@ -6,6 +6,7 @@
 #include "input/seat.h"
 #include "layer/layer_surface.h"
 #include "layout/scrolling.h"
+#include "output/identity.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/effect_registry.h"
@@ -60,13 +61,23 @@ namespace umbriel {
   // True when nothing else occupies the workspace, a float counting as much as a tile.
   bool View::isOnlyWindowOnWorkspace() const { return m_workspace != nullptr && m_workspace->isOnlyVisibleView(this); }
 
+  std::optional<OutputIdentity> View::ruleOutputIdentity(const Output* output) const {
+    const Output* target = output != nullptr ? output : currentOutput();
+    if (target == nullptr) {
+      return std::nullopt;
+    }
+    return target->identity();
+  }
+
   // Reads the rules with the alone state forced either way, so the alone effect knows what it should change, and so
   // the opening configure can read the alone rules while the view is not in the layout yet.
-  ResolvedWindowRule View::resolveRulesWithAlone(bool alone) const {
+  ResolvedWindowRule View::resolveRulesWithAlone(bool alone, const Output* output) const {
     WindowRuleState state = ruleState();
     state.alone = alone;
+    const std::optional<OutputIdentity> identity = ruleOutputIdentity(output);
     return resolveWindowRules(
-        config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, state, m_server->uptimeMs()
+        config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, state, m_server->uptimeMs(),
+        identity ? &*identity : nullptr
     );
   }
 
@@ -343,9 +354,10 @@ namespace umbriel {
     // Late app ID or title settlement may select opening rules, but identity hints changed after map must not select
     // new one-shot behavior. is_alone never selects opening settings: alone effects are applied and undone on every
     // change to the workspace's tiled set.
+    const std::optional<OutputIdentity> openingOutput = ruleOutputIdentity();
     const ResolvedWindowRule rule = resolveWindowRules(
         config(), m_initialRulesAppId, m_initialRulesTitle, m_initialRulesXdgTag, m_initialRulesContentType,
-        m_initialRuleState, m_server->uptimeMs()
+        m_initialRuleState, m_server->uptimeMs(), openingOutput ? &*openingOutput : nullptr
     );
     // An attached dialog's placement is its parent's, so the placement rules have nothing to act on.
     if (attached()) {
@@ -637,7 +649,7 @@ namespace umbriel {
 
   void View::refreshStateRuleEffects() {
     syncMinimizeEligibility();
-    if (m_mapped && m_appliedRuleState != ruleState()) {
+    if (m_mapped && (m_appliedRuleState != ruleState() || m_appliedRuleOutput != currentOutput())) {
       applyDynamicRules();
     }
   }
@@ -661,12 +673,14 @@ namespace umbriel {
     const std::optional<std::string_view> ruleAppId = ruleText(appId());
     const std::optional<std::string_view> ruleTitle = ruleText(title());
     const uint64_t generation = configStore().generation();
+    Output* ruleOutput = currentOutput();
     const WindowRuleState state = ruleState();
 
     // An unset identity string is a distinct key from an empty one: only the latter matches a pattern accepting the
     // empty string, so a client that replaces a missing title with an empty one must re-resolve.
     if (m_rulesGeneration == generation
         && m_rulesState == state
+        && m_rulesOutput == ruleOutput
         && m_rulesAppId == ruleAppId
         && m_rulesTitle == ruleTitle
         && m_rulesXdgTag == m_xdgTag
@@ -674,9 +688,14 @@ namespace umbriel {
       return m_rules;
     }
 
-    m_rules = resolveWindowRules(config(), ruleAppId, ruleTitle, m_xdgTag, m_contentType, state, m_server->uptimeMs());
+    const std::optional<OutputIdentity> outputIdentity = ruleOutputIdentity(ruleOutput);
+    m_rules = resolveWindowRules(
+        config(), ruleAppId, ruleTitle, m_xdgTag, m_contentType, state, m_server->uptimeMs(),
+        outputIdentity ? &*outputIdentity : nullptr
+    );
     m_rulesGeneration = generation;
     m_rulesState = state;
+    m_rulesOutput = ruleOutput;
     m_rulesAppId = ruleAppId;
     m_rulesTitle = ruleTitle;
     m_rulesXdgTag = m_xdgTag;
@@ -707,6 +726,7 @@ namespace umbriel {
     const ResolvedWindowRule& rule = resolved != nullptr ? *resolved : resolvedRules();
     const bool focusChanged = m_appliedRuleState.focused != ruleState().focused;
     m_appliedRuleState = ruleState();
+    m_appliedRuleOutput = currentOutput();
     if (const bool allowed = rule.allowShortcutsInhibit.value_or(true); allowed != m_allowShortcutsInhibit) {
       m_allowShortcutsInhibit = allowed;
       m_server->refreshKeyboardShortcutsInhibitors();

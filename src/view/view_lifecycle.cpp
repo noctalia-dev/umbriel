@@ -7,6 +7,7 @@
 #include "input/toplevel_drag.h"
 #include "layer/layer_surface.h"
 #include "layout/scrolling.h"
+#include "output/identity.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/effect_registry.h"
@@ -211,6 +212,75 @@ namespace umbriel {
     self->roleDestroyed();
   }
 
+  Output* View::predictedRuleOutput(const ResolvedWindowRule& rule) const {
+    // An attached dialog takes its parent's placement, so its output is wherever the parent lives. Before map
+    // wantsAttach() cannot run yet, so a requested parent stands in for it.
+    if (attached()) {
+      return currentOutput();
+    }
+    if (openingParented() && config().general.attachModalDialogs) {
+      if (const View* parent = shellParent(); parent != nullptr) {
+        return parent->currentOutput();
+      }
+    }
+    Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
+    const bool launchRuleOverride = m_launchPlacementPending
+        && (rule.defaultOutput.has_value()
+            || rule.defaultWorkspace.has_value()
+            || rule.defaultScratchpad.has_value());
+    Workspace* target = nullptr;
+    if (!launchRuleOverride) {
+      if (m_workspace != nullptr) {
+        target = m_workspace;
+      } else if (m_launchWorkspace != nullptr && m_launchWorkspace->workspace != nullptr) {
+        target = m_launchWorkspace->workspace;
+      }
+    }
+    if (target == nullptr) {
+      WorkspaceGroup* preferredGroup = preferred != nullptr ? preferred->workspaceGroup() : nullptr;
+      WorkspaceGroup* group = windowRuleWorkspaceGroup(*m_server, rule, preferredGroup);
+      target = windowRuleWorkspace(group, rule);
+    }
+    Output* output = target != nullptr && target->group() != nullptr ? target->group()->output() : preferred;
+    ScratchpadManager* scratchpadManager = m_server->scratchpadManager();
+    const std::string_view scratchpad = rule.defaultScratchpad
+        ? std::string_view(*rule.defaultScratchpad)
+        : (m_launchPlacementPending && !launchRuleOverride && !rule.defaultPinned.value_or(false)
+               ? std::string_view(m_launchScratchpad)
+               : std::string_view{});
+    if (!scratchpad.empty() && scratchpadManager != nullptr && scratchpadManager->hasScratchpad(scratchpad)) {
+      output = scratchpadManager->presentationOutput(scratchpad, output);
+    }
+    return output;
+  }
+
+  ResolvedWindowRule View::resolveRulesForOpening(WindowRuleState state) const {
+    // The first pass runs without an output: the placement rules alone pick where the window opens, which is the
+    // output `match.output` then tests. A rule that moves the window to another output re-selects the match, so
+    // resolve again against the predicted output until the prediction stops moving.
+    ResolvedWindowRule rule = resolveWindowRules(
+        config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, state, m_server->uptimeMs(), nullptr
+    );
+    Output* predicted = predictedRuleOutput(rule);
+    for (int pass = 0; pass < 8; ++pass) {
+      std::optional<OutputIdentity> identity;
+      if (predicted != nullptr) {
+        identity = predicted->identity();
+      }
+      ResolvedWindowRule next = resolveWindowRules(
+          config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, state, m_server->uptimeMs(),
+          identity ? &*identity : nullptr
+      );
+      Output* nextOutput = predictedRuleOutput(next);
+      rule = std::move(next);
+      if (nextOutput == predicted) {
+        break;
+      }
+      predicted = nextOutput;
+    }
+    return rule;
+  }
+
   void View::handleMap() {
     m_hasEverMapped = true;
     // The XDG map signal is emitted before the root surface commit signal.
@@ -258,10 +328,7 @@ namespace umbriel {
     m_initialRuleState = ruleState();
     m_initialRuleState.focused = false;
     m_initialRuleState.alone = false;
-    const ResolvedWindowRule rule = resolveWindowRules(
-        config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, m_initialRuleState,
-        m_server->uptimeMs()
-    );
+    const ResolvedWindowRule rule = resolveRulesForOpening(m_initialRuleState);
     m_initialRules = rule;
     m_initialRuleHistory.clear();
     m_initialRuleHistory.push_back(rule);
@@ -797,6 +864,7 @@ namespace umbriel {
     m_ruleBlur.snap(0.0);
     m_outerBorderColorAnim.snap(m_outerBorderColorAnim.target());
     m_appliedRuleState = {};
+    m_appliedRuleOutput = nullptr;
     // An unmapped window keeps no layout state. The detach released its alone effect when the column survives it.
     m_aloneEffectsActive = false;
     m_aloneAction = AloneAction::None;
@@ -891,9 +959,7 @@ namespace umbriel {
       openingState.focused = false;
       openingState.floating = !looksTiled();
       openingState.alone = false;
-      ResolvedWindowRule rule = resolveWindowRules(
-          config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, openingState, m_server->uptimeMs()
-      );
+      ResolvedWindowRule rule = resolveRulesForOpening(openingState);
       ScratchpadManager* scratchpadManager = m_server->scratchpadManager();
       const bool launchRuleOverride = m_launchPlacementPending
           && (rule.defaultOutput.has_value()
@@ -941,7 +1007,7 @@ namespace umbriel {
       // maximize-to-edges still need this window to be the only tile in that column. A state that neither the client
       // nor the not-alone rules asked for is recorded as the alone rules' own, for map to hand to that effect.
       const bool openingSoleTiled = target == nullptr || target->isOnlyTiledView(this);
-      ResolvedWindowRule alone = resolveRulesWithAlone(true);
+      ResolvedWindowRule alone = resolveRulesWithAlone(true, predictedRuleOutput(rule));
       const bool openingAlone = wantTiled
           && (target == nullptr
               || target->wouldBeAloneInLayout(

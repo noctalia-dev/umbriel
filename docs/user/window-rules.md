@@ -15,6 +15,7 @@ default_workspace = 2
 | `match.app_id`                | Match the application ID with a regular expression.                                           |
 | `match.title`                 | Match the window title.                                                                       |
 | `match.xdg_tag`               | Match a client-defined XDG toplevel tag.                                                      |
+| `match.output`                | Match the output the window is on or about to open on.                                        |
 | `match.content_type`          | Match `"none"`, `"photo"`, `"video"`, or `"game"`.                                            |
 | `match.layout`                | Match the window's workspace layout: `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`. |
 | `match.is_focused`            | Match current focus state.                                                                    |
@@ -32,7 +33,18 @@ Selectors are optional. A rule with none matches every window. Regular expressio
 
 `match.layout` takes one layout name or an array of names. Any one matching is enough; an empty array places no constraint. It follows the workspace layout, including for floating windows, and refreshes when the layout changes or the window moves to another workspace. A window without a workspace does not match a non-empty layout selector, so use layout matching for settings that update while the window is open, not its initial placement.
 
-The `app_id`, `title`, and `xdg_tag` selectors take either one pattern or an array of them. Any one of them matching is enough, and an empty array places no constraint:
+`match.output` searches both the output's connector name (`HDMI-A-1`) and its monitor descriptor (`<make> <model> <serial>`, as `umbriel outputs` prints it), so either form matches. A display that reports no EDID fields only answers to its connector. For a window that is opening, the selector tests the output the placement rules select, which makes per-monitor opening settings possible:
+
+```toml
+[[window_rule]]
+match.app_id = "^obsidian$"
+match.output = "AU Optronics"
+default_scrolling_extent = 1
+```
+
+Opening settings resolve against that predicted output, so a rule that also moves the window (`default_output`, `default_workspace`, `default_scratchpad`) is matched against where the window lands, not where it started. Dynamic settings keep following the window's current output, so moving a window to another monitor re-resolves them.
+
+The `app_id`, `title`, `xdg_tag`, and `output` selectors take either one pattern or an array of them. Any one of them matching is enough, and an empty array places no constraint:
 
 ```toml
 [[window_rule]]

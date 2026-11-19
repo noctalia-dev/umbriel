@@ -177,6 +177,30 @@ namespace umbriel {
              });
     }
 
+    // `match.output` searches the connector name and the EDID descriptor, so a rule can name a port
+    // ("HDMI-A-1") or a panel ("AU Optronics 0x6693 Unknown"). Like output rules, a display reporting no
+    // EDID fields at all only answers to its connector: its descriptor would be "Unknown Unknown Unknown".
+    bool outputPatternMatches(const RegexPatterns& patterns, const OutputIdentity* output) {
+      if (!patterns.constrains()) {
+        return true;
+      }
+      if (output == nullptr) {
+        return false;
+      }
+      const auto matches = [&](std::string_view value) {
+        return !value.empty() && std::ranges::any_of(patterns.regexes, [&](const std::regex& regex) {
+                 return std::regex_search(value.begin(), value.end(), regex);
+               });
+      };
+      if (matches(output->connector)) {
+        return true;
+      }
+      if (output->make.empty() && output->model.empty() && output->serial.empty()) {
+        return false;
+      }
+      return matches(outputDescriptor(*output));
+    }
+
     // Unlike window rules, the whole value must match: a substring grant would let an application choose an ID
     // embedding someone else's pattern.
     bool matchesWhole(const RegexPatterns& patterns, std::string_view value) {
@@ -242,14 +266,16 @@ namespace umbriel {
 
   ResolvedWindowRule resolveWindowRules(
       const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,
-      std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs
+      std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs,
+      const OutputIdentity* output
   ) {
     ResolvedWindowRule resolved;
 
     for (const auto& rule : config.windowRules) {
       if (!patternMatches(rule.appIdPatterns, appId)
           || !patternMatches(rule.titlePatterns, title)
-          || !patternMatches(rule.xdgTagPatterns, xdgTag)) {
+          || !patternMatches(rule.xdgTagPatterns, xdgTag)
+          || !outputPatternMatches(rule.outputPatterns, output)) {
         continue;
       }
       if (rule.matchContentType && *rule.matchContentType != contentType) {
