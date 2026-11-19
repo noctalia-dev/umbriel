@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # harness: outputs=2
-# An explicit output-focus action targeting an output that already has a
-# visible-but-unfocused scratchpad must refocus that scratchpad, not dismiss
-# it and fall through to the workspace window beneath it. Contrast
+# An explicit output-focus action, and pointer-driven output crossing under
+# follows_mouse, both target an output that already has a visible-but-unfocused
+# scratchpad; both must refocus that scratchpad, not dismiss it and fall
+# through to the workspace window beneath it. Contrast
 # scratchpad_background_click: that action is a deliberate steal away from a
 # scratchpad, not a switch of which output is focused, and keeps dismissing it.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
+readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly PLAIN_A=scratchpad-output-focus-plain-a
 readonly PLAIN_B=scratchpad-output-focus-plain-b
 readonly SCRATCH=scratchpad-output-focus-foreground
@@ -106,4 +108,30 @@ if [[ $(field_of "$PLAIN_B" active) != false ]]; then
   exit 1
 fi
 
-echo "an explicit output-focus action refocuses a visible scratchpad instead of dismissing it"
+# Same repro again, this time via Cursor::updatePointerOutput() under
+# follows_mouse instead of the explicit action above.
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[input.focus]
+follows_mouse = "sloppy"
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+
+# The default two-output headless layout is 1280x720 each, horizontal. Land
+# in each output's empty top-left corner, clear of both floating windows'
+# centered rects, so this exercises updatePointerOutput()'s output-crossing
+# refocus and not the unrelated viewAt-based hover focus landing on a window.
+# A real crossing onto A first, away from the scratchpad on B.
+"$POINTER" 2560 720 move 20 20
+wait_for_field "$PLAIN_A" active true
+wait_for_field "$SCRATCH" active false
+
+# The repro: crossing back onto B, which still has the visible scratchpad.
+"$POINTER" 2560 720 move 1300 20
+wait_for_field "$SCRATCH" active true
+if [[ $(field_of "$PLAIN_B" active) != false ]]; then
+  echo "pointer-driven output crossing dismissed the visible scratchpad to the workspace window: $(windows)"
+  exit 1
+fi
+
+echo "an explicit output-focus action and pointer-driven output crossing both refocus a visible scratchpad instead of dismissing it"
