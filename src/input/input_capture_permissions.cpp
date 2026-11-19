@@ -1,91 +1,17 @@
 #include "input/input_capture_permissions.h"
 
+#include "core/private_state_file.h"
+
 #include <algorithm>
-#include <array>
-#include <cerrno>
-#include <cstdio>
 #include <cstdlib>
-#include <fcntl.h>
 #include <nlohmann/json.hpp>
-#include <sys/file.h>
-#include <sys/random.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 namespace umbriel {
 
   namespace {
+    constexpr std::string_view kStoreLockName = ".input-capture-permissions.lock";
     constexpr size_t kMaxGrants = 128;
     constexpr size_t kMaxStoreBytes = 256 * 1024;
-
-    class StoreLock {
-    public:
-      explicit StoreLock(const std::filesystem::path& path) {
-        if (path.empty() || !path.is_absolute()) {
-          return;
-        }
-        std::error_code error;
-        std::filesystem::create_directories(path.parent_path(), error);
-        if (error) {
-          return;
-        }
-        const int directory = open(path.parent_path().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-        struct stat info{};
-        if (directory < 0) {
-          return;
-        }
-        if (fstat(directory, &info) == 0 && info.st_uid == geteuid() && fchmod(directory, 0700) == 0) {
-          m_fd = openat(directory, ".input-capture-permissions.lock", O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
-        }
-        close(directory);
-        if (m_fd >= 0
-            && (fstat(m_fd, &info) != 0
-                || !S_ISREG(info.st_mode)
-                || info.st_uid != geteuid()
-                || (info.st_mode & 077) != 0
-                || flock(m_fd, LOCK_EX | LOCK_NB) != 0)) {
-          close(m_fd);
-          m_fd = -1;
-        }
-      }
-      ~StoreLock() {
-        if (m_fd >= 0) {
-          close(m_fd);
-        }
-      }
-      StoreLock(const StoreLock&) = delete;
-      StoreLock& operator=(const StoreLock&) = delete;
-      explicit operator bool() const { return m_fd >= 0; }
-
-    private:
-      int m_fd = -1;
-    };
-
-    std::optional<std::string> randomHex(size_t bytes) {
-      std::array<unsigned char, 32> data{};
-      if (bytes > data.size()) {
-        return std::nullopt;
-      }
-      size_t offset = 0;
-      while (offset < bytes) {
-        const ssize_t count = getrandom(data.data() + offset, bytes - offset, 0);
-        if (count < 0 && errno == EINTR) {
-          continue;
-        }
-        if (count <= 0) {
-          return std::nullopt;
-        }
-        offset += static_cast<size_t>(count);
-      }
-      constexpr char digits[] = "0123456789abcdef";
-      std::string result;
-      result.reserve(bytes * 2);
-      for (size_t index = 0; index < bytes; ++index) {
-        result += digits[data[index] >> 4];
-        result += digits[data[index] & 15];
-      }
-      return result;
-    }
 
     bool hexString(std::string_view value, size_t length) {
       return value.size() == length
@@ -104,19 +30,6 @@ namespace umbriel {
       return true;
     }
 
-    bool writeAll(int fd, std::string_view bytes) {
-      while (!bytes.empty()) {
-        const ssize_t count = write(fd, bytes.data(), bytes.size());
-        if (count < 0 && errno == EINTR) {
-          continue;
-        }
-        if (count <= 0) {
-          return false;
-        }
-        bytes.remove_prefix(static_cast<size_t>(count));
-      }
-      return true;
-    }
   } // namespace
 
   InputCapturePermissions::InputCapturePermissions(std::filesystem::path path) : m_path(std::move(path)) {
@@ -134,43 +47,15 @@ namespace umbriel {
   }
 
   bool InputCapturePermissions::load() {
-    if (m_path.empty() || !m_path.is_absolute()) {
+    const auto contents = readPrivateStateFile(m_path, kMaxStoreBytes);
+    if (!contents) {
       return false;
     }
-    const int fd = open(m_path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
-    if (fd < 0) {
-      if (errno != ENOENT) {
-        return false;
-      }
+    if (contents->missing) {
       std::erase_if(m_records, [](const auto& item) { return item.permission.persistMode == 2; });
       return true;
     }
-    struct stat info{};
-    const bool safe = fstat(fd, &info) == 0
-        && S_ISREG(info.st_mode)
-        && info.st_uid == geteuid()
-        && (info.st_mode & 077) == 0
-        && info.st_size >= 0
-        && static_cast<uint64_t>(info.st_size) <= kMaxStoreBytes;
-    if (!safe) {
-      close(fd);
-      return false;
-    }
-    std::string bytes(static_cast<size_t>(info.st_size), '\0');
-    size_t offset = 0;
-    while (offset < bytes.size()) {
-      const ssize_t count = read(fd, bytes.data() + offset, bytes.size() - offset);
-      if (count < 0 && errno == EINTR) {
-        continue;
-      }
-      if (count <= 0) {
-        close(fd);
-        return false;
-      }
-      offset += static_cast<size_t>(count);
-    }
-    close(fd);
-    const auto data = nlohmann::json::parse(bytes, nullptr, false);
+    const auto data = nlohmann::json::parse(contents->bytes, nullptr, false);
     if (!data.is_object()
         || data.size() != 2
         || !data.contains("version")
@@ -244,44 +129,7 @@ namespace umbriel {
     if (bytes.size() > kMaxStoreBytes) {
       return false;
     }
-    std::error_code error;
-    std::filesystem::create_directories(m_path.parent_path(), error);
-    if (error) {
-      return false;
-    }
-    const int directory = open(m_path.parent_path().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-    struct stat info{};
-    if (directory < 0) {
-      return false;
-    }
-    if (fstat(directory, &info) != 0 || info.st_uid != geteuid() || fchmod(directory, 0700) != 0) {
-      close(directory);
-      return false;
-    }
-    const auto suffix = randomHex(16);
-    if (!suffix) {
-      close(directory);
-      return false;
-    }
-    const std::string temporary = ".input-capture-" + *suffix;
-    const int fd = openat(directory, temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
-    if (fd < 0) {
-      close(directory);
-      return false;
-    }
-    const bool written = writeAll(fd, bytes) && fsync(fd) == 0;
-    const bool closed = close(fd) == 0;
-    const bool replaced =
-        written && closed && renameat(directory, temporary.c_str(), directory, m_path.filename().c_str()) == 0;
-    if (!replaced) {
-      unlinkat(directory, temporary.c_str(), 0);
-    } else {
-      // The rename already committed the new credentials. Do not report a
-      // recoverable failure that could keep an old in-memory token valid.
-      fsync(directory);
-    }
-    close(directory);
-    return replaced;
+    return writePrivateStateFile(m_path, bytes, ".input-capture-");
   }
 
   std::optional<InputCaptureGrant> InputCapturePermissions::issue(
@@ -292,9 +140,9 @@ namespace umbriel {
     }
     // Serialize durable credentials across compositor instances. Refresh while
     // holding the lock so another instance cannot restore a consumed token.
-    std::optional<StoreLock> lock;
+    std::optional<PrivateStateFileLock> lock;
     if (persistMode == 2) {
-      lock.emplace(m_path);
+      lock.emplace(m_path, kStoreLockName);
       if (!*lock || !(m_loaded = load())) {
         return std::nullopt;
       }
@@ -324,12 +172,12 @@ namespace umbriel {
     if (!validRequest(application, capabilities, persistMode, peer) || !hexString(token, 64)) {
       return std::nullopt;
     }
-    std::optional<StoreLock> lock;
+    std::optional<PrivateStateFileLock> lock;
     const bool ephemeral = std::ranges::any_of(m_records, [token](const auto& record) {
       return record.permission.persistMode == 1 && record.token == token;
     });
     if (!ephemeral) {
-      lock.emplace(m_path);
+      lock.emplace(m_path, kStoreLockName);
       if (!*lock || !(m_loaded = load())) {
         return std::nullopt;
       }
@@ -365,7 +213,7 @@ namespace umbriel {
   }
 
   std::vector<InputCapturePermission> InputCapturePermissions::list() {
-    StoreLock lock(m_path);
+    PrivateStateFileLock lock(m_path, kStoreLockName);
     if (lock) {
       m_loaded = load();
       if (!m_loaded) {
@@ -385,12 +233,12 @@ namespace umbriel {
     if (!all && !hexString(id, 32)) {
       return false;
     }
-    std::optional<StoreLock> lock;
+    std::optional<PrivateStateFileLock> lock;
     const bool ephemeral = !all && std::ranges::any_of(m_records, [id](const auto& record) {
       return record.permission.persistMode == 1 && record.permission.id == id;
     });
     if (!ephemeral) {
-      lock.emplace(m_path);
+      lock.emplace(m_path, kStoreLockName);
       if (!*lock) {
         return false;
       }
