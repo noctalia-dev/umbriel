@@ -815,9 +815,15 @@ namespace umbriel {
     );
   }
 
-  void View::syncTransientSceneParent() {
+  bool View::syncTransientSceneParent() {
     if (!m_mapped || m_workspace == nullptr || m_pinned || m_server->cursor()->isDraggingView(this)) {
-      return;
+      return false;
+    }
+    // A view the drag presentation owns stays where the drag put it. A focus change re-syncs the previous focus, which
+    // would otherwise pull a riding dialog out of the drag tree and into the workspace it was carried out of, where a
+    // switch clips it away mid-settle.
+    if (m_sceneTree->node.parent == m_server->dragTree() && dragPresentationOwnsVisibility()) {
+      return false;
     }
 
     wlr_scene_tree* target = homeTree();
@@ -834,24 +840,32 @@ namespace umbriel {
     }
 
     if (m_sceneTree->node.parent == target) {
-      return;
+      return false;
     }
-    setSceneParent(target);
+    return applySceneParent(target);
   }
 
-  void View::collectTransientTree(std::vector<wlr_scene_node*>& frames) {
-    // An attached dialog stacks inside its parent's frame, which its parent's own raise already carried.
-    if (attached()) {
+  void View::collectTransientTree(std::vector<wlr_scene_node*>& frames) { walkTransientTree(&frames); }
+
+  void View::syncTransientChildren() { walkTransientTree(nullptr); }
+
+  void View::walkTransientTree(std::vector<wlr_scene_node*>* frames) {
+    // An attached dialog stacks inside its parent's frame, which its parent's own raise already carried. Only the
+    // raise stops there: the re-home still reaches an attached dialog, because the parent's frame can travel between
+    // trees without it.
+    if (frames != nullptr && attached()) {
       return;
     }
     syncTransientSceneParent();
-    frames.push_back(&m_sceneTree->node);
+    if (frames != nullptr) {
+      frames->push_back(&m_sceneTree->node);
+    }
 
     const auto views = m_server->registry().all();
     for (const auto& view : std::views::reverse(views)) {
       View* child = view.get();
       if (child != nullptr && child != this && child->transientParent() == this) {
-        child->collectTransientTree(frames);
+        child->walkTransientTree(frames);
       }
     }
   }
@@ -868,9 +882,20 @@ namespace umbriel {
   bool View::dragSheetDisplaced() const { return m_dragPhysics.active() || m_dragPhysics.grabbed(); }
 
   void View::setSceneParent(wlr_scene_tree* parent) {
-    // A released sheet stays displaced past its home tree's clip while the spring
-    // settles, so the release's re-homes wait for it; a later state change
-    // (fullscreen, pin, scratchpad) applies immediately and drops the wait.
+    // Only a move that took this node out of the drag tree needs the subtree re-homed: an ordinary re-parent leaves
+    // the elevation alone.
+    if (!applySceneParent(parent)) {
+      return;
+    }
+    // Transient children elevated with this view follow it home; the elevation is re-checked once, after the whole
+    // subtree has moved, so a child that left the drag tree collapses the elevation only when it was the last one in.
+    walkTransientTree(nullptr);
+    demoteDragTreeIfIdle();
+  }
+
+  bool View::applySceneParent(wlr_scene_tree* parent) {
+    // A released sheet stays displaced past its home tree's clip while the spring settles, so the release's re-homes
+    // wait for it; a later state change (fullscreen, pin, scratchpad) applies immediately and drops the wait.
     // closeReleaseRehomeWindow() ends the release's say over where the view rests.
     const bool waitingForThisTree = m_pendingHomeParent != nullptr && m_pendingHomeParent == parent;
     const bool displacedInDragTree =
@@ -879,7 +904,7 @@ namespace umbriel {
       if (m_releaseRehomeArmed) {
         m_pendingHomeParent = parent;
       }
-      return;
+      return false;
     }
     const bool leavingDragTree = m_sceneTree->node.parent == m_server->dragTree() && parent != m_server->dragTree();
     m_pendingHomeParent = nullptr;
@@ -887,20 +912,11 @@ namespace umbriel {
 
     wlr_scene_node_reparent(&m_sceneTree->node, parent);
     syncShadowPool();
-    if (leavingDragTree) {
-      // Transient children elevated with this view follow it home.
-      syncTransientChildren();
-      // The elevation serves the whole drag presentation, not just the departing
-      // view: a settling release or an unmapping rider must not demote a drag still
-      // in progress. It drops when the last drag-presented view leaves.
-      if (!dragTreeOccupied()) {
-        wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
-      }
-    }
     // Another parent can put the window elsewhere in layout coordinates.
     if (m_xsurface != nullptr && m_mapped) {
       syncXwaylandConfigure();
     }
+    return leavingDragTree;
   }
 
   void View::closeReleaseRehomeWindow() { m_releaseRehomeArmed = false; }
@@ -915,14 +931,11 @@ namespace umbriel {
     setSceneParent(target);
   }
 
-  void View::syncTransientChildren() {
-    const auto views = m_server->registry().all();
-    for (const auto& view : std::views::reverse(views)) {
-      View* child = view.get();
-      if (child != nullptr && child != this && child->transientParent() == this) {
-        child->syncTransientSceneParent();
-        child->syncTransientChildren();
-      }
+  void View::demoteDragTreeIfIdle() {
+    // The elevation serves the whole drag presentation, not just the departing view: a settling release or an
+    // unmapping rider must not demote a drag still in progress. It drops when the last drag-presented view leaves.
+    if (!dragTreeOccupied()) {
+      wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
     }
   }
 
