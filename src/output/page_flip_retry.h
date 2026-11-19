@@ -36,4 +36,4 @@ namespace umbriel {
     bool m_stageGeometry = false;
     uint8_t m_frameAttempts = 0;
   };
-} // namespace umbriel
+}
