@@ -436,14 +436,16 @@ namespace umbriel {
 
   void Workspace::restackFloatingViews() {
     syncFloatingLayer();
+    std::vector<View*> raised;
     for (View* view : m_floatingStack) {
       if (view != nullptr && view->workspace() == this && view->floating()) {
-        view->raiseToTop();
+        raised.push_back(view);
       }
     }
     if (m_focusedView != nullptr && liftedAboveFullscreen(m_focusedView)) {
-      m_focusedView->raiseToTop();
+      raised.push_back(m_focusedView);
     }
+    View::raiseInOrder(raised);
     raiseFloatingLayer();
   }
 

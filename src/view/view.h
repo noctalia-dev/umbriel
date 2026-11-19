@@ -18,6 +18,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
@@ -495,6 +496,9 @@ namespace umbriel {
     // Enable/disable the view's frame, and its shadow when a tile has lent it to the workspace.
     void setNodeEnabled(bool enabled);
     void raiseToTop();
+    // Ends with the result of raiseToTop() on each view in turn, the last on top, without passing a frame above one it
+    // ends below.
+    static void raiseInOrder(std::span<View* const> views);
     // The only way to move the frame to another tree: a tile's shadow joins the workspace's tile shadow layer, and
     // any other window's shadow stays in the frame.
     void setSceneParent(wlr_scene_tree* parent);
@@ -832,7 +836,8 @@ namespace umbriel {
     void releaseDialog();
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
     void syncTransientSceneParent();
-    void raiseTransientTree();
+    // Appends the frames a raise of this transient tree lifts, in the order it lifts them.
+    void collectTransientTree(std::vector<wlr_scene_node*>& frames);
     void updateForeignIdentity();
     void updateForeignState();
     void enterForeignOutput();
