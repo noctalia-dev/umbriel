@@ -2195,8 +2195,8 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
 // fallback box bounds the damage, and with neither the whole target is damaged:
 // a caller that has a dst box pays only for the kernel halo around it.
 static void init_blur_damage_region(
-    pixman_region32_t* damage, const pixman_region32_t* clip, const struct wlr_box* fallback, struct blur_data* blur_data,
-    int width, int height
+    pixman_region32_t* damage, const pixman_region32_t* clip, const struct wlr_box* fallback,
+    struct blur_data* blur_data, int width, int height
 ) {
   if (clip != NULL) {
     pixman_region32_init(damage);
