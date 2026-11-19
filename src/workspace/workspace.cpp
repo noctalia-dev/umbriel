@@ -436,14 +436,16 @@ namespace umbriel {
 
   void Workspace::restackFloatingViews() {
     syncFloatingLayer();
+    std::vector<View*> raised;
     for (View* view : m_floatingStack) {
       if (view != nullptr && view->workspace() == this && view->floating()) {
-        view->raiseToTop();
+        raised.push_back(view);
       }
     }
     if (m_focusedView != nullptr && liftedAboveFullscreen(m_focusedView)) {
-      m_focusedView->raiseToTop();
+      raised.push_back(m_focusedView);
     }
+    View::raiseInOrder(raised);
     raiseFloatingLayer();
   }
 
@@ -681,6 +683,15 @@ namespace umbriel {
     if (TabbedContainers* containers = m_layout->tabbedContainers();
         containers != nullptr && origin == LayoutAttachOrigin::OpeningView && view->m_ruleColumnDisplay) {
       containers->setTabbed(view, *view->m_ruleColumnDisplay == ColumnDisplay::Tabbed);
+    }
+
+    if (m_layoutMode == LayoutMode::Master || m_layoutMode == LayoutMode::Dwindle) {
+      // These layouts share the output between tiles, so an existing edge maximize would cover the joining tile.
+      for (View* other : m_views) {
+        if (other != view && other->tiled() && other->maximizedToEdges()) {
+          other->setMaximizedToEdges(false);
+        }
+      }
     }
 
     if (scrolling != nullptr && !placement) {

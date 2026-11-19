@@ -26,6 +26,8 @@ namespace umbriel {
     static nlohmann::json keyboardLayouts(Server& server, IpcArgs args);
     static nlohmann::json inputCapturePermissions(Server& server, IpcArgs args);
     static nlohmann::json inputCaptureRevoke(Server& server, IpcArgs args);
+    static nlohmann::json globalShortcuts(Server& server, IpcArgs args);
+    static nlohmann::json globalShortcutsRevoke(Server& server, IpcArgs args);
     static std::optional<EffectAudio> parseAudioSpectrum(const nlohmann::json& request);
     static nlohmann::json effects(Server& server, IpcArgs args);
     static nlohmann::json windows(Server& server, IpcArgs args);

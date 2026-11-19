@@ -5,6 +5,7 @@
 #include "config/overrides.h"
 #include "config/store.h"
 #include "input/cursor.h"
+#include "input/global_shortcuts_controller.h"
 #include "input/input_capture.h"
 #include "layer/layer_surface.h"
 #include "output/identity.h"
@@ -38,6 +39,108 @@ extern "C" {
 }
 
 namespace umbriel {
+
+  namespace {
+    std::string_view shortcutSourceName(GlobalShortcutSource source) {
+      switch (source) {
+      case GlobalShortcutSource::None:
+        return "none";
+      case GlobalShortcutSource::Config:
+        return "config";
+      case GlobalShortcutSource::Stored:
+        return "stored";
+      case GlobalShortcutSource::Preferred:
+        return "preferred";
+      }
+      std::unreachable();
+    }
+
+    std::string_view shortcutConflictName(GlobalShortcutConflict conflict) {
+      switch (conflict) {
+      case GlobalShortcutConflict::None:
+        return "none";
+      case GlobalShortcutConflict::Unassigned:
+        return "unassigned";
+      case GlobalShortcutConflict::Disabled:
+        return "disabled";
+      case GlobalShortcutConflict::Reserved:
+        return "reserved";
+      case GlobalShortcutConflict::InUse:
+        return "in_use";
+      }
+      std::unreachable();
+    }
+
+    nlohmann::json shortcutTriggerJson(const std::optional<GlobalShortcutTrigger>& trigger) {
+      return trigger ? nlohmann::json(describeGlobalShortcutTrigger(*trigger)) : nlohmann::json(nullptr);
+    }
+
+    void printGlobalShortcuts(const nlohmann::json& applications) {
+      for (const auto& application : applications) {
+        std::println(
+            "{} ({})", application["application"].dump(-1, ' ', true),
+            application["live"].get<bool>() ? "live" : "remembered"
+        );
+        for (const auto& shortcut : application["shortcuts"]) {
+          std::println(
+              "  {}: {} (candidate {}, {}, {}; session {}, pending {})", shortcut["id"].dump(-1, ' ', true),
+              shortcut["trigger"].is_null() ? "-" : shortcut["trigger"].get<std::string>(),
+              shortcut["candidate"].is_null() ? "-" : shortcut["candidate"].get<std::string>(),
+              shortcut["source"].get<std::string>(), shortcut["conflict"].get<std::string>(),
+              shortcut["session"].is_null() ? "none" : shortcut["session"].dump(), shortcut["pending"].get<bool>()
+          );
+          std::println("    {}", shortcut["description"].dump(-1, ' ', true));
+        }
+      }
+    }
+  } // namespace
+
+  nlohmann::json IpcCommands::globalShortcuts(Server& server, IpcArgs args) {
+    if (!args.empty()) {
+      return nlohmann::json{{"err", "usage: global-shortcuts"}};
+    }
+    auto applications = nlohmann::json::array();
+    if (auto* shortcuts = server.globalShortcuts()) {
+      const auto inspected = shortcuts->inspect();
+      if (!inspected) {
+        return nlohmann::json{{"err", "unable to read global shortcut state"}};
+      }
+      for (const auto& application : *inspected) {
+        auto entries = nlohmann::json::array();
+        for (const auto& entry : application.shortcuts) {
+          const auto& shortcut = entry.shortcut;
+          entries.push_back(
+              {{"id", shortcut.id},
+               {"description", shortcut.description},
+               {"trigger", shortcutTriggerJson(shortcut.trigger)},
+               {"candidate", shortcutTriggerJson(shortcut.candidate)},
+               {"source", shortcutSourceName(shortcut.source)},
+               {"conflict", shortcutConflictName(shortcut.conflict)},
+               {"session", entry.session ? nlohmann::json(*entry.session) : nlohmann::json(nullptr)},
+               {"pending", entry.pending}}
+          );
+        }
+        applications.push_back(
+            {{"application", application.application}, {"live", application.live}, {"shortcuts", std::move(entries)}}
+        );
+      }
+    }
+    return nlohmann::json{{"ok", std::move(applications)}};
+  }
+
+  nlohmann::json IpcCommands::globalShortcutsRevoke(Server& server, IpcArgs args) {
+    if (args.size() != 1 || !validGlobalShortcutId(args.front())) {
+      return nlohmann::json{{"err", "usage: global-shortcuts-revoke <application|all>"}};
+    }
+    auto* shortcuts = server.globalShortcuts();
+    if (shortcuts == nullptr) {
+      return nlohmann::json{{"err", "global shortcuts unavailable"}};
+    }
+    if (!shortcuts->revoke(args.front())) {
+      return nlohmann::json{{"err", "unable to save global shortcut revocation; matching live sessions were stopped"}};
+    }
+    return nlohmann::json{{"ok", true}};
+  }
 
   nlohmann::json IpcCommands::inputCapturePermissions(Server& server, IpcArgs /*args*/) {
     auto result = nlohmann::json::array();
@@ -1564,6 +1667,10 @@ namespace umbriel {
   }
 
   static constexpr IpcCommandSpec kIpcCommands[] = {
+      {"global-shortcuts", "", "inspect live and remembered application shortcuts", IpcCommandGroup::Inspect, false,
+       &IpcCommands::globalShortcuts, &printGlobalShortcuts},
+      {"global-shortcuts-revoke", "<application|all>", "forget shortcut approval and close matching live sessions",
+       IpcCommandGroup::Control, true, &IpcCommands::globalShortcutsRevoke, nullptr},
       {"input-capture-permissions", "", "list remembered input capture grants", IpcCommandGroup::Inspect, false,
        &IpcCommands::inputCapturePermissions, nullptr},
       {"input-capture-revoke", "<id|all>", "forget capture permission and stop sessions using it",

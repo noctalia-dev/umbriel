@@ -18,6 +18,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
@@ -404,6 +405,10 @@ namespace umbriel {
     // `usable` less the margin a maximized tile keeps (struts, then gap and border), so the border stays on screen.
     // A client capped below that box by its maximum size keeps the capped size, centered in it.
     wlr_box floatingMaximizedBox(const wlr_box& usable, const ResolvedLayoutConfig* layout = nullptr) const;
+    // Opening configures use resolved rules before the view's live maximize and title-bar state is installed.
+    wlr_box floatingMaximizedBox(
+        const wlr_box& usable, bool maximizedToEdges, int barHeight, const ResolvedLayoutConfig* layout
+    ) const;
     // The usable area inside the layout struts and the gap plus border margin; `usable` when that leaves nothing.
     wlr_box floatingMarginArea(const wlr_box& usable, const ResolvedLayoutConfig* layout = nullptr) const;
     // Put a maximized float back in the box its settings give it now, after a layout, border, strut, or usable area
@@ -491,6 +496,9 @@ namespace umbriel {
     // Enable/disable the view's frame, and its shadow when a tile has lent it to the workspace.
     void setNodeEnabled(bool enabled);
     void raiseToTop();
+    // Ends with the result of raiseToTop() on each view in turn, the last on top, without passing a frame above one it
+    // ends below.
+    static void raiseInOrder(std::span<View* const> views);
     // The only way to move the frame to another tree: a tile's shadow joins the workspace's tile shadow layer, and
     // any other window's shadow stays in the frame.
     void setSceneParent(wlr_scene_tree* parent);
@@ -828,7 +836,8 @@ namespace umbriel {
     void releaseDialog();
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
     void syncTransientSceneParent();
-    void raiseTransientTree();
+    // Appends the frames a raise of this transient tree lifts, in the order it lifts them.
+    void collectTransientTree(std::vector<wlr_scene_node*>& frames);
     void updateForeignIdentity();
     void updateForeignState();
     void enterForeignOutput();
@@ -846,6 +855,7 @@ namespace umbriel {
     // `resolved` lets a caller that already resolved the rules pass them in, avoiding a second regex pass.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
     void updateBorderColor(bool focusChanged);
+    void applyBorderColors();
     void refreshStartupRuleEffects();
     // Applies or undoes the alone size effect after the workspace's tiled set changes.
     bool notifyAloneStateChanged();

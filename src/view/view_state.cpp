@@ -175,7 +175,7 @@ namespace umbriel {
       return;
     }
     m_floatingMaximizedBox = box;
-    configureSize(box.width, box.height);
+    requestFloatingSize(box.width, box.height);
     if (animate) {
       beginResizeAnimation(box.width, box.height);
       animateTo(box.x, box.y);

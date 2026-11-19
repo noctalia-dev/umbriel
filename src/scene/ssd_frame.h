@@ -31,6 +31,7 @@ namespace umbriel {
     void setAlpha(float alpha) override;
     // Like surface blur, backdrop blur follows lifecycle fades independently of the chrome's drag opacity.
     void setAlphas(float chromeAlpha, float blurAlpha);
+    void setOpaqueBorderInset(int inset);
     void reloadConfig() override;
     void setTitle(std::string_view title);
     void setResizable(bool resizable);
@@ -56,7 +57,7 @@ namespace umbriel {
     void updateButtonIcon(TitleBarButton button, const std::array<float, 4>& color, float alpha, bool visible);
     std::span<const TitleBarButton> visibleButtons() const;
     void updateBlur();
-    clipped_region frameClip(int x, int y, bool underBorder = false) const;
+    clipped_region frameClip(int x, int y, int outset = 0) const;
     void clipBuffer(wlr_scene_buffer* buffer) const;
     int zoomed(int value) const;
     wlr_scene_tree* m_backgroundTree = nullptr;
@@ -87,6 +88,7 @@ namespace umbriel {
     bool m_maximizeEnabled = true;
     bool m_maximized = false;
     bool m_preview = false;
+    int m_opaqueBorderInset = 0;
     float m_alpha = 1.0F;
     float m_blurAlpha = 1.0F;
     SsdFramePart m_hovered = SsdFramePart::None;

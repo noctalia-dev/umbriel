@@ -53,11 +53,16 @@ namespace umbriel {
   }
 
   wlr_box View::floatingMaximizedBox(const wlr_box& usable, const ResolvedLayoutConfig* layout) const {
+    return floatingMaximizedBox(usable, m_maximizedToEdges, titleBarHeight(), layout);
+  }
+
+  wlr_box View::floatingMaximizedBox(
+      const wlr_box& usable, bool maximizedToEdges, int barHeight, const ResolvedLayoutConfig* layout
+  ) const {
     if (usable.width <= 0 || usable.height <= 0) {
       return usable;
     }
-    const wlr_box area =
-        contentBoxInTile(m_maximizedToEdges ? usable : floatingMarginArea(usable, layout), titleBarHeight());
+    const wlr_box area = contentBoxInTile(maximizedToEdges ? usable : floatingMarginArea(usable, layout), barHeight);
     // A client whose maximum size is below the area (a fixed-size splash) keeps that size, centered in the area
     // rather than pinned to its corner.
     const SizeHints hints = sizeHints();

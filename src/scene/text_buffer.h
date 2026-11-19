@@ -16,6 +16,8 @@ namespace umbriel {
     // Logical pixels every wrapped continuation line is indented by, so a wrapped
     // list entry stays under its own text instead of returning to the margin.
     int hangingIndent = 0;
+    // Keep the requested wrapping width when measuring and painting.
+    bool fixedWidth = false;
     // One line cut to `maxWidth` with a trailing ellipsis, instead of wrapping.
     bool ellipsize = false;
     // Background colour.
@@ -31,7 +33,14 @@ namespace umbriel {
     int logicalHeight = 0;
   };
 
+  struct TextBufferSize {
+    int logicalWidth = 0;
+    int logicalHeight = 0;
+  };
+
   std::string escapeMarkup(std::string_view text);
+
+  TextBufferSize measureTextBuffer(const TextBufferParams& params);
 
   // Render Pango-markup text into a Cairo-backed wlr_buffer.
   // Returns a buffer the caller owns (drop after wlr_scene_buffer_create).
