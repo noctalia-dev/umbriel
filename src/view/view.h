@@ -772,8 +772,6 @@ namespace umbriel {
     // release handler ends, flush lands the wait immediately.
     void closeReleaseRehomeWindow();
     void flushReleaseRehome();
-    // Re-points transient children at the trees this view now lives under.
-    void syncTransientChildren();
     // True while a view rests under the drag tree.
     bool dragTreeOccupied() const;
     // Refits the sheet to the content tree's drawn bounds when they changed, or when the grab moved.
@@ -849,9 +847,21 @@ namespace umbriel {
     void syncModalShade();
     void releaseDialog();
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
-    void syncTransientSceneParent();
+    // Re-homes this node under the tree its transient parent now lives in. Returns true when the node left the drag
+    // tree, so the caller can collapse the drag elevation.
+    bool syncTransientSceneParent();
+    // The one reparent policy: waits out a displaced sheet, moves the node with its shadow and X11 state, and returns
+    // whether the move took it out of the drag tree. The caller owns the transient subtree.
+    bool applySceneParent(wlr_scene_tree* parent);
+    // Lowers the drag tree under its icons once no drag-presented view is left in it.
+    void demoteDragTreeIfIdle();
     // Appends the frames a raise of this transient tree lifts, in the order it lifts them.
     void collectTransientTree(std::vector<wlr_scene_node*>& frames);
+    // Re-points transient children at the trees this view now lives under.
+    void syncTransientChildren();
+    // The one transient walk: re-homes each node, and appends it when `frames` is given. An attached dialog's subtree
+    // is skipped, because its parent's own frame already carries it.
+    void walkTransientTree(std::vector<wlr_scene_node*>* frames);
     void updateForeignIdentity();
     void updateForeignState();
     void enterForeignOutput();
