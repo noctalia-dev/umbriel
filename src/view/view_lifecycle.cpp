@@ -287,7 +287,7 @@ namespace umbriel {
       if (next == current) {
         return candidate;
       }
-      if (visited.count(next) != 0) {
+      if (visited.contains(next)) {
         break;
       }
       current = next;

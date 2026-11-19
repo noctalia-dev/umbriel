@@ -770,9 +770,8 @@ UMBRIEL_TEST(windowRuleOutputMatchesConnectorOrDescriptor) {
   const OutputIdentity otherPanel = identity("DP-3", "AU Optronics", "0x6693", "Unknown");
 
   // The connector rule is the only one matching the HDMI output's identity.
-  const auto onHdmi = umbriel::resolveWindowRules(
-      config, "obsidian", std::nullopt, std::nullopt, ContentType::None, {}, 0, &hdmi
-  );
+  const auto onHdmi =
+      umbriel::resolveWindowRules(config, "obsidian", std::nullopt, std::nullopt, ContentType::None, {}, 0, &hdmi);
   CHECK(onHdmi.defaultScrollingExtent && *onHdmi.defaultScrollingExtent == 1.0);
 
   // The descriptor form matches make/model/serial as `umbriel outputs` prints it.

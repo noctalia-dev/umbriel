@@ -189,8 +189,8 @@ namespace umbriel {
       }
       const auto matches = [&](std::string_view value) {
         return !value.empty() && std::ranges::any_of(patterns.regexes, [&](const std::regex& regex) {
-                 return std::regex_search(value.begin(), value.end(), regex);
-               });
+          return std::regex_search(value.begin(), value.end(), regex);
+        });
       };
       if (matches(output->connector)) {
         return true;
