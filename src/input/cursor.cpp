@@ -2285,6 +2285,9 @@ namespace umbriel {
     m_server->notifyInputActivity();
     m_server->cancelModifierTap();
     m_server->remapTouches();
+    if (config().input.cursor.hideOnTouch) {
+      hideCursor();
+    }
 
     double lx = 0;
     double ly = 0;
