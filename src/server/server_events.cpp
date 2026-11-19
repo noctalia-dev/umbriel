@@ -6,6 +6,7 @@
 #include "input/cursor.h"
 #include "input/eis.h"
 #include "input/gestures.h"
+#include "input/global_shortcuts_controller.h"
 #include "input/input_capture.h"
 #include "input/keyboard.h"
 #include "input/keyboard_leds.h"
@@ -1002,6 +1003,9 @@ namespace umbriel {
 
   void Server::handleConfigReload(const ConfigReloadResult& result) {
     if (result.success) {
+      if (m_globalShortcuts != nullptr) {
+        m_globalShortcuts->refreshConfig();
+      }
       const bool systemKeymapChanged = refreshSystemKeymap();
       if (result.change.drm) {
         kLog.warn("DRM configuration changed; restart Umbriel to apply it");
@@ -2035,6 +2039,10 @@ namespace umbriel {
   }
 
   void Server::beginSessionLock(wlr_session_lock_v1* lock) {
+    failGlobalShortcuts();
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts->suspend();
+    }
     if (m_inputCapture != nullptr) {
       m_inputCapture->suspend();
     }
@@ -2070,6 +2078,9 @@ namespace umbriel {
       dismissConfirmation();
       if (m_inputCapture != nullptr) {
         m_inputCapture->suspend();
+      }
+      if (m_globalShortcuts != nullptr) {
+        m_globalShortcuts->suspend();
       }
       if (m_eisInput != nullptr) {
         m_eisInput->setSessionLocked(true);
@@ -2216,6 +2227,11 @@ namespace umbriel {
       wlr_seat_set_keyboard(seat, keyboard->wlr());
     }
     m_keyboardLeds->add(keyboard->wlr(), keyboard->virtualDevice(), config().input.keyboard.numlockToggle);
+    if (m_globalShortcuts != nullptr) {
+      for (size_t index = 0; index < keyboard->wlr()->num_keycodes; ++index) {
+        m_globalShortcuts->observeKey(keyboard, keyboard->wlr()->keycodes[index], 0, true);
+      }
+    }
     if (m_inputCapture != nullptr && !keyboard->virtualDevice()) {
       m_inputCapture->addKeyboard(keyboard->wlr());
     }

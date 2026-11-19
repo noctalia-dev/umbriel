@@ -12,6 +12,7 @@
 #include "input/cursor.h"
 #include "input/eis.h"
 #include "input/gestures.h"
+#include "input/global_shortcuts_controller.h"
 #include "input/input_capture.h"
 #include "input/keyboard.h"
 #include "input/keyboard_leds.h"
@@ -365,6 +366,10 @@ namespace umbriel {
   }
 
   void Server::dismissConfirmation() {
+    if (m_pendingGlobalShortcutsId != 0 && m_globalShortcuts != nullptr) {
+      const auto id = std::exchange(m_pendingGlobalShortcutsId, 0);
+      m_globalShortcuts->authorizeSession(id, GlobalShortcutsBridge::Authorization::Cancelled);
+    }
     if (m_pendingCaptureId != 0 && m_inputCapture != nullptr) {
       const auto id = std::exchange(m_pendingCaptureId, 0);
       m_inputCapture->authorizeSession(id, false);
@@ -485,9 +490,82 @@ namespace umbriel {
     }
   }
 
+  void Server::requestGlobalShortcuts(uint64_t id, std::string_view application, const GlobalShortcutBind& bind) {
+    if (m_stopping
+        || m_sessionLock != nullptr
+        || sessionLocked()
+        || (m_session != nullptr && !m_session->active)
+        || m_quitConfirm == nullptr
+        || m_quitConfirm->visible()
+        || m_pendingGlobalShortcutsId != 0
+        || (m_inputCapture != nullptr && m_inputCapture->active())) {
+      m_globalShortcuts->authorizeSession(id, GlobalShortcutsBridge::Authorization::Failed);
+      return;
+    }
+    m_pendingGlobalShortcutsId = id;
+    m_quitConfirm->showGlobalShortcuts(application, bind.shortcuts);
+    if (!m_quitConfirm->visible()) {
+      failGlobalShortcuts();
+    }
+  }
+
+  void Server::confirmGlobalShortcuts() {
+    if (m_pendingGlobalShortcutsId == 0) {
+      return;
+    }
+    if (m_stopping
+        || m_sessionLock != nullptr
+        || sessionLocked()
+        || (m_session != nullptr && !m_session->active)
+        || (m_inputCapture != nullptr && m_inputCapture->active())
+        || m_quitConfirm == nullptr
+        || !m_quitConfirm->visible()
+        || m_quitConfirm->kind() != QuitConfirm::Kind::GlobalShortcuts) {
+      failGlobalShortcuts();
+      return;
+    }
+    if (m_quitConfirm->refreshShortcutApproval()) {
+      return;
+    }
+    if (!m_quitConfirm->shortcutPageFinal()) {
+      m_quitConfirm->advanceShortcutPage();
+      return;
+    }
+    const auto id = std::exchange(m_pendingGlobalShortcutsId, 0);
+    m_quitConfirm->hide();
+    m_globalShortcuts->authorizeSession(id, GlobalShortcutsBridge::Authorization::Approved);
+  }
+
+  void Server::failGlobalShortcuts() {
+    if (m_pendingGlobalShortcutsId == 0) {
+      return;
+    }
+    const auto id = std::exchange(m_pendingGlobalShortcutsId, 0);
+    if (m_quitConfirm != nullptr && m_quitConfirm->kind() == QuitConfirm::Kind::GlobalShortcuts) {
+      m_quitConfirm->hide();
+    }
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts->authorizeSession(id, GlobalShortcutsBridge::Authorization::Failed);
+    }
+  }
+
+  void Server::cancelGlobalShortcuts(uint64_t id) {
+    if (id != m_pendingGlobalShortcutsId) {
+      return;
+    }
+    m_pendingGlobalShortcutsId = 0;
+    if (m_quitConfirm != nullptr && m_quitConfirm->kind() == QuitConfirm::Kind::GlobalShortcuts) {
+      m_quitConfirm->hide();
+    }
+  }
+
   void Server::inputCaptureStateChanged(bool active) {
     if (m_stopping) {
       return;
+    }
+    if (active && m_globalShortcuts != nullptr) {
+      failGlobalShortcuts();
+      m_globalShortcuts->suspend();
     }
     const uint32_t capabilities = active ? m_inputCapture->capabilities() : m_inputCaptureCapabilities;
     m_inputCaptureCapabilities = active ? capabilities : 0;
@@ -532,6 +610,10 @@ namespace umbriel {
     self = wl_container_of(listener, self, m_sessionActive);
     self->updateDrmLeaseState();
     if (!self->m_session->active) {
+      self->failGlobalShortcuts();
+      if (self->m_globalShortcuts != nullptr) {
+        self->m_globalShortcuts->suspend();
+      }
       if (self->m_inputCapture != nullptr) {
         self->m_inputCapture->suspend();
       }
@@ -974,6 +1056,10 @@ namespace umbriel {
   Server::~Server() {
     m_stopping = true;
     updateDrmLeaseState();
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts.reset();
+      wl_display_flush_clients(m_display);
+    }
     m_inputCapture.reset();
     if (m_sessionActive.link.next != nullptr) {
       wl_list_remove(&m_sessionActive.link);
@@ -1275,7 +1361,15 @@ namespace umbriel {
     });
     m_inputCapture->setAuthorizationCancelled([this](uint64_t id) { cancelInputCapture(id); });
     m_inputCapture->setActiveChanged([this](bool active) { inputCaptureStateChanged(active); });
+    m_globalShortcuts = std::make_unique<GlobalShortcuts>(*this);
+    m_globalShortcuts->setAuthorize([this](auto id, auto application, const auto& bind) {
+      requestGlobalShortcuts(id, application, bind);
+    });
+    m_globalShortcuts->setAuthorizationCancelled([this](auto id) { cancelGlobalShortcuts(id); });
     for (const auto& keyboard : m_keyboards) {
+      for (size_t index = 0; index < keyboard->wlr()->num_keycodes; ++index) {
+        m_globalShortcuts->observeKey(keyboard.get(), keyboard->wlr()->keycodes[index], 0, true);
+      }
       if (!keyboard->virtualDevice()) {
         m_inputCapture->addKeyboard(keyboard->wlr());
       }
@@ -1299,6 +1393,10 @@ namespace umbriel {
       if (m_xwayland->available() && m_xwayland->setInputSocket(m_eisInput->socketFd())) {
         setenv("DISPLAY", m_xwayland->displayName(), 1);
       } else {
+        // A creation failure already logged itself in the Xwayland constructor; only this branch is otherwise silent.
+        if (m_xwayland->available()) {
+          kLog.error("Xwayland could not expose its EIS input socket; X11 applications will not work");
+        }
         m_xwayland.reset();
         m_eisInput.reset();
       }
@@ -1367,6 +1465,8 @@ namespace umbriel {
   void Server::showConfigDiagnostics() {
     std::vector<ConfigDiagnostic> diagnostics = configDiagnostics();
     if (config().general.xwayland && m_xwayland == nullptr) {
+      // Derived from runtime state rather than recorded while reading the configuration, so it is re-drawn on every
+      // reload; the failure itself is logged once, where it happens.
       ConfigDiagnostic diagnostic;
       diagnostic.severity = ConfigDiagnostic::Severity::Warning;
       diagnostic.message =
@@ -1415,6 +1515,11 @@ namespace umbriel {
 
   void Server::stop() {
     m_stopping = true;
+    failGlobalShortcuts();
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts->suspend();
+      wl_display_flush_clients(m_display);
+    }
     updateDrmLeaseState();
     wl_display_terminate(m_display);
   }

@@ -54,7 +54,7 @@ namespace umbriel {
     All = Tiled | Floating | Pinned,
   };
 
-  // Which maximize state a tiled window's own maximize request enters (client_maximize).
+  // Which maximize state a tiled or stacking window's own maximize request enters (client_maximize).
   enum class ClientMaximize : uint8_t {
     Column,
     Edges,
@@ -1339,6 +1339,7 @@ namespace umbriel {
     } input;
 
     std::vector<Keybind> keybinds;
+    std::map<std::string, std::map<std::string, std::string>> globalShortcuts;
     std::vector<OutputRule> outputs;
     std::vector<WindowRule> windowRules;
     std::vector<LayerRule> layerRules;
@@ -1369,6 +1370,9 @@ namespace umbriel {
   }
 
   const Config& config();
+  // Write each load's diagnostics to the log. The compositor switches this on before loading; the CLI leaves it off
+  // and prints from `configDiagnostics()`, and a refused override logs nothing because its load is rolled back.
+  void setConfigDiagnosticLogging(bool enabled);
   void loadConfig(const char* explicitPath);
   ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
   ConfigReloadResult reloadConfig();

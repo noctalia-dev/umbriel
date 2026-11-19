@@ -18,6 +18,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
@@ -408,6 +409,10 @@ namespace umbriel {
     // `usable` less the margin a maximized tile keeps (struts, then gap and border), so the border stays on screen.
     // A client capped below that box by its maximum size keeps the capped size, centered in it.
     wlr_box floatingMaximizedBox(const wlr_box& usable, const ResolvedLayoutConfig* layout = nullptr) const;
+    // Opening configures use resolved rules before the view's live maximize and title-bar state is installed.
+    wlr_box floatingMaximizedBox(
+        const wlr_box& usable, bool maximizedToEdges, int barHeight, const ResolvedLayoutConfig* layout
+    ) const;
     // The usable area inside the layout struts and the gap plus border margin; `usable` when that leaves nothing.
     wlr_box floatingMarginArea(const wlr_box& usable, const ResolvedLayoutConfig* layout = nullptr) const;
     // Put a maximized float back in the box its settings give it now, after a layout, border, strut, or usable area
@@ -468,13 +473,9 @@ namespace umbriel {
     // output's usable area and restores to the box it had before; tiled windows
     // toggle their column's full-width state.
     void toggleMaximized();
-    // Apply the maximize state a client request would carry (what a titlebar
-    // double-click produces): a tiled window honors the workspace's
-    // client_maximize, and a floating window keeps the default behavior
-    // whatever it says. handleRequestMaximize ends here too, so the gesture and
-    // a client request pick the same target. The direction is explicit because
-    // the gesture computes the opposite of the current state at its second
-    // press.
+    // Shared target policy for client maximize, title bars, and pointer gestures.
+    // Tiled and stacking windows honor client_maximize; other floats use normal
+    // maximize. The caller supplies the direction for toggles.
     void setMaximizedLikeClientRequest(bool maximized);
     // Restore a floating maximized window to its saved box before a pointer
     // move takes ownership of its position.
@@ -499,6 +500,9 @@ namespace umbriel {
     // Enable/disable the view's frame, and its shadow when a tile has lent it to the workspace.
     void setNodeEnabled(bool enabled);
     void raiseToTop();
+    // Ends with the result of raiseToTop() on each view in turn, the last on top, without passing a frame above one it
+    // ends below.
+    static void raiseInOrder(std::span<View* const> views);
     // The only way to move the frame to another tree: a tile's shadow joins the workspace's tile shadow layer, and
     // any other window's shadow stays in the frame.
     void setSceneParent(wlr_scene_tree* parent);
@@ -839,7 +843,8 @@ namespace umbriel {
     void releaseDialog();
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
     void syncTransientSceneParent();
-    void raiseTransientTree();
+    // Appends the frames a raise of this transient tree lifts, in the order it lifts them.
+    void collectTransientTree(std::vector<wlr_scene_node*>& frames);
     void updateForeignIdentity();
     void updateForeignState();
     void enterForeignOutput();
@@ -857,6 +862,7 @@ namespace umbriel {
     // `resolved` lets a caller that already resolved the rules pass them in, avoiding a second regex pass.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
     void updateBorderColor(bool focusChanged);
+    void applyBorderColors();
     void refreshStartupRuleEffects();
     // Applies or undoes the alone size effect after the workspace's tiled set changes.
     bool notifyAloneStateChanged();

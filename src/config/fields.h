@@ -43,7 +43,7 @@ namespace umbriel {
     const std::vector<configmerge::EffectDeclaration>& poolDeclarations;
   };
 
-  // Record a diagnostic in the store and log it.
+  // Record a diagnostic in the store; ConfigStore decides whether it also reaches the log.
   void emitDiag(ConfigDiagnostic::Severity severity, const toml::source_region* src, std::string msg);
 
   template <typename... A> void warnAt(const toml::source_region& src, std::format_string<A...> fmt, A&&... args) {
@@ -153,6 +153,7 @@ namespace umbriel {
   registry::Field<Config> inputTable();
   registry::Field<Config> outputTable();
   registry::Field<Config> keybindsTable();
+  registry::Field<Config> globalShortcutsTable();
 
   // Checks that need every table read.
   void validateEffectReferences(Config& loaded, std::vector<EffectReference>& references);

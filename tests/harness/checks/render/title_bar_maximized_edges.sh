@@ -34,15 +34,28 @@ click_maximize() {
   "$UMBRIEL" settle > /dev/null
 }
 
-for kind in tile float; do
+for kind in tile float stacking; do
+  if [[ $kind == stacking ]]; then
+    cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
+[[workspace]]
+index = 1
+layout.mode = "stacking"
+CONFIG
+    "$UMBRIEL" msg config-reload > /dev/null
+  fi
   title=ssd-$kind-edges
   spawn "$title"
   original=$(title_bar_window "$title" | jq -r '"\(.w)x\(.h)+\(.x)+\(.y)"')
-  if [[ $kind == tile ]]; then
+  if [[ $kind == float ]]; then
     click_maximize "$title"
-  else
+    title_bar_wait_field "$title" maximized true
+    title_bar_wait_field "$title" maximized_to_edges false
+    click_maximize "$title"
+    title_bar_wait_box "$title" "$original"
     "$UMBRIEL" msg window-toggle-maximize-to-edges > /dev/null
     "$UMBRIEL" settle > /dev/null
+  else
+    click_maximize "$title"
   fi
   title_bar_wait_field "$title" maximized_to_edges true
   title_bar_wait_field "$title" title_bar true

@@ -5946,4 +5946,113 @@ UMBRIEL_TEST(activeDocumentReportsDefaultsAndOverrides) {
   CHECK(store.applyOverrides({}, false, errors).success);
 }
 
+UMBRIEL_TEST(globalShortcutOverridesMergeByApplicationAndShortcutWithoutChangingChordText) {
+  const TempConfig file;
+  file.writeInclude(R"(
+[global_shortcuts."org.test.App"]
+talk = "Ctrl+M"
+keep = "F18"
+[global_shortcuts."org.test.Other"]
+talk = "Ctrl+K"
+)");
+  file.write("[include]\nfiles = [\"" + file.includeName() + "\"]\n" + R"(
+[global_shortcuts."org.test.App"]
+talk = "Mod+Shift+M"
+disabled = ""
+plain = "a"
+shifted = "Shift+A"
+"action.with.dots" = "XF86AudioMute"
+)");
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  const auto& entries = store.config().globalShortcuts;
+  CHECK_EQ(entries.size(), size_t{2});
+  CHECK_EQ(entries.at("org.test.App").at("talk"), "Mod+Shift+M");
+  CHECK_EQ(entries.at("org.test.App").at("keep"), "F18");
+  CHECK_EQ(entries.at("org.test.App").at("disabled"), "");
+  CHECK_EQ(entries.at("org.test.App").at("plain"), "a");
+  CHECK_EQ(entries.at("org.test.App").at("shifted"), "Shift+A");
+  CHECK_EQ(entries.at("org.test.App").at("action.with.dots"), "XF86AudioMute");
+  CHECK_EQ(entries.at("org.test.Other").at("talk"), "Ctrl+K");
+}
+
+UMBRIEL_TEST(invalidGlobalShortcutOverridesRejectReloadWithoutLosingTheActiveConfig) {
+  std::vector<std::string> invalid{
+      "global_shortcuts = 1\n",
+      "global_shortcuts = []\n",
+      "[[global_shortcuts]]\napp = {}\n",
+      "[global_shortcuts]\napp = \"F16\"\n",
+      "[global_shortcuts]\napp = []\n",
+      "[global_shortcuts.\"\"]\ntalk = \"F16\"\n",
+      "[global_shortcuts.app]\n\"\" = \"F16\"\n",
+      "[global_shortcuts.\"" + std::string(257, 'a') + "\"]\ntalk = \"F16\"\n",
+      "[global_shortcuts.app]\n\"" + std::string(257, 'a') + "\" = \"F16\"\n",
+  };
+  for (const std::string_view value : {"1", "true", "[]", "{}", "[\"F16\"]", "{ chord = \"F16\" }"}) {
+    invalid.push_back("[global_shortcuts.app]\ntalk = " + std::string(value) + "\n");
+  }
+  for (const std::string_view chord :
+       {"Mod", "Ctrl+MouseLeft", "Mod+WheelUp", "submap[test],Mod+h", "unknown_key", "Caps+F16", "Ctrl+\\u0000"}) {
+    invalid.push_back("[global_shortcuts.app]\ntalk = \"" + std::string(chord) + "\"\n");
+  }
+  invalid.push_back("[global_shortcuts.app]\ntalk = \"" + std::string(257, 'a') + "\"\n");
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[global_shortcuts.\"org.test.App\"]\ntalk = \"Ctrl+M\"\n");
+  CHECK(store.reload().success);
+  const auto active = store.config();
+  const auto generation = store.generation();
+  for (const auto& document : invalid) {
+    file.write(document + "[layout]\ngap = 99\n");
+    CHECK(!store.reload().success);
+    CHECK_EQ(store.generation(), generation);
+    CHECK(store.config() == active);
+    CHECK(std::ranges::any_of(store.diagnostics(), [&](const ConfigDiagnostic& diagnostic) {
+      return diagnostic.severity == ConfigDiagnostic::Severity::Error
+          && diagnostic.message.contains("global_shortcuts")
+          && diagnostic.file == file.path().string()
+          && diagnostic.line > 0;
+    }));
+  }
+}
+
+UMBRIEL_TEST(globalShortcutOnlyReloadTracksChangesAndRemoval) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[global_shortcuts.\"org.test.App\"]\ntalk = \"F16\"\n");
+  CHECK(store.reload().success);
+  file.write("[global_shortcuts.\"org.test.App\"]\ntalk = \"\"\n");
+  const auto disabled = store.reload();
+  CHECK(disabled.success);
+  CHECK(disabled.change.globalShortcuts);
+  CHECK(!disabled.change.keybinds);
+  CHECK(!disabled.effects.any());
+  CHECK_EQ(store.config().globalShortcuts.at("org.test.App").at("talk"), "");
+  file.write("");
+  const auto removed = store.reload();
+  CHECK(removed.success);
+  CHECK(removed.change.globalShortcuts);
+  CHECK(store.config().globalShortcuts.empty());
+}
+
+UMBRIEL_TEST(globalShortcutRuntimeOverridesUseTheDeclaredSchemaAndValidation) {
+  const TempConfig file;
+  file.write("[global_shortcuts.\"org.test.App\"]\n\"action.with.dots\" = \"F16\"\n");
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  const std::string key = R"(global_shortcuts."org.test.App"."action.with.dots")";
+  std::string errors;
+  CHECK(store.applyOverrides(overrideOf(key, "\"\""), true, errors).success);
+  CHECK_EQ(store.config().globalShortcuts.at("org.test.App").at("action.with.dots"), "");
+  CHECK(!store.applyOverrides(overrideOf(key, "\"Mod+MouseLeft\""), true, errors).success);
+  CHECK_EQ(store.config().globalShortcuts.at("org.test.App").at("action.with.dots"), "");
+  CHECK(store.applyOverrides({}, false, errors).success);
+  CHECK_EQ(store.config().globalShortcuts.at("org.test.App").at("action.with.dots"), "F16");
+}
+
 int main() { return RUN_TESTS(); }

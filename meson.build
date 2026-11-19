@@ -173,6 +173,25 @@ input_capture_protocol_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
+global_shortcuts_server_h = custom_target(
+  'umbriel-global-shortcuts-v1-server-protocol.h',
+  input: 'protocols/umbriel-global-shortcuts-v1.xml',
+  output: 'umbriel-global-shortcuts-v1-server-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
+global_shortcuts_client_h = custom_target(
+  'umbriel-global-shortcuts-v1-client-protocol.h',
+  input: 'protocols/umbriel-global-shortcuts-v1.xml',
+  output: 'umbriel-global-shortcuts-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+global_shortcuts_protocol_c = custom_target(
+  'umbriel-global-shortcuts-v1-protocol.c',
+  input: 'protocols/umbriel-global-shortcuts-v1.xml',
+  output: 'umbriel-global-shortcuts-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
 # umbrielfx's vendored layer-shell scene helper needs this server header, so it
 # is generated before the subdir that consumes it.
 layer_shell_protocol_h = custom_target(
@@ -716,6 +735,7 @@ pure_sources = files(
   'src/input/surface_layouts.cpp',
   'src/input/shortcuts_inhibit.cpp',
   'src/input/shortcut_keysym.cpp',
+  'src/input/global_shortcut_trigger.cpp',
   'src/input/xcursor_matcher.cpp',
   'src/layout/layout.cpp',
   'src/scene/ssd_frame_geometry.cpp',
@@ -775,6 +795,7 @@ core_sources = files(
   'src/scene/effect_registry.cpp',
   'src/core/fdlimit.cpp',
   'src/core/log.cpp',
+  'src/core/private_state_file.cpp',
   'src/config/config.cpp',
   'src/config/fields.cpp',
   'src/config/fields_animation.cpp',
@@ -828,6 +849,11 @@ core_sources = files(
   'src/input/eis.cpp',
   'src/input/input_capture.cpp',
   'src/input/input_capture_permissions.cpp',
+  'src/input/global_shortcuts.cpp',
+  'src/input/global_shortcuts_bridge.cpp',
+  'src/input/global_shortcuts_controller.cpp',
+  'src/input/global_shortcuts_input.cpp',
+  'src/input/global_shortcuts_store.cpp',
   'src/input/eis_socket.cpp',
   'src/xwayland/window.cpp',
   'src/xwayland/unmanaged.cpp',
@@ -856,6 +882,7 @@ core_sources = files(
   'src/scene/quit_confirm.cpp',
   'src/scene/cheatsheet.cpp',
   'src/scene/text_buffer.cpp',
+  'src/scene/shortcut_approval.cpp',
   'src/scene/cairo_buffer.cpp',
   'src/scene/title_bar_icon.cpp',
   'src/scene/tab_bar.cpp',
@@ -916,6 +943,8 @@ umbriel_core = static_library(
   core_sources + [
     input_capture_server_h,
     input_capture_protocol_c,
+    global_shortcuts_server_h,
+    global_shortcuts_protocol_c,
     toplevel_drag_server_h,
     toplevel_drag_c,
     xdg_shell_client_c,
