@@ -465,3 +465,14 @@ dim_behind = 0.5
 ```
 
 While the matched window is presented, content below it on its output darkens. The window, its popups, and surfaces above it keep their normal brightness. Dimming follows the opening fade and clears when the window unmaps or leaves the output. It is suppressed in the overview. It does not intercept pointer input. Several dimming surfaces stack their dimming. Like other dynamic visual rules, it refreshes on config reload and identity or state changes; a later matching `dim_behind = 0.0` disables it. To dim only while focused, add `match.is_focused = true` to the rule.
+
+## Wine-Wayland falling back to V-Sync
+
+In some cases (ex. Changing active window or workspace), games running under wine-wayland can lose their async status and fallback to vsync, even when tearing has been enabled in output block.
+This is easily solved by manually setting tearing to true on specific windows:
+
+```toml
+[[window_rule]]
+match.app_id = "^steam_app_.*$"
+tearing = true
+```
