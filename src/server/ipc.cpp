@@ -742,6 +742,12 @@ namespace umbriel {
 
   EventPacer Ipc::snapshotPacer(uint16_t event, nlohmann::json (*buildEvent)(Server&)) {
     return {wl_display_get_event_loop(m_server->display()), kSnapshotEventIntervalMs, [this, event, buildEvent] {
+              // A later subscriber still gets a fresh snapshot: subscribe clears lastBroadcast when it differs.
+              if (std::ranges::none_of(m_connections, [event](const auto& c) {
+                    return (c->subscribedEvents & event) != 0;
+                  })) {
+                return;
+              }
               broadcastEvent(event, buildEvent(*m_server));
             }};
   }
