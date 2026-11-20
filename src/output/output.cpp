@@ -2437,6 +2437,9 @@ namespace umbriel {
       if (SessionLock* lock = m_server->sessionLock()) {
         lock->handleOutputStateChanged(*this);
       }
+      if (m_server->sessionLocked()) {
+        m_server->updateLockBlank();
+      }
     }
     wlr_output_schedule_frame(m_output);
   }
