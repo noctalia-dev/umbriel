@@ -337,6 +337,9 @@ namespace umbriel {
           return false;
         }
         if (connection.input.size() > kMaxRequestSize) {
+          // Close after the error even when subscribed, or input would keep growing.
+          connection.input.clear();
+          connection.subscribedEvents = 0;
           prepareResponse(connection, R"({"err":"request too long"})");
           return true;
         }
