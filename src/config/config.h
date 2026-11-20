@@ -1110,6 +1110,8 @@ namespace umbriel {
       // Re-selecting the active workspace jumps back to the previous one.
       bool backAndForth = false;
       bool emptyAbove = false;
+      // Skip unoccupied workspaces when switching to the next or previous workspace.
+      bool skipEmpty = false;
       bool operator==(const Workspaces&) const = default;
     } workspaces;
 
