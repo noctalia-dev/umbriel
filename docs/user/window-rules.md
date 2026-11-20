@@ -456,6 +456,18 @@ X11 transients with a known owner inherit its protection. When an X11 popup has 
 
 Raw `zwlr_export_dmabuf_manager_v1` export is not advertised because it would bypass the filtered composition. Use screencopy or image-copy capture clients instead, including image-copy clients with DMA-BUF destinations.
 
+### Tearing
+
+A game can present with vsync on an output with [`tearing = true`](outputs.md#tearing) when Umbriel does not see its tearing hint, for example under Wine's Wayland driver after switching windows or workspaces. `umbriel tearing` then lists the window with `hint vsync`. A `tearing = true` rule requests asynchronous presentation regardless of the hint:
+
+```toml
+[[window_rule]]
+match.app_id = "^steam_app_.*$"
+tearing = true
+```
+
+Use the application ID from `umbriel windows --json`. The rule still needs the output opt-in and applies only while the window is the output's eligible fullscreen window.
+
 ## Dim behind
 
 ```toml
@@ -465,14 +477,3 @@ dim_behind = 0.5
 ```
 
 While the matched window is presented, content below it on its output darkens. The window, its popups, and surfaces above it keep their normal brightness. Dimming follows the opening fade and clears when the window unmaps or leaves the output. It is suppressed in the overview. It does not intercept pointer input. Several dimming surfaces stack their dimming. Like other dynamic visual rules, it refreshes on config reload and identity or state changes; a later matching `dim_behind = 0.0` disables it. To dim only while focused, add `match.is_focused = true` to the rule.
-
-## Wine-Wayland falling back to V-Sync
-
-In some cases (ex. Changing active window or workspace), games running under wine-wayland can lose their async status and fallback to vsync, even when tearing has been enabled in output block.
-This is easily solved by manually setting tearing to true on specific windows:
-
-```toml
-[[window_rule]]
-match.app_id = "^steam_app_.*$"
-tearing = true
-```
