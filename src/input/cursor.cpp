@@ -2384,22 +2384,12 @@ namespace umbriel {
 
   void Cursor::handleTouchCancel(void* data) {
     auto* event = static_cast<wlr_touch_cancel_event*>(data);
-    (void)event;
     m_server->notifyIdleActivity();
 
     wlr_seat* seat = m_server->seat()->wlr();
-    // Find the first client with an active touch point, then cancel outside
-    // the iteration: wlr_seat_touch_notify_cancel may mutate the list.
-    wlr_seat_client* client = nullptr;
-    wlr_touch_point* point;
-    wl_list_for_each(point, &seat->touch_state.touch_points, link) {
-      if (point->client != nullptr) {
-        client = point->client;
-        break;
-      }
-    }
-    if (client != nullptr) {
-      wlr_seat_touch_notify_cancel(seat, client);
+    wlr_touch_point* point = wlr_seat_touch_get_point(seat, event->touch_id);
+    if (point != nullptr && point->client != nullptr) {
+      wlr_seat_touch_notify_cancel(seat, point->client);
     }
   }
 

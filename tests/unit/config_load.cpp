@@ -342,6 +342,25 @@ UMBRIEL_TEST(rejectsRemovedWidthPresetKey) {
   CHECK(containsDiagnostic(store, "unknown key layout.width_presets"));
 }
 
+UMBRIEL_TEST(misspelledRuleMatchKeyDropsRule) {
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match = { app_id = "foot", titel = "x" }
+default_floating = true
+
+[[layer_rule]]
+match = { namespace = "bar", layerr = "top" }
+blur = true
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(store.config().layerRules.empty());
+}
+
 UMBRIEL_TEST(backgroundDefaultsOpaque) {
   const umbriel::Config config;
   CHECK_EQ(config.colors.background[3], 1.0F);

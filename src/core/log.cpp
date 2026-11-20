@@ -237,7 +237,7 @@ namespace {
       return;
     }
 
-    gLogFile = std::fopen(gLogPath.c_str(), "a");
+    gLogFile = std::fopen(gLogPath.c_str(), "ae");
     gLogSizeBytes = gLogFile == nullptr ? 0 : currentLogFileSizeUnlocked();
     gBufferedFileLogLines = 0;
     gLastFileFlushAt = std::chrono::steady_clock::now();
