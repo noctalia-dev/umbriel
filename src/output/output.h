@@ -335,6 +335,7 @@ namespace umbriel {
     uint64_t m_refreshNs = 0;
     bool m_appliedConfiguredScale = false;
     wl_event_source* m_frameRetryTimer = nullptr;
+    unsigned m_failedFrameCommits = 0; // frame commits failed in a row; paces armFrameRetry()
     wl_event_source* m_effectFrameTimer = nullptr;
     wl_event_source* m_directScanoutTimer = nullptr;
     DirectScanoutTracker m_directScanout;

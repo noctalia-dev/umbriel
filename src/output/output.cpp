@@ -60,7 +60,6 @@ namespace umbriel {
 
   namespace {
     constexpr Logger kLog("output");
-    constexpr int kFrameRetryDelayMs = 16;
 
     std::string_view directScanoutReason(wlr_scene_direct_scanout_status status) {
       switch (status) {
@@ -1916,7 +1915,8 @@ namespace umbriel {
 
   void Output::armFrameRetry() {
     if (m_frameRetryTimer != nullptr && outputFrameAllowed(m_server->stopping(), m_server->session())) {
-      wl_event_source_timer_update(m_frameRetryTimer, kFrameRetryDelayMs);
+      wl_event_source_timer_update(m_frameRetryTimer, frameRetryDelayMs(m_failedFrameCommits));
+      ++m_failedFrameCommits;
     }
   }
 
@@ -2375,6 +2375,10 @@ namespace umbriel {
       // to signals.
       wl_event_source_remove(m_output->idle_frame);
       m_output->idle_frame = nullptr;
+    }
+
+    if (!commitFailed) {
+      m_failedFrameCommits = 0;
     }
 
     // A failed commit has no vblank to pace an immediate retry. Defer it so event-loop signal and session sources get
