@@ -80,6 +80,8 @@ _enable-tests m=mode harness="no":
     if ((${#args[@]} > 0)); then
         meson configure "build-{{m}}" "${args[@]}"
     fi
+    # meson configure only records options; regenerate now, since meson compile resolves target names before ninja would.
+    ninja -C "build-{{m}}" build.ninja > /dev/null
 
 build m=mode: (_ensure-configured m)
     meson compile -C build-{{m}} umbriel
