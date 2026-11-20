@@ -637,11 +637,11 @@ namespace umbriel {
       return false;
     }
     const ErasedRow erased = eraseRow(source, static_cast<size_t>(row));
-    // Joining a tab group adds no unit, so only a row of its own claims the column's free space.
+    // Joining a tab group adds no unit, so only a row of its own claims the column's free space. Its old weight was a
+    // share of another column, so it joins as a new window does.
     const JoinPoint join = joinPoint(destination);
-    const double insertedWeight = join.group
-        ? erased.heightWeight
-        : claimInsertWeight(destination, static_cast<int>(join.row), erased.heightWeight);
+    const double insertedWeight =
+        join.group ? erased.heightWeight : claimInsertWeight(destination, static_cast<int>(join.row), 1.0);
     insertRow(destination, join.row, view, insertedWeight, rememberedExtent, join.group);
     if (source.views.empty()) {
       m_columns.erase(m_columns.begin() + sourceColumn);
@@ -683,7 +683,7 @@ namespace umbriel {
       return true;
     }
     const auto landing = static_cast<size_t>(focusRow + 1);
-    const double insertedWeight = claimInsertWeight(destination, static_cast<int>(landing), erased.heightWeight);
+    const double insertedWeight = claimInsertWeight(destination, static_cast<int>(landing), 1.0);
     insertRow(destination, landing, pulled, insertedWeight, rememberedExtent);
     return true;
   }

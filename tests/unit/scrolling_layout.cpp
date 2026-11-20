@@ -116,6 +116,27 @@ UMBRIEL_TEST(consumeLeftStacksIntoThePreviousColumn) {
   CHECK_EQ(fixture.layout.columns()[0].heightWeights.size(), size_t{2});
 }
 
+UMBRIEL_TEST(aWindowMovedIntoAColumnTakesAnEvenShare) {
+  Fixture fixture;
+  fixture.addColumns(4);
+  CHECK(fixture.layout.consume(stub(1), -1));
+  CHECK(fixture.layout.consume(stub(2), -1));
+  CHECK(fixture.layout.setHeightFraction(stub(0), 0.6));
+  CHECK(fixture.layout.setHeightFraction(stub(1), 0.15));
+  fixture.layout.arrange(kUsable);
+
+  CHECK(fixture.layout.consumeFrom(stub(3), -1));
+  View* consumed = fixture.layout.columns()[0].views.front();
+  CHECK(fixture.layout.consume(consumed, 1));
+  fixture.layout.arrange(kUsable);
+
+  const Column& column = fixture.layout.columns()[1];
+  CHECK_EQ(column.views.size(), size_t{3});
+  for (View* view : column.views) {
+    CHECK_NEAR(fixture.layout.targetBox(view).height, fixture.layout.targetBox(stub(3)).height, 1);
+  }
+}
+
 UMBRIEL_TEST(consumeLeftFailsOnTheFirstColumn) {
   Fixture fixture;
   fixture.addColumns(2);
