@@ -2601,6 +2601,10 @@ namespace umbriel {
       if (match == nullptr && m_tabletDevices.size() == 1) {
         match = m_tabletDevices.front().get();
       }
+      if (pad->tablet != match && pad->enteredSurface != nullptr) {
+        wlr_tablet_v2_tablet_pad_notify_leave(pad->v2, pad->enteredSurface);
+        pad->enteredSurface = nullptr;
+      }
       pad->tablet = match;
     }
   }
