@@ -364,7 +364,13 @@ namespace umbriel {
   }
 
   void Ipc::prepareResponse(Connection& connection, std::string response) {
-    connection.output = std::move(response);
+    // A command may have broadcast an event into output already; keep it ahead of the reply.
+    if (connection.responding) {
+      connection.output += response;
+    } else {
+      connection.output = std::move(response);
+      connection.writeOffset = 0;
+    }
     connection.output += '\n';
     connection.responding = true;
   }
