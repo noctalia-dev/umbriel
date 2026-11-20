@@ -119,4 +119,12 @@ sed -i 's/^cyclic_workspaces = false$/cyclic_workspaces = true/' "$UMBRIEL_CONFI
 "$UMBRIEL" msg workspace-next > /dev/null
 expect_workspace 2 "wrap past empty workspace 1 to occupied workspace 2"
 
+# With only the active workspace occupied, a cyclic search must return without
+# selecting an empty workspace or looping forever.
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 2 > /dev/null
+expect_window_at cyclic-b "HEADLESS-1:2" "move the last window onto workspace 2"
+"$UMBRIEL" msg workspace-next > /dev/null
+expect_workspace 2 "cyclic search with only the active workspace occupied"
+
 echo "workspace steps wrapped at both ends with the key, for the switch and the column, window, and edge moves, and stopped without it"
