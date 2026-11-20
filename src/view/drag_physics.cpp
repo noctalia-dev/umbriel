@@ -271,15 +271,13 @@ namespace umbriel {
 
   DragPhysics::Sheet DragPhysics::normalizedPolynomial() const {
     Sheet sheet = normalizedDisplacement();
-    // Convert each dimension once per uniform update rather than evaluating
-    // Bernstein weights for every fragment and every inverse-lookup iteration.
+    // Bernstein to power coefficients along x for each row, then along y for each column.
     const auto convert = [](Sheet& values, int start, int stride) {
       for (int axis = 0; axis < 2; ++axis) {
         const float a = values[start][axis];
         const float b = values[start + stride][axis];
         const float c = values[start + 2 * stride][axis];
         const float d = values[start + 3 * stride][axis];
-        values[start][axis] = a;
         values[start + stride][axis] = 3.0F * (b - a);
         values[start + 2 * stride][axis] = 3.0F * (c - 2.0F * b + a);
         values[start + 3 * stride][axis] = d - 3.0F * c + 3.0F * b - a;
