@@ -2113,12 +2113,17 @@ namespace umbriel {
     const auto dimsBehind = [](const auto& rule) { return rule.dimBehind.value_or(0.0) > 0.0; };
     if (std::ranges::any_of(config().windowRules, dimsBehind)) {
       for (const auto& view : m_server->views()) {
-        view->updateDimBehind();
+        // Each output's frame refreshes only its own views; outputless views have no owner, so every frame takes them.
+        if (Output* owner = view->currentOutput(); owner == nullptr || owner == this) {
+          view->updateDimBehind();
+        }
       }
     }
     if (std::ranges::any_of(config().layerRules, dimsBehind)) {
       for (const auto& layer : m_server->layerSurfaces()) {
-        layer->updateDimBehind();
+        if (Output* owner = layer->output(); owner == nullptr || owner == this) {
+          layer->updateDimBehind();
+        }
       }
     }
 
