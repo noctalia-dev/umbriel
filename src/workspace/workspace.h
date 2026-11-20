@@ -487,7 +487,9 @@ namespace umbriel {
     // Where the slide sits between its steps right now. A gesture that starts mid-settle picks the slide up here
     // instead of snapping it to an end first.
     double slideProgress() const { return m_slide.base != nullptr ? m_slide.progress : 0.0; }
-    bool slideBegin(bool includePrev, bool includeNext);
+    bool slideBegin(bool includePrev, bool includeNext, bool skipEmpty = false);
+    Workspace* slidePrevious() const { return m_slide.previous; }
+    Workspace* slideNext() const { return m_slide.next; }
     void slideApply(double progress);
     // Settle onto `delta` steps from the base. `velocity` is what the gesture still had when it was released, in steps
     // per second, and starts the settle from that speed instead of from rest; callers that are not a gesture pass 0.

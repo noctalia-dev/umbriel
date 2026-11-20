@@ -145,9 +145,9 @@ skip_empty = false
 | ---------------- | ------- | -------------------------------------------------------------------------- |
 | `back_and_forth` | `false` | Selecting the active workspace returns to the previous one on that output. |
 | `empty_above`    | `false` | Keep a leading empty workspace on dynamic outputs.                         |
-| `skip_empty`     | `false` | Skip unoccupied workspaces for `workspace-next` and `workspace-previous`.  |
+| `skip_empty`     | `false` | Skip unoccupied workspaces for workspace swipes and next/previous actions. |
 
-Direct workspace selection and moving windows still allow empty destinations. If no occupied workspace exists in the chosen direction, focus stays where it is. With `cyclic_workspaces`, the search wraps around the output. On dynamic outputs, the trailing empty workspace is skipped too. Touchpad gestures and overview navigation continue to visit empty workspaces.
+Direct workspace selection and moving windows still allow empty destinations. If no occupied workspace exists in the chosen direction, focus stays where it is. With `cyclic_workspaces`, the action search wraps around the output. On dynamic outputs, the trailing empty workspace is skipped too. Touchpad workspace swipes also skip empty workspaces; overview navigation continues to visit them.
 
 ## Workspace rules
 
