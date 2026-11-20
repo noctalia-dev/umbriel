@@ -583,15 +583,7 @@ namespace umbriel {
     swapLeafViews(a, b);
   }
 
-  void DwindleLayout::arrange(const wlr_box& usable) {
-    const int edgePad = m_config->edgePad;
-    arrangeArea({
-        .x = usable.x + edgePad,
-        .y = usable.y + edgePad,
-        .width = std::max(1, usable.width - 2 * edgePad),
-        .height = std::max(1, usable.height - 2 * edgePad),
-    });
-  }
+  void DwindleLayout::arrange(const wlr_box& usable) { arrangeArea(contentArea(usable)); }
 
   void DwindleLayout::arrangeArea(const wlr_box& area) {
     m_targets.clear();
