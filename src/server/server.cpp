@@ -1635,7 +1635,7 @@ namespace umbriel {
       while (end > 0 && (static_cast<unsigned char>(view[end]) & 0xC0U) == 0x80U) {
         --end;
       }
-      return std::string(view.substr(0, end));
+      return std::string(view.substr(0, end)) + "…";
     };
     const char* label = description == nullptr ? command : description;
     const std::string boundedLabel = bounded(label);
