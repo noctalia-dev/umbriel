@@ -278,6 +278,8 @@ namespace umbriel {
       // Card shadows the real scene draws below every tile, above the workspace backgrounds and below every card.
       wlr_scene_tree* tileShadows = nullptr;
       std::vector<WorkspaceBackground> workspaceBackgrounds;
+      // Workspace identities represented by the visible rows.
+      std::vector<Workspace*> workspaceRows;
       std::vector<std::unique_ptr<Card>> cards;
       std::vector<std::unique_ptr<DesktopSurface>> desktop;
       // Filmstrip position in workspace rows: 1.5 sits halfway between rows 1 and 2. Wheel steps, keyboard moves and
@@ -335,6 +337,7 @@ namespace umbriel {
     static bool previewMetrics(const OutputState& state, const Server& server, double zoom, PreviewMetrics& out);
     // The workspace preview's box in layout coordinates.
     static wlr_box previewBox(const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex);
+    static size_t rowForWorkspace(const OutputState& state, size_t workspaceIndex);
 
     bool beginPresentation();
     void buildState();

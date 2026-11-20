@@ -70,6 +70,7 @@ enabled = false
 
 [overview]
 zoom = 0.5
+hide_empty_workspaces = true
 
 # Opposite workspace axes: the source scrolls its columns horizontally, the destination stacks them vertically. The
 # second destination workspace makes the sideways step between its previews observable.

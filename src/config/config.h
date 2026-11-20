@@ -1038,6 +1038,8 @@ namespace umbriel {
       // colors.overview.workspace_background fill. The real bottom layer is hidden while the overview is open, so a
       // surface there appears once per workspace rather than twice at two scales.
       bool workspaceWallpaper = true;
+      // Keep empty inactive workspaces out of the overview filmstrip.
+      bool hideEmptyWorkspaces = false;
       // Keyboard shortcut badges on overview cards. Pressing a badge key focuses
       // that window and closes the overview.
       bool shortcuts = true;

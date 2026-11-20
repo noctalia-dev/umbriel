@@ -461,6 +461,8 @@ blur_optimized = false
 # the overview after a short delay.
 # Overview: https://docs.noctalia.dev/umbriel/workspaces-overview/
 # Animation: https://docs.noctalia.dev/umbriel/animation/
+# [overview]
+# hide_empty_workspaces = true
 [hot_corners.top_left]
 enabled = true
 delay_ms = 500

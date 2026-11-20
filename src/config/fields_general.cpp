@@ -243,6 +243,7 @@ namespace umbriel {
           real("scroll_factor_vertical", 0.1, 10.0, &O::scrollFactorVertical),
           boolean("background_blur", &O::backgroundBlur),
           boolean("workspace_wallpaper", &O::workspaceWallpaper),
+          boolean("hide_empty_workspaces", &O::hideEmptyWorkspaces),
           boolean("shortcuts", &O::shortcuts),
           registry::custom<O>(
               "shortcut_keys", registry::KeyDescription("string"),
