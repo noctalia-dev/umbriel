@@ -237,7 +237,24 @@ namespace umbriel {
       using registry::boolean;
       using registry::real;
       using O = Config::Overview;
+      using S = O::Spread;
+      static const registry::Fields<S> spread{
+          registry::integer("duration_ms", 0, 2000, &S::durationMs),
+          boolean("all_workspaces", &S::allWorkspaces),
+          boolean("all_outputs", &S::allOutputs),
+          real("spacing", 0.0, 128.0, &S::spacing),
+          real("max_scale", 0.1, 1.0, &S::maxScale),
+          real("dim", 0.0, 1.0, &S::dim),
+          real("wallpaper_dim", 0.0, 1.0, &S::wallpaperDim),
+          boolean("show_titles", &S::showTitles),
+          boolean("show_workspace_numbers", &S::showWorkspaceNumbers),
+          boolean("show_close_buttons", &S::showCloseButtons),
+          boolean("background_blur", &S::backgroundBlur),
+          real("blur_strength", 0.0, 1.0, &S::blurStrength),
+          boolean("inset_wallpaper", &S::insetWallpaper),
+      };
       static const registry::Fields<O> fields{
+          registry::table("spread", &O::spread, spread),
           real("zoom", 0.1, 0.75, &O::zoom),
           real("scroll_factor_horizontal", 0.1, 10.0, &O::scrollFactorHorizontal),
           real("scroll_factor_vertical", 0.1, 10.0, &O::scrollFactorVertical),

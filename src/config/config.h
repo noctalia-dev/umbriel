@@ -1043,6 +1043,22 @@ namespace umbriel {
       bool shortcuts = true;
       // Favorite badge keys in preference order, one ASCII character each.
       std::string shortcutKeys = "1234567890";
+      struct Spread {
+        int durationMs = 250;
+        bool allWorkspaces = true;
+        bool allOutputs = true;
+        double spacing = 32.0;
+        double maxScale = 1.0;
+        double dim = 0.4;
+        double wallpaperDim = 0.0;
+        bool showTitles = true;
+        bool showWorkspaceNumbers = true;
+        bool showCloseButtons = true;
+        bool backgroundBlur = true;
+        double blurStrength = 1.0;
+        bool insetWallpaper = false;
+        bool operator==(const Spread&) const = default;
+      } spread;
       bool operator==(const Overview&) const = default;
     } overview;
 

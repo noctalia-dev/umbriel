@@ -10,6 +10,7 @@
 #include "layer/layer_surface.h"
 #include "output/identity.h"
 #include "output/output.h"
+#include "overview/overview.h"
 #include "scene/effect_registry.h"
 #include "scene/effect_selection.h"
 #include "server/action_request.h"
@@ -33,6 +34,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <xkbcommon/xkbcommon.h>
 
 extern "C" {
 #include <umbrielfx/render/effect.h>
@@ -1026,6 +1028,36 @@ namespace umbriel {
     return nlohmann::json{{"ok", std::move(active)}};
   }
 
+  nlohmann::json IpcCommands::overviewKey(Server& server, IpcArgs args) {
+    if (args.empty() || (args.size() == 1 && args.front() == "--probe")) {
+      return {{"ok", {{"supported", true}}}};
+    }
+    if (args.size() != 1) {
+      return {{"err", "usage: overview-key [--probe|keysym]"}};
+    }
+    const auto key = xkb_keysym_from_name(args.front().c_str(), XKB_KEYSYM_NO_FLAGS);
+    switch (key) {
+    case XKB_KEY_Left:
+    case XKB_KEY_Right:
+    case XKB_KEY_Up:
+    case XKB_KEY_Down:
+    case XKB_KEY_Tab:
+    case XKB_KEY_ISO_Left_Tab:
+    case XKB_KEY_Return:
+    case XKB_KEY_KP_Enter:
+    case XKB_KEY_Escape:
+    case XKB_KEY_Delete:
+      break;
+    default:
+      return {{"err", "expected an overview navigation keysym"}};
+    }
+    Overview* overview = server.overview();
+    if (overview == nullptr || !overview->interactive() || !overview->spread()) {
+      return {{"err", "window overview is not open"}};
+    }
+    return {{"ok", {{"handled", overview->handleFallbackKey(key)}}}};
+  }
+
   nlohmann::json IpcCommands::layers(Server& server, IpcArgs /*args*/) {
     nlohmann::json layers = nlohmann::json::array();
     for (const auto& l : server.layerSurfaces()) {
@@ -1697,6 +1729,8 @@ namespace umbriel {
        &printWorkspaces},
       {"submap", "", "show the active keybind submap", IpcCommandGroup::Inspect, false, &IpcCommands::submap,
        &printSubmap},
+      {"overview-key", "[--probe|keysym]", "forward a navigation key from an overview search field",
+       IpcCommandGroup::Control, true, &IpcCommands::overviewKey, nullptr},
       {"layers", "", "list layer-shell surfaces", IpcCommandGroup::Inspect, false, &IpcCommands::layers, &printLayers},
       {"outputs", "", "list outputs and modes", IpcCommandGroup::Inspect, false, &IpcCommands::outputs, &printOutputs},
       {"color", "", "show color-management state", IpcCommandGroup::Inspect, false, &IpcCommands::color, &printColor},

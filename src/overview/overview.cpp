@@ -203,6 +203,23 @@ namespace umbriel {
   }
 
   double Overview::zoomPixelsPerUnit() const {
+    if (m_spread) {
+      double extent = 1;
+      for (const auto& state : m_outputs) {
+        for (const auto& card : state->cards) {
+          const SpreadBox origin = spreadCardOrigin(*card);
+          const SpreadBox target =
+              card->spreadIncluded ? spreadFit(origin, card->spreadCell, config().overview.spread.maxScale) : origin;
+          extent = std::max(
+              extent,
+              std::hypot(target.x - origin.x, target.y - origin.y)
+                  + std::abs(target.width - origin.width)
+                  + std::abs(target.height - origin.height)
+          );
+        }
+      }
+      return std::ceil(extent * std::abs(m_targetProgress - m_progressFrom));
+    }
     // A point `d` along an output extent `E` sits at `base + d * z`, with `base` centering the preview, so it moves
     // at most E / 2 per unit of zoom. Neighbouring rows add a whole step, E * (1 + gap), but they only show near the
     // open end; a close ends with them off the output.
@@ -278,14 +295,13 @@ namespace umbriel {
     wlr_scene_node_set_enabled(&card.tree->node, true);
     // A tiled opener waiting for the arrange that places it is not showing yet, and a hidden tab shares its box with
     // the tab on show. Their cards follow.
-    if (view->presentationSuppressed()) {
+    if (view->presentationSuppressed() && !m_spread) {
       card.blur.hide();
       wlr_scene_node_set_enabled(&card.tree->node, false);
       syncCardEffects(card);
       return;
     }
 
-    const double z = metrics.zoom;
     const wlr_box& world = view->presentedBox();
     if (world.width <= 0 || world.height <= 0) {
       card.blur.hide();
@@ -293,9 +309,24 @@ namespace umbriel {
       syncCardEffects(card);
       return;
     }
+    double z = metrics.zoom;
+    SpreadBox spreadPose;
+    if (m_spread) {
+      const SpreadBox origin = spreadCardOrigin(card);
+      const SpreadBox cell = spreadInterpolate(card.spreadCellFrom, card.spreadCell, m_spreadReflow.current());
+      spreadPose = card.spreadIncluded
+          ? spreadInterpolate(origin, spreadFit(origin, cell, config().overview.spread.maxScale), m_progress)
+          : origin;
+      z = spreadPose.width / world.width;
+      card.spreadScale = z;
+    }
     const int contentW = std::max(1, static_cast<int>(std::lround(world.width * z)));
     const int contentH = std::max(1, static_cast<int>(std::lround(world.height * z)));
-    if (&card == m_dragCard) {
+    if (m_spread) {
+      card.box = {
+          static_cast<int>(std::lround(spreadPose.x)), static_cast<int>(std::lround(spreadPose.y)), contentW, contentH
+      };
+    } else if (&card == m_dragCard) {
       // The drag owns the card origin; only the scale still tracks progress.
       card.box.width = contentW;
       card.box.height = contentH;
@@ -311,9 +342,18 @@ namespace umbriel {
     wlr_scene_node_set_position(&card.tree->node, card.box.x, card.box.y);
     // Cards overhang their preview by design; the output's overview tree clip is
     // what keeps them off the neighbouring monitor.
-    wlr_scene_tree_set_clip(card.tree, nullptr);
-    layoutCardShadow(card, z, desktopChromeAlpha());
-    const float cardOpacity = &card == m_dragCard ? config().appearance.dragOpacity : 1.0F;
+    const wlr_box sourceClip{
+        metrics.outputBox.x - card.box.x, metrics.outputBox.y - card.box.y, metrics.outputBox.width,
+        metrics.outputBox.height
+    };
+    wlr_scene_tree_set_clip(card.tree, m_spread && !card.spreadIncluded ? &sourceClip : nullptr);
+    const bool hiddenOrigin = view->presentationSuppressed()
+        || (!view->pinned() && view->workspace() != nullptr && !view->workspace()->active());
+    const float cardOpacity = m_spread && !card.spreadIncluded
+        ? (hiddenOrigin ? 0.0F : static_cast<float>(std::clamp(1.0 - m_progress, 0.0, 1.0)))
+        : (m_spread && hiddenOrigin ? static_cast<float>(std::clamp(m_progress * 4.0, 0.0, 1.0))
+                                    : (&card == m_dragCard ? config().appearance.dragOpacity : 1.0F));
+    layoutCardShadow(card, z, m_spread ? cardOpacity : desktopChromeAlpha());
     const float presentedOpacity = view->presentedOpacity() * cardOpacity;
 
     const int borderWidth = view->decorationBorderWidth();
@@ -371,8 +411,9 @@ namespace umbriel {
           );
         };
         wlr_scene_node_set_position(
-            &card.badge->node, inset(card.box.x, contentW, card.badgeWidth, metrics.usableBox.x),
-            inset(card.box.y, contentH, card.badgeHeight, metrics.usableBox.y)
+            &card.badge->node,
+            m_spread ? kBadgeMargin : inset(card.box.x, contentW, card.badgeWidth, metrics.usableBox.x),
+            m_spread ? kBadgeMargin : inset(card.box.y, contentH, card.badgeHeight, metrics.usableBox.y)
         );
         wlr_scene_buffer_set_opacity(card.badgeText, badgeAlpha);
         const std::array<float, 4> background = tint(card.badgeBackground, badgeAlpha);
@@ -469,6 +510,9 @@ namespace umbriel {
     if (!blurUpdated) {
       card.blur.hide();
     }
+    if (m_spread) {
+      layoutSpreadControls(card);
+    }
   }
 
   void Overview::layoutCardChrome(Card& card, const wlr_box& world, int borderInset, double zoom, float alpha) const {
@@ -510,7 +554,7 @@ namespace umbriel {
     if (alpha <= 0.0F || source == nullptr || !source->node.enabled || &card == m_dragCard) {
       return;
     }
-    wlr_scene_tree* parent = card.view->shadowPooled() ? card.owner->tileShadows : card.tree;
+    wlr_scene_tree* parent = !m_spread && card.view->shadowPooled() ? card.owner->tileShadows : card.tree;
     if (parent == nullptr) {
       return;
     }
@@ -602,32 +646,99 @@ namespace umbriel {
       if (blur->alpha != level) {
         wlr_scene_blur_set_alpha(blur, level);
       }
-      if (blur->strength != level) {
-        wlr_scene_blur_set_strength(blur, level);
+      const float strength = level * static_cast<float>(m_spread ? config().overview.spread.blurStrength : 1.0);
+      if (blur->strength != strength) {
+        wlr_scene_blur_set_strength(blur, strength);
       }
     }
 
     wlr_scene_node_set_position(&state.backgroundTint->node, metrics.outputBox.x, metrics.outputBox.y);
     wlr_scene_rect_set_size(state.backgroundTint, metrics.outputBox.width, metrics.outputBox.height);
-    const std::array<float, 4> backgroundTint = tint(config().colors.overview.backgroundTint, m_progress);
+    const std::array<float, 4> backgroundTint = tint(
+        m_spread ? std::array<float, 4>{0.0F, 0.0F, 0.0F, static_cast<float>(config().overview.spread.dim)}
+                 : config().colors.overview.backgroundTint,
+        m_progress
+    );
     // A fully transparent tint leaves the wallpaper untouched.
     wlr_scene_node_set_enabled(&state.backgroundTint->node, backgroundTint[3] > 0.001F);
     wlr_scene_rect_set_color(state.backgroundTint, backgroundTint.data());
 
     refreshDesktop(state);
-    const int backgroundRadius = static_cast<int>(std::lround(config().appearance.cornerRadius * metrics.zoom));
+    const int backgroundRadius = m_spread
+        ? static_cast<int>(std::lround(24.0 * std::clamp(m_progress, 0.0, 1.0)))
+        : static_cast<int>(std::lround(config().appearance.cornerRadius * metrics.zoom));
     const std::array<float, 4> backgroundColor = tint(config().colors.overview.workspaceBackground, m_progress);
-    const double z = metrics.zoom;
+    std::vector<SpreadBox> windowBounds;
+    if (m_spread) {
+      for (const Card* card : m_spreadOrder) {
+        if (spreadCardOutput(*card) != state.output) {
+          continue;
+        }
+        auto bounds = spreadFit(
+            spreadCardOrigin(*card),
+            spreadInterpolate(card->spreadCellFrom, card->spreadCell, m_spreadReflow.current()),
+            config().overview.spread.maxScale
+        );
+        if (config().overview.spread.showTitles || config().overview.spread.showWorkspaceNumbers) {
+          bounds.height += 32;
+        }
+        windowBounds.push_back(bounds);
+      }
+    }
+    const SpreadBox inset = spreadWallpaperBox(
+        {static_cast<double>(metrics.outputBox.x), static_cast<double>(metrics.outputBox.y),
+         static_cast<double>(metrics.outputBox.width), static_cast<double>(metrics.outputBox.height)},
+        {static_cast<double>(metrics.usableBox.x), static_cast<double>(metrics.usableBox.y),
+         static_cast<double>(metrics.usableBox.width), static_cast<double>(metrics.usableBox.height)},
+        windowBounds, m_progress
+    );
+    // Cover the frame without stretching the wallpaper when panel reservations
+    // change its aspect ratio. The content clip and corner box trim the excess.
+    const double z = m_spread ? std::max(inset.width / metrics.outputBox.width, inset.height / metrics.outputBox.height)
+                              : metrics.zoom;
     for (size_t index = 0; index < state.workspaceBackgrounds.size(); ++index) {
       const WorkspaceBackground& background = state.workspaceBackgrounds[index];
-      const wlr_box full = previewBox(metrics, state.rowScroll.current(), index);
+      if (m_spread && (!config().overview.spread.insetWallpaper || index != state.activeWorkspaceIndex)) {
+        wlr_scene_node_set_enabled(&background.tree->node, false);
+        continue;
+      }
+      wlr_scene_node_set_enabled(&background.tree->node, true);
+      wlr_box full = previewBox(metrics, state.rowScroll.current(), index);
+      if (m_spread) {
+        full = {
+            static_cast<int>(std::lround(inset.x)), static_cast<int>(std::lround(inset.y)),
+            static_cast<int>(std::lround(inset.width)), static_cast<int>(std::lround(inset.height))
+        };
+      }
+      if (background.shadow != nullptr) {
+        constexpr int sigma = 18;
+        wlr_scene_node_set_position(&background.shadow->node, full.x - sigma, full.y - sigma + 6);
+        wlr_scene_shadow_set_size(background.shadow, full.width + sigma * 2, full.height + sigma * 2);
+        wlr_scene_shadow_set_corner_radius(background.shadow, backgroundRadius);
+        const float shadowColor[4] = {0, 0, 0, 0.28F * static_cast<float>(std::clamp(m_progress, 0.0, 1.0))};
+        wlr_scene_shadow_set_color(background.shadow, shadowColor);
+        wlr_scene_shadow_set_clipped_region(
+            background.shadow,
+            clipped_region{
+                .area = {sigma, sigma - 6, full.width, full.height},
+                .corners = corner_radii_all(backgroundRadius),
+                .inside = false
+            }
+        );
+      }
       layoutWorkspaceBackground(background.fill, full, backgroundRadius, backgroundColor);
+      if (background.wallpaperShade != nullptr) {
+        const auto shade =
+            tint({0.0F, 0.0F, 0.0F, static_cast<float>(config().overview.spread.wallpaperDim)}, m_progress);
+        layoutWorkspaceBackground(background.wallpaperShade, full, backgroundRadius, shade);
+        wlr_scene_node_raise_to_top(&background.wallpaperShade->node);
+      }
       if (background.mirrors.empty()) {
         continue;
       }
       // The preview is the viewport onto the mirrored stack: a partially anchored surface must not reach into the
       // gap between previews.
-      wlr_scene_tree_set_clip(background.tree, &full);
+      wlr_scene_tree_set_clip(background.content, &full);
       for (const auto& mirror : background.mirrors) {
         wlr_box box{};
         const bool visible = desktopSourceBox(*mirror->source, box);
@@ -636,8 +747,15 @@ namespace umbriel {
           continue;
         }
         wlr_scene_node_set_position(
-            &mirror->buffer->node, full.x + static_cast<int>(std::lround(box.x * z)),
-            full.y + static_cast<int>(std::lround(box.y * z))
+            &mirror->buffer->node,
+            full.x
+                + static_cast<int>(
+                    std::lround(box.x * z + (m_spread ? (full.width - metrics.outputBox.width * z) / 2 : 0))
+                ),
+            full.y
+                + static_cast<int>(
+                    std::lround(box.y * z + (m_spread ? (full.height - metrics.outputBox.height * z) / 2 : 0))
+                )
         );
         const int destWidth = std::max(1, static_cast<int>(std::lround(box.width * z)));
         const int destHeight = std::max(1, static_cast<int>(std::lround(box.height * z)));
@@ -652,6 +770,10 @@ namespace umbriel {
             && box.x + box.width >= metrics.outputBox.width
             && box.y + box.height >= metrics.outputBox.height;
         wlr_scene_buffer_set_corner_radii(mirror->buffer, corner_radii_all(spansOutput ? backgroundRadius : 0));
+        const wlr_box corners{
+            full.x - mirror->buffer->node.x, full.y - mirror->buffer->node.y, full.width, full.height
+        };
+        wlr_scene_buffer_set_corner_box(mirror->buffer, m_spread && spansOutput ? &corners : nullptr);
       }
     }
 
@@ -669,6 +791,9 @@ namespace umbriel {
   }
 
   View* Overview::liveTargetView() const {
+    if (m_spread) {
+      return m_spreadSelected;
+    }
     const Workspace* workspace = preferredWorkspace();
     return workspace != nullptr ? workspace->focusedView() : nullptr;
   }
@@ -685,7 +810,8 @@ namespace umbriel {
     View* view = card.view;
     Workspace* workspace = view->workspace();
     const BorderEffectGate cardGate{
-        .focused = workspace != nullptr && workspace->focusedView() == view && &card != m_dragCard,
+        .focused = m_spread ? view == m_spreadSelected
+                            : workspace != nullptr && workspace->focusedView() == view && &card != m_dragCard,
         .allowUnfocused = config().effects.borderUnfocused,
         .decorated = card.border != nullptr && card.border->node.enabled && card.tree->node.enabled,
         .urgent = view->urgent(),
@@ -693,7 +819,7 @@ namespace umbriel {
     };
     view->syncAnimationEffects(
         card.tree, card.border != nullptr ? &card.border->node : nullptr, &card.surfaceTree->node, &cardGate,
-        card.owner->output, static_cast<float>(zoom())
+        m_spread ? spreadCardOutput(card) : card.owner->output, static_cast<float>(m_spread ? card.spreadScale : zoom())
     );
   }
 
@@ -713,6 +839,9 @@ namespace umbriel {
 
   std::array<float, 4> Overview::cardBorderColor(const Card& card, const View* liveTarget) const {
     const auto& border = card.view != nullptr ? card.view->borderColors() : config().colors.border;
+    if (m_spread) {
+      return card.view == liveTarget ? border.focused : border.unfocused;
+    }
     const Workspace* workspace = card.view != nullptr ? card.view->workspace() : nullptr;
     if (workspace == nullptr || workspace->focusedView() != card.view || &card == m_dragCard) {
       return border.unfocused;
@@ -726,6 +855,9 @@ namespace umbriel {
   }
 
   void Overview::applyProgress() {
+    if (m_spread && m_spreadLayoutDirty) {
+      refreshSpreadLayout();
+    }
     if (m_shortcutsDirty) {
       m_shortcutsDirty = false;
       updateShortcutAssignments();
@@ -735,8 +867,8 @@ namespace umbriel {
     }
     // Pinned windows get no card: the real ones fade over the filmstrip instead of blinking at either end.
     const float chrome = desktopChromeAlpha();
-    applyPinnedOpacity(chrome);
-    wlr_scene_node_set_enabled(&m_server->pinnedTree()->node, chrome > 0.0F);
+    applyPinnedOpacity(m_spread ? 1.0F : chrome);
+    wlr_scene_node_set_enabled(&m_server->pinnedTree()->node, !m_spread && chrome > 0.0F);
     scheduleFrames();
   }
 
@@ -750,7 +882,7 @@ namespace umbriel {
 
   void Overview::collectDesktopSurfaces(const Output& output, std::vector<DesktopEntry>& out) const {
     out.clear();
-    if (!config().overview.workspaceWallpaper) {
+    if (!(m_spread ? config().overview.spread.insetWallpaper : config().overview.workspaceWallpaper)) {
       return;
     }
     // Scene child order is bottom to top, so walking the two layer trees in place reproduces what renders below the
@@ -837,13 +969,13 @@ namespace umbriel {
   }
 
   void Overview::createRowMirrors(OutputState& state, WorkspaceBackground& background) const {
-    if (background.tree == nullptr) {
+    if (background.content == nullptr) {
       return;
     }
     background.mirrors.reserve(state.desktop.size());
     // Created in stack order, above the fill: scene child order is what keeps a bottom-layer copy over the wallpaper.
     for (const auto& source : state.desktop) {
-      wlr_scene_buffer* buffer = wlr_scene_buffer_create(background.tree, nullptr);
+      wlr_scene_buffer* buffer = wlr_scene_buffer_create(background.content, nullptr);
       if (buffer == nullptr) {
         continue;
       }
@@ -977,9 +1109,22 @@ namespace umbriel {
     }
     // Rows stay below every card even when created after the overview scene was populated.
     wlr_scene_node_place_above(&background.tree->node, &state.backgroundTint->node);
+    if (m_spread) {
+      const float shadowColor[4] = {};
+      background.shadow = wlr_scene_shadow_create(background.tree, 0, 0, 24, 18.0F, shadowColor);
+    }
+    background.content = wlr_scene_tree_create(background.tree);
+    if (background.content == nullptr) {
+      wlr_scene_node_destroy(&background.tree->node);
+      return {};
+    }
     const std::array<float, 4> color = tint(config().colors.overview.workspaceBackground, m_progress);
-    background.fill = wlr_scene_rect_create(background.tree, 1, 1, color.data());
+    background.fill = wlr_scene_rect_create(background.content, 1, 1, color.data());
     createRowMirrors(state, background);
+    if (m_spread) {
+      const float clear[4] = {};
+      background.wallpaperShade = wlr_scene_rect_create(background.content, 1, 1, clear);
+    }
     return background;
   }
 
@@ -1147,7 +1292,11 @@ namespace umbriel {
     PreviewMetrics metrics{};
     if (previewMetrics(*card->owner, *self->m_server, self->zoom(), metrics)) {
       self->layoutCard(*card, metrics, card->owner->rowScroll.current(), self->liveTargetView());
-      wlr_output_schedule_frame(card->owner->output->wlr());
+      if (self->m_spread) {
+        self->scheduleFrames();
+      } else {
+        wlr_output_schedule_frame(card->owner->output->wlr());
+      }
     }
   }
 
@@ -1195,7 +1344,7 @@ namespace umbriel {
 
   Overview::Card* Overview::createCard(OutputState& state, View* view, size_t workspaceIndex) {
     // An attached dialog shows over its parent's card instead of on one of its own.
-    if (view == nullptr || !view->mapped() || view->pinned() || view->attached()) {
+    if (view == nullptr || !view->mapped() || (view->pinned() && !m_spread) || view->attached()) {
       return nullptr;
     }
     wlr_surface* surface = view->rootSurface();
@@ -1207,7 +1356,7 @@ namespace umbriel {
     card->owner = &state;
     card->view = view;
     card->workspaceIndex = workspaceIndex;
-    card->tree = wlr_scene_tree_create(state.tree);
+    card->tree = wlr_scene_tree_create(m_spread ? m_spreadTree : state.tree);
     if (card->tree == nullptr) {
       return nullptr;
     }
@@ -1227,6 +1376,7 @@ namespace umbriel {
     Card* raw = card.get();
     state.cards.push_back(std::move(card));
     m_shortcutsDirty = true;
+    m_spreadLayoutDirty = true;
 
     forEachCardSurface(raw, addCardSurface);
 
@@ -1334,6 +1484,11 @@ namespace umbriel {
   }
 
   void Overview::destroyCard(Card* card) {
+    std::erase(m_spreadOrder, card);
+    if (m_spreadSelected == card->view) {
+      m_spreadSelected = nullptr;
+    }
+    m_spreadLayoutDirty = true;
     card->view->effects().detachNodes(
         card->surfaceTree != nullptr ? &card->surfaceTree->node : nullptr,
         card->border != nullptr ? &card->border->node : nullptr
@@ -1413,7 +1568,7 @@ namespace umbriel {
   }
 
   bool Overview::presentsLive(const View* view) const {
-    if (!m_active || view->presentationSuppressed()) {
+    if (!m_active || (view->presentationSuppressed() && !m_spread)) {
       return false;
     }
     return std::ranges::any_of(m_outputs, [view](const auto& state) {
@@ -1435,7 +1590,8 @@ namespace umbriel {
       return;
     }
 
-    const double scale = std::max(1.0, std::ceil(static_cast<double>(card.owner->output->wlr()->scale)));
+    const Output* output = m_spread ? spreadCardOutput(card) : card.owner->output;
+    const double scale = std::max(1.0, std::ceil(static_cast<double>(output->wlr()->scale)));
     const size_t matched = card.shortcutMatched == SIZE_MAX ? 0 : std::min(card.shortcutMatched, card.shortcut.size());
     const std::string_view shortcut(card.shortcut);
     const auto& colors = config().colors;
@@ -1494,6 +1650,9 @@ namespace umbriel {
   void Overview::assignShortcuts() {
     m_shortcutInput.clear();
     m_shortcutsDirty = true;
+    if (m_spread && !m_closing) {
+      m_spreadLayoutDirty = true;
+    }
     applyProgress();
   }
 
@@ -1595,6 +1754,9 @@ namespace umbriel {
       }
     }
 
+    if (m_spread) {
+      eligible = m_spreadOrder;
+    }
     const auto assignmentFor = [this](const View* view) -> ShortcutAssignment* {
       const auto assignment = std::ranges::find_if(m_shortcutAssignments, [view](const ShortcutAssignment& item) {
         return item.view == view;
@@ -1669,7 +1831,7 @@ namespace umbriel {
       // layer split so overlapping cards stack the way the real windows do.
       for (int pass = 0; pass < 3; ++pass) {
         for (View* view : workspace->allViews()) {
-          if (view == nullptr || !view->mapped() || view->pinned()) {
+          if (view == nullptr || !view->mapped() || (view->pinned() && !m_spread)) {
             continue;
           }
           const bool fullscreen = view->currentFullscreen();
@@ -1685,6 +1847,12 @@ namespace umbriel {
   void Overview::buildState() {
     UMBRIEL_ZONE("Overview::buildState");
     m_tree = m_server->overviewTree();
+    if (m_spread) {
+      m_spreadTree = wlr_scene_tree_create(m_tree);
+      if (m_spreadTree == nullptr) {
+        return;
+      }
+    }
     for (const auto& output : m_server->outputs()) {
       WorkspaceGroup* group = output->workspaceGroup();
       if (group == nullptr || group->workspaceCount() == 0 || !output->wlr()->enabled) {
@@ -1696,7 +1864,8 @@ namespace umbriel {
       if (state->tree == nullptr) {
         continue;
       }
-      if (config().overview.backgroundBlur && config().appearance.blur.enabled) {
+      if ((m_spread ? config().overview.spread.backgroundBlur : config().overview.backgroundBlur)
+          && config().appearance.blur.enabled) {
         state->backgroundBlur = wlr_scene_blur_create(m_server->overviewBlurTree(), 1, 1);
         if (state->backgroundBlur != nullptr) {
           wlr_scene_blur_set_should_only_blur_bottom_layer(state->backgroundBlur, config().appearance.blur.optimized);
@@ -1715,6 +1884,10 @@ namespace umbriel {
       OutputState* raw = state.get();
       m_outputs.push_back(std::move(state));
       populateCards(*raw);
+    }
+    if (m_spreadTree != nullptr) {
+      // One unclipped tree for cards from every monitor; backgrounds stay clipped to their own outputs.
+      wlr_scene_node_raise_to_top(&m_spreadTree->node);
     }
   }
 
@@ -1756,6 +1929,7 @@ namespace umbriel {
 
     buildState();
     if (m_outputs.empty()) {
+      teardown();
       return false;
     }
     m_server->cursor()->resetWheelAccumulation();
@@ -1770,6 +1944,12 @@ namespace umbriel {
     m_targetProgress = 0.0;
     m_pendingFocus = nullptr;
     m_pointerOutput = m_server->outputFromWlr(m_server->preferredOutput());
+    if (m_spread) {
+      m_spreadOutput = m_pointerOutput != nullptr ? m_pointerOutput : m_outputs.front()->output;
+      if (Workspace* workspace = preferredWorkspace()) {
+        m_spreadSelected = workspace->focusedView();
+      }
+    }
     m_server->notifyOverviewChanged();
 
     // Initialize every View's canonical presentation box before cards consume it. Hidden workspaces normally skip
@@ -1799,7 +1979,7 @@ namespace umbriel {
     wlr_scene_node_set_enabled(&m_tree->node, true);
     // Bottom-layer surfaces are mirrored into every row, so the real ones step aside the way windows do. The
     // background layer stays: it is the blur source and what shows around the filmstrip.
-    if (config().overview.workspaceWallpaper) {
+    if (config().overview.workspaceWallpaper && !m_spread) {
       wlr_scene_node_set_enabled(&m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)->node, false);
     }
 
@@ -1917,7 +2097,7 @@ namespace umbriel {
     m_progressFrom = m_progress;
     const auto& animation = config().animation;
     const auto& overview = animation.overview;
-    if (!animation.enabled || !overview.enabled) {
+    if (!animation.enabled || !overview.enabled || (m_spread && config().overview.spread.durationMs == 0)) {
       m_zoomAnim.snap(1.0);
       m_progress = target;
       for (const auto& state : m_outputs) {
@@ -1927,7 +2107,9 @@ namespace umbriel {
       return;
     }
     m_zoomAnim.snap(0.0);
-    if (overview.curve.easing == Easing::Spring) {
+    if (m_spread) {
+      m_zoomAnim.retargetTimed(1.0, config().overview.spread.durationMs, overview.curve);
+    } else if (overview.curve.easing == Easing::Spring) {
       // Physics mode, so the tail can end once it no longer moves a pixel. The zoom runs the span from where the
       // gesture left off to the target, so a release speed given in progress per second is that speed over this span.
       const double span = m_targetProgress - m_progressFrom;
@@ -1940,6 +2122,10 @@ namespace umbriel {
   }
 
   void Overview::animateRow(OutputState& state, double target, double releaseVelocity) {
+    if (m_spread) {
+      state.rowScroll.snap(target);
+      return;
+    }
     const auto& animation = config().animation;
     const auto& overview = animation.overview;
     if (!animation.enabled || !overview.enabled) {
@@ -1959,6 +2145,7 @@ namespace umbriel {
 
   bool Overview::tickAnimations(double nowMsec) {
     bool active = m_dropHint != nullptr && m_dropHint->tickAnimations(nowMsec);
+    const bool spreadTicked = m_spreadReflow.tick(nowMsec);
     const bool zoomTicked = m_zoomAnim.tick(nowMsec);
     if (zoomTicked && m_zoomAnim.animating() && m_zoomAnim.curve().easing == Easing::Spring) {
       static_cast<void>(m_zoomAnim.finishSpringTail(zoomPixelsPerUnit()));
@@ -1981,7 +2168,7 @@ namespace umbriel {
       rowTicked = ticked || rowTicked;
       active = active || state->rowScroll.animating();
     }
-    if (zoomTicked || rowTicked || m_cardPresentationDirty) {
+    if (zoomTicked || rowTicked || spreadTicked || m_cardPresentationDirty) {
       applyProgress();
     }
     m_cardPresentationDirty = false;
@@ -1999,11 +2186,12 @@ namespace umbriel {
     if (zoomTicked && !m_zoomAnim.animating()) {
       finishAnimation();
     }
-    return m_zoomAnim.animating() || active;
+    return m_zoomAnim.animating() || m_spreadReflow.animating() || active;
   }
 
   bool Overview::hasActiveAnimations() const {
     return m_zoomAnim.animating()
+        || m_spreadReflow.animating()
         || std::ranges::any_of(m_outputs, [](const auto& state) { return state->rowScroll.animating(); })
         || (m_dropHint != nullptr && m_dropHint->hasActiveAnimations());
   }
@@ -2089,6 +2277,18 @@ namespace umbriel {
       wlr_output_schedule_frame(state->output->wlr());
     }
     m_outputs.clear();
+    if (m_spreadTree != nullptr) {
+      wlr_scene_node_destroy(&m_spreadTree->node);
+      m_spreadTree = nullptr;
+    }
+    m_spread = false;
+    m_spreadOutput = nullptr;
+    m_spreadSelected = nullptr;
+    m_spreadOrder.clear();
+    m_spreadLayoutDirty = true;
+    m_spreadClosePressed = false;
+    m_spreadBackgroundPressed = false;
+    m_spreadReflow.snap(1.0);
     wlr_scene_node_set_enabled(&m_server->overviewBlurTree()->node, false);
 
     if (m_tree != nullptr) {
@@ -2160,7 +2360,7 @@ namespace umbriel {
   // -: hooks
 
   void Overview::onViewMapped(View* view) {
-    if (!m_active || view == nullptr || !view->mapped() || view->pinned()) {
+    if (!m_active || view == nullptr || !view->mapped() || (view->pinned() && !m_spread)) {
       return;
     }
     if (view->attached()) {
@@ -2209,6 +2409,12 @@ namespace umbriel {
     if (!m_active || view == nullptr || !view->mapped()) {
       return;
     }
+    if (m_spread) {
+      view->setOverviewOpacity(1.0F);
+      rebuildCard(view);
+      assignShortcuts();
+      return;
+    }
     // A pinned window shows through the overview only at the desktop chrome's alpha; a card mirrors full opacity.
     view->setOverviewOpacity(view->pinned() ? desktopChromeAlpha() : 1.0F);
     Card* card = findCard(view);
@@ -2255,7 +2461,7 @@ namespace umbriel {
   }
 
   void Overview::onViewFloatingChanged(View* view) {
-    if (!m_active || view == nullptr || !view->mapped() || view->pinned()) {
+    if (!m_active || view == nullptr || !view->mapped() || (view->pinned() && !m_spread)) {
       return;
     }
     // Cards stack tiled, then floating (populateCards): rebuild so this one
@@ -2305,7 +2511,7 @@ namespace umbriel {
     }
     Workspace* workspace = view->workspace();
     OutputState* state = stateForWorkspace(workspace);
-    if (Card* card = findCard(view); card != nullptr && animateClose) {
+    if (Card* card = findCard(view); card != nullptr && animateClose && !m_spread) {
       snapshotCardForClose(*card);
     }
     dropCard(view);
@@ -2399,7 +2605,7 @@ namespace umbriel {
     // A hidden card may skip shadow layout; release its source-output shadow before changing owners.
     destroyCardShadow(*moved);
     moved->owner = target;
-    wlr_scene_node_reparent(&moved->tree->node, target->tree);
+    wlr_scene_node_reparent(&moved->tree->node, m_spread ? m_spreadTree : target->tree);
     target->cards.push_back(std::move(moved));
     layoutOutput(*source);
     layoutOutput(*target);
@@ -2445,6 +2651,7 @@ namespace umbriel {
     if (!m_active || group == nullptr) {
       return;
     }
+    m_spreadLayoutDirty = true;
     if (m_navigationOutput == group->output()) {
       cancelNavigation();
     }
@@ -2501,6 +2708,11 @@ namespace umbriel {
   }
 
   void Overview::onOutputRemoved(Output* output) {
+    if (m_spread && m_active) {
+      // Close before an output or its workspace group can invalidate origins and card owners.
+      forceClose();
+      return;
+    }
     if (m_navigationOutput == output) {
       // The output may already be tearing down its workspace group.
       m_navigationOutput = nullptr;
@@ -2568,11 +2780,11 @@ namespace umbriel {
         continue;
       }
       for (const auto& card : std::views::reverse(state->cards)) {
-        if (card->tree == nullptr || !card->tree->node.enabled) {
+        if (card->tree == nullptr || !card->tree->node.enabled || (m_spread && !card->spreadIncluded)) {
           continue;
         }
         wlr_box hit = card->box;
-        if (card.get() != m_dragCard && !wlr_box_intersection(&hit, &card->box, &metrics.outputBox)) {
+        if (!m_spread && card.get() != m_dragCard && !wlr_box_intersection(&hit, &card->box, &metrics.outputBox)) {
           continue;
         }
         if (boxContains(hit, lx, ly)) {
@@ -2770,6 +2982,9 @@ namespace umbriel {
   // -: input
 
   bool Overview::handleButton(uint32_t button, bool pressed, double lx, double ly, uint32_t timeMsec) {
+    if (m_spread) {
+      return handleSpreadButton(button, pressed, lx, ly);
+    }
     if (pressed) {
       cancelNavigation();
     }
@@ -2849,6 +3064,12 @@ namespace umbriel {
     if (!interactive()) {
       return;
     }
+    if (m_spread) {
+      if (Card* card = cardAt(lx, ly)) {
+        selectSpreadCard(card);
+      }
+      return;
+    }
     // The live target resolves through preferredOutput(), and the overview owns motion while it is up: repaint when
     // the pointer crosses outputs, whether by hand or through the warp a keybind performs to change output.
     if (Output* output = m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), lx, ly));
@@ -2918,6 +3139,9 @@ namespace umbriel {
   }
 
   bool Overview::selectRelativeWorkspace(int delta, Output* output) {
+    if (m_spread) {
+      return false;
+    }
     if (!interactive()) {
       return false;
     }
@@ -2942,6 +3166,9 @@ namespace umbriel {
   }
 
   bool Overview::handleAxisNotch(bool vertical, double direction, double lx, double ly) {
+    if (m_spread) {
+      return true;
+    }
     if (m_dragCard != nullptr) {
       // Pan-only while a card drag is live: a wheel notch commits a workspace/focus move, which the contract
       // forbids under the held card (and it would leave the drop stale). Ignore the notch entirely.
@@ -2982,6 +3209,9 @@ namespace umbriel {
   }
 
   Workspace* Overview::pointerScrollWorkspace(double lx, double ly) {
+    if (m_spread) {
+      return nullptr;
+    }
     if (!interactive()) {
       return nullptr;
     }
@@ -3031,6 +3261,9 @@ namespace umbriel {
   void Overview::cancelNavigation() { endNavigation(true, 0, m_navigationSource); }
 
   void Overview::beginNavigation(wlr_pointer* pointer, NavigationSource source, double lx, double ly) {
+    if (m_spread) {
+      return;
+    }
     cancelNavigation();
     // A held card drag may still scroll: the touchpad finger stream must not be swallowed by the hold.
     // Middle-press keeps refusing; handleMotion gives it its own pointer-scroll path.
@@ -3390,6 +3623,30 @@ namespace umbriel {
   }
 
   bool Overview::handleKeybindAction(KeybindAction action) {
+    if (m_spread && interactive()) {
+      switch (action) {
+      case KeybindAction::WindowFocusLeft:
+      case KeybindAction::WindowFocusOrOutputLeft:
+        return handleSpreadKey(XKB_KEY_Left);
+      case KeybindAction::WindowFocusRight:
+      case KeybindAction::WindowFocusOrOutputRight:
+        return handleSpreadKey(XKB_KEY_Right);
+      case KeybindAction::WindowFocusUp:
+      case KeybindAction::WindowFocusOrOutputUp:
+      case KeybindAction::WindowFocusOrWorkspaceUp:
+        return handleSpreadKey(XKB_KEY_Up);
+      case KeybindAction::WindowFocusDown:
+      case KeybindAction::WindowFocusOrOutputDown:
+      case KeybindAction::WindowFocusOrWorkspaceDown:
+        return handleSpreadKey(XKB_KEY_Down);
+      case KeybindAction::WindowFocusNext:
+        return handleSpreadKey(XKB_KEY_Tab);
+      case KeybindAction::WindowClose:
+        return handleSpreadKey(XKB_KEY_Delete);
+      default:
+        break;
+      }
+    }
     const bool directional = action == KeybindAction::WindowFocusLeft
         || action == KeybindAction::WindowFocusRight
         || action == KeybindAction::WindowFocusOrOutputLeft
@@ -3421,6 +3678,9 @@ namespace umbriel {
     }
     if (handleShortcutKey(keysym)) {
       return true;
+    }
+    if (m_spread) {
+      return handleSpreadKey(keysym);
     }
     auto dispatch = [this](KeybindAction action) {
       Keybind bind;

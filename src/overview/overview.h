@@ -4,6 +4,7 @@
 #include "core/animation.h"
 #include "layout/drop_target.h"
 #include "overview/navigation.h"
+#include "overview/spread_geometry.h"
 #include "scene/hint_rect.h"
 #include "scene/surface_blur.h"
 #include "view/chrome_attachment.h"
@@ -56,11 +57,14 @@ namespace umbriel {
     // Open and not already zooming back in: pointer/keyboard edits still apply. The IPC `overview` event reports this
     // as `open`, so clients drop overview-scoped surfaces while the windows are still hidden.
     bool interactive() const { return m_active && !m_closing; }
+    bool spread() const { return m_spread; }
     // True while a card mirrors `view`, so its client must keep drawing although its real frame is hidden.
     bool presentsLive(const View* view) const;
 
     void toggle();
     void open();
+    // Spread windows together or on their owning outputs, using live workspace-overview surfaces.
+    void toggleSpread();
     // Zoom back into each output's active workspace, restoring normal focus.
     void close();
     // Activate `workspace` (no slide, the real trees are hidden), focus `focus`
@@ -228,6 +232,17 @@ namespace umbriel {
       std::array<float, 4> badgeBackground{};
       std::string shortcut;
       size_t shortcutMatched = 0;
+      SpreadBox spreadCell{};
+      SpreadBox spreadCellFrom{};
+      bool spreadIncluded = true;
+      double spreadScale = 1.0;
+      wlr_scene_tree* spreadControls = nullptr;
+      wlr_scene_rect* closeBackground = nullptr;
+      wlr_scene_buffer* closeLabel = nullptr;
+      wlr_scene_buffer* caption = nullptr;
+      std::string captionTitle;
+      int captionMaxWidth = 0;
+      wlr_box closeBox{};
     };
 
     struct ShortcutAssignment {
@@ -266,7 +281,10 @@ namespace umbriel {
     // `[overview] workspace_wallpaper` is on. The fill is what an output with an empty stack shows.
     struct WorkspaceBackground {
       wlr_scene_tree* tree = nullptr;
+      wlr_scene_tree* content = nullptr;
+      wlr_scene_shadow* shadow = nullptr;
       wlr_scene_rect* fill = nullptr;
+      wlr_scene_rect* wallpaperShade = nullptr;
       std::vector<std::unique_ptr<DesktopMirror>> mirrors;
     };
 
@@ -368,6 +386,13 @@ namespace umbriel {
     void applyPinnedOpacity(float alpha) const;
     void layoutOutput(OutputState& state);
     void layoutCard(Card& card, const PreviewMetrics& metrics, double workspaceScroll, const View* liveTarget);
+    Output* spreadCardOutput(const Card& card) const;
+    SpreadBox spreadCardOrigin(const Card& card) const;
+    void refreshSpreadLayout();
+    void layoutSpreadControls(Card& card);
+    bool handleSpreadButton(uint32_t button, bool pressed, double lx, double ly);
+    bool handleSpreadKey(uint32_t keysym);
+    void selectSpreadCard(Card* card);
     // Refreshes a card's animation and persistent effect slots from its view.
     void syncCardEffects(Card& card);
     void syncCardEffects();
@@ -431,6 +456,17 @@ namespace umbriel {
     wlr_scene_tree* m_tree = nullptr; // Server::overviewTree()
     std::unique_ptr<HintRect> m_dropHint;
     std::vector<std::unique_ptr<OutputState>> m_outputs;
+
+    bool m_spread = false;
+    bool m_spreadLayoutDirty = true;
+    bool m_spreadClosePressed = false;
+    bool m_spreadBackgroundPressed = false;
+    Output* m_spreadOutput = nullptr;
+    View* m_spreadSelected = nullptr;
+    wlr_scene_tree* m_spreadTree = nullptr;
+    std::vector<Card*> m_spreadOrder;
+    size_t m_spreadColumns = 0;
+    AnimatedValue m_spreadReflow;
 
     bool m_active = false;
     bool m_closing = false;

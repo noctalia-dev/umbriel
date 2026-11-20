@@ -35,6 +35,7 @@ namespace umbriel {
     static nlohmann::json workspaces(Server& server, IpcArgs args);
     static nlohmann::json submap(Server& server, IpcArgs args);
     static nlohmann::json layers(Server& server, IpcArgs args);
+    static nlohmann::json overviewKey(Server& server, IpcArgs args);
     static nlohmann::json outputs(Server& server, IpcArgs args);
     static nlohmann::json color(Server& server, IpcArgs args);
     static nlohmann::json tearing(Server& server, IpcArgs args);

@@ -1264,6 +1264,43 @@ action = "window-restore-from-scratchpad missing"
   CHECK(containsDiagnostic(store, "ignoring hot_corners.bottom_left.action (unknown scratchpad 'missing')"));
 }
 
+UMBRIEL_TEST(overviewSpreadConfigurationLoadsIndependently) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(R"(
+[overview]
+background_blur = true
+[overview.spread]
+duration_ms = 650
+all_workspaces = false
+all_outputs = false
+spacing = 64.0
+max_scale = 0.6
+dim = 0.7
+wallpaper_dim = 0.25
+show_titles = false
+show_workspace_numbers = false
+show_close_buttons = false
+background_blur = false
+blur_strength = 0.3
+inset_wallpaper = true
+)");
+  CHECK(store.reload().success);
+  const auto& spread = store.config().overview.spread;
+  CHECK(!spread.allWorkspaces && !spread.allOutputs);
+  CHECK_EQ(spread.durationMs, 650);
+  CHECK_EQ(store.config().animation.overview.durationMs, 250);
+  CHECK_EQ(spread.spacing, 64.0);
+  CHECK_EQ(spread.maxScale, 0.6);
+  CHECK_EQ(spread.dim, 0.7);
+  CHECK_EQ(spread.wallpaperDim, 0.25);
+  CHECK(!spread.showTitles && !spread.showWorkspaceNumbers && !spread.showCloseButtons);
+  CHECK(!spread.backgroundBlur && store.config().overview.backgroundBlur);
+  CHECK_EQ(spread.blurStrength, 0.3);
+  CHECK(spread.insetWallpaper);
+}
+
 UMBRIEL_TEST(overviewBackgroundBlurLoads) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();
