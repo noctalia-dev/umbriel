@@ -295,12 +295,12 @@ namespace umbriel {
     }
     const int contentW = std::max(1, static_cast<int>(std::lround(world.width * z)));
     const int contentH = std::max(1, static_cast<int>(std::lround(world.height * z)));
+    const wlr_box preview = previewBox(metrics, workspaceScroll, card.workspaceIndex);
     if (&card == m_dragCard) {
       // The drag owns the card origin; only the scale still tracks progress.
       card.box.width = contentW;
       card.box.height = contentH;
     } else {
-      const wlr_box preview = previewBox(metrics, workspaceScroll, card.workspaceIndex);
       card.box = {
           .x = preview.x + static_cast<int>(std::lround((world.x - metrics.outputBox.x) * z)),
           .y = preview.y + static_cast<int>(std::lround((world.y - metrics.outputBox.y) * z)),
@@ -309,12 +309,29 @@ namespace umbriel {
       };
     }
     wlr_scene_node_set_position(&card.tree->node, card.box.x, card.box.y);
-    // Cards overhang their preview by design; the output's overview tree clip is
-    // what keeps them off the neighbouring monitor.
-    wlr_scene_tree_set_clip(card.tree, nullptr);
-    layoutCardShadow(card, z, desktopChromeAlpha());
-    const float cardOpacity = &card == m_dragCard ? config().appearance.dragOpacity : 1.0F;
-    const float presentedOpacity = view->presentedOpacity() * cardOpacity;
+    // A pad card is one image of the pad, so it is clipped to the preview it belongs to: nothing of the pad may appear
+    // in the gap beside it. Every other card overhangs its preview by design and the output's overview tree clip holds
+    // it off the neighbouring monitor. The clip is tree-local, and the tree sits at the card's origin.
+    const wlr_box cardClip = {
+        .x = preview.x - card.box.x,
+        .y = preview.y - card.box.y,
+        .width = preview.width,
+        .height = preview.height,
+    };
+    wlr_scene_tree_set_clip(card.tree, card.transient ? &cardClip : nullptr);
+    // A pad card dissolves with the opening, over the same timeline as the zoom: the overview animation is its parent
+    // and the pad fade is what it does inside this workspace. Content, chrome, border and shadow all take this alpha.
+    float cardOpacity = 1.0F;
+    if (&card == m_dragCard) {
+      cardOpacity = config().appearance.dragOpacity;
+    } else if (card.transient) {
+      cardOpacity = card.fadeFrom * static_cast<float>(std::clamp(1.0 - m_progress, 0.0, 1.0));
+    }
+    layoutCardShadow(card, z, card.transient ? cardOpacity : desktopChromeAlpha());
+    // The pad's views are hidden while their cards exist, so the card carries the whole alpha: the fade is the
+    // opening's progress, not the pad's own presentation.
+    const float presentedOpacity = card.transient ? cardOpacity : view->presentedOpacity() * cardOpacity;
+    card.opacity = presentedOpacity;
 
     const int borderWidth = view->decorationBorderWidth();
     const int outerBorderWidth = view->decorationOuterBorderWidth();
@@ -349,6 +366,18 @@ namespace umbriel {
       wlr_scene_border_set_colors(card.border, innerColor.data(), outerColor.data());
     }
     layoutCardChrome(card, world, decorated ? total : 0, z, presentedOpacity);
+    // The card's image covers its ring and title bar too; a pad card owns the pointer over all of it.
+    const int frameExtent = borderVisible ? innerWidth + outerWidth + 1 + card.borderPadding : 0;
+    // The chrome copy draws its title bar whenever the view has one and chrome is not suppressed, border or not.
+    const int titleBarExtent = !view->currentFullscreen() && !view->maximizedToEdges()
+        ? static_cast<int>(std::lround(view->titleBarHeight() * z))
+        : 0;
+    card.frameBox = {
+        .x = card.box.x - frameExtent,
+        .y = card.box.y - frameExtent - titleBarExtent,
+        .width = card.box.width + 2 * frameExtent,
+        .height = card.box.height + 2 * frameExtent + titleBarExtent,
+    };
     syncCardEffects(card);
 
     if (card.badge != nullptr) {
@@ -410,8 +439,11 @@ namespace umbriel {
         wlr_scene_node_set_enabled(&entry->buffer->node, false);
         continue;
       }
-      const float surfaceOpacity =
-          entry->sourceBuffer != nullptr ? entry->sourceBuffer->opacity * cardOpacity : cardOpacity;
+      // A pad card owns its alpha outright: hiding the pad cleared the opacity on the buffers it samples, and the card
+      // is the image of the pad before it left, not of the hidden node.
+      const float surfaceOpacity = card.transient ? cardOpacity
+          : entry->sourceBuffer != nullptr        ? entry->sourceBuffer->opacity * cardOpacity
+                                                  : cardOpacity;
       wlr_scene_buffer_set_opacity(entry->buffer, surfaceOpacity);
       const pixman_region32_t* shape = entry->view->xwayland() ? m_server->xwayland()->surfaceShape(surface) : nullptr;
       if (!entry->isRoot) {
@@ -459,7 +491,8 @@ namespace umbriel {
       applySurfaceShape(entry->buffer, surface, shape);
       roundToCardBox(entry->buffer);
       const wlr_box blurBox{0, 0, contentW, contentH};
-      card.blur.setAlpha(1.0F);
+      // A pad card's backdrop blur is part of its image and leaves with it; every other card keeps the window's.
+      card.blur.setAlpha(card.transient ? cardOpacity : 1.0F);
       card.blur.update(
           card.tree, surface, blurBox, geometry, contentCorners, nullptr, view->blurOptions(), entry->buffer->opacity,
           entry->buffer
@@ -510,7 +543,9 @@ namespace umbriel {
     if (alpha <= 0.0F || source == nullptr || !source->node.enabled || &card == m_dragCard) {
       return;
     }
-    wlr_scene_tree* parent = card.view->shadowPooled() ? card.owner->tileShadows : card.tree;
+    // A pad card's shadow is part of its image and stays under the card, where the preview clip holds it; a window card
+    // keeps the pool its workspace lent it, which is only visible while its workspace is.
+    wlr_scene_tree* parent = (card.transient || !card.view->shadowPooled()) ? card.tree : card.owner->tileShadows;
     if (parent == nullptr) {
       return;
     }
@@ -546,7 +581,9 @@ namespace umbriel {
     wlr_scene_shadow_set_size(card.shadow, std::max(0, scaled(source->width)), std::max(0, scaled(source->height)));
     wlr_scene_shadow_set_blur_sigma(card.shadow, static_cast<float>(source->blur_sigma * zoom));
     wlr_scene_shadow_set_corner_radius(card.shadow, scaled(source->corner_radius));
-    const float color[4] = {source->color[0], source->color[1], source->color[2], source->color[3] * alpha};
+    // A pad card keeps the shadow colour its member had when the card was built: the pad's hide drops the live one.
+    const float* base = card.transient ? card.shadowColor.data() : source->color;
+    const float color[4] = {base[0], base[1], base[2], base[3] * alpha};
     wlr_scene_shadow_set_color(card.shadow, color);
     const clipped_region& hole = source->clipped_region;
     wlr_scene_shadow_set_clipped_region(
@@ -577,6 +614,37 @@ namespace umbriel {
     }
     card.shadowTree = nullptr;
     card.shadow = nullptr;
+  }
+
+  void Overview::OutputState::PadBackdrop::create(wlr_scene_tree* parent, bool blurEnabled) {
+    if (blurEnabled) {
+      blur = wlr_scene_blur_create(parent, 1, 1);
+      if (blur != nullptr) {
+        wlr_scene_blur_set_corner_radius(blur, 0);
+        wlr_scene_node_set_enabled(&blur->node, false);
+      }
+    }
+    static constexpr float kBlack[4] = {0.0F, 0.0F, 0.0F, 1.0F};
+    dimRect = wlr_scene_rect_create(parent, 1, 1, kBlack);
+    if (dimRect != nullptr) {
+      wlr_scene_node_set_enabled(&dimRect->node, false);
+    }
+  }
+
+  void Overview::OutputState::PadBackdrop::destroy() {
+    if (dimRect != nullptr) {
+      wlr_scene_node_destroy(&dimRect->node);
+      dimRect = nullptr;
+    }
+    if (blur != nullptr) {
+      wlr_scene_node_destroy(&blur->node);
+      blur = nullptr;
+    }
+    faded = false;
+    workspace = nullptr;
+    row = 0;
+    dim = 0.0F;
+    fade = 0.0F;
   }
 
   void Overview::layoutOutput(OutputState& state) {
@@ -618,6 +686,27 @@ namespace umbriel {
     const int backgroundRadius = static_cast<int>(std::lround(config().appearance.cornerRadius * metrics.zoom));
     const std::array<float, 4> backgroundColor = tint(config().colors.overview.workspaceBackground, m_progress);
     const double z = metrics.zoom;
+    // The pad's dim follows the opening: it starts at the strength the pad showed and reaches zero as the preview
+    // settles, so the faded card and the tinted desktop leave together inside the same workspace.
+    const float backdropLevel =
+        std::clamp(state.pad.fade * static_cast<float>(std::clamp(1.0 - m_progress, 0.0, 1.0)), 0.0F, 1.0F);
+    const wlr_box padPreview = previewBox(metrics, state.rowScroll.current(), state.pad.row);
+    if (state.pad.blur != nullptr) {
+      wlr_scene_node_set_enabled(&state.pad.blur->node, state.pad.faded && backdropLevel > 0.001F);
+      wlr_scene_node_set_position(&state.pad.blur->node, padPreview.x, padPreview.y);
+      if (state.pad.blur->width != padPreview.width || state.pad.blur->height != padPreview.height) {
+        wlr_scene_blur_set_size(state.pad.blur, padPreview.width, padPreview.height);
+      }
+      // The pad's blur fades by alpha alone; its kernel stays at the strength the live pad renders with.
+      wlr_scene_blur_set_alpha(state.pad.blur, backdropLevel);
+      wlr_scene_blur_set_strength(state.pad.blur, 1.0F);
+    }
+    if (state.pad.dimRect != nullptr) {
+      const float dimAlpha = state.pad.faded ? state.pad.dim * backdropLevel : 0.0F;
+      const std::array<float, 4> dimColor{0.0F, 0.0F, 0.0F, dimAlpha};
+      // The live pad's dim is an unrounded rect.
+      layoutWorkspaceBackground(state.pad.dimRect, padPreview, 0, dimColor);
+    }
     for (size_t index = 0; index < state.workspaceBackgrounds.size(); ++index) {
       const WorkspaceBackground& background = state.workspaceBackgrounds[index];
       const wlr_box full = previewBox(metrics, state.rowScroll.current(), index);
@@ -685,7 +774,8 @@ namespace umbriel {
     View* view = card.view;
     Workspace* workspace = view->workspace();
     const BorderEffectGate cardGate{
-        .focused = workspace != nullptr && workspace->focusedView() == view && &card != m_dragCard,
+        .focused = card.transient ? card.focused
+                                  : workspace != nullptr && workspace->focusedView() == view && &card != m_dragCard,
         .allowUnfocused = view->borderUnfocused(),
         .decorated = card.border != nullptr && card.border->node.enabled && card.tree->node.enabled,
         .urgent = view->urgent(),
@@ -713,6 +803,9 @@ namespace umbriel {
 
   std::array<float, 4> Overview::cardBorderColor(const Card& card, const View* liveTarget) const {
     const auto& border = card.view != nullptr ? card.view->borderColors() : config().colors.border;
+    if (card.transient) {
+      return card.focused ? border.focused : border.unfocused;
+    }
     const Workspace* workspace = card.view != nullptr ? card.view->workspace() : nullptr;
     if (workspace == nullptr || workspace->focusedView() != card.view || &card == m_dragCard) {
       return border.unfocused;
@@ -1193,7 +1286,7 @@ namespace umbriel {
     wlr_surface_send_frame_done(entry->surface, &event->when);
   }
 
-  Overview::Card* Overview::createCard(OutputState& state, View* view, size_t workspaceIndex) {
+  Overview::Card* Overview::createCard(OutputState& state, View* view, size_t workspaceIndex, bool transient) {
     // An attached dialog shows over its parent's card instead of on one of its own.
     if (view == nullptr || !view->mapped() || view->pinned() || view->attached()) {
       return nullptr;
@@ -1207,6 +1300,7 @@ namespace umbriel {
     card->owner = &state;
     card->view = view;
     card->workspaceIndex = workspaceIndex;
+    card->transient = transient;
     card->tree = wlr_scene_tree_create(state.tree);
     if (card->tree == nullptr) {
       return nullptr;
@@ -1227,6 +1321,21 @@ namespace umbriel {
     Card* raw = card.get();
     state.cards.push_back(std::move(card));
     m_shortcutsDirty = true;
+    // A window card that appears while the pad is still fading out belongs under the pad image and its backdrop,
+    // whatever order the trees were created in.
+    if (!transient && state.pad.faded) {
+      if (state.pad.blur != nullptr) {
+        wlr_scene_node_raise_to_top(&state.pad.blur->node);
+      }
+      if (state.pad.dimRect != nullptr) {
+        wlr_scene_node_raise_to_top(&state.pad.dimRect->node);
+      }
+      for (const auto& existing : state.cards) {
+        if (existing->transient && existing->tree != nullptr) {
+          wlr_scene_node_raise_to_top(&existing->tree->node);
+        }
+      }
+    }
 
     forEachCardSurface(raw, addCardSurface);
 
@@ -1373,6 +1482,11 @@ namespace umbriel {
   }
 
   void Overview::rebuildCard(View* view) {
+    // A pad member's card is one flat image of the pad; the layer a float change moves it to is not a layer of that
+    // image, so nothing about it can be rebuilt.
+    if (view != nullptr && padRow(view->workspace())) {
+      return;
+    }
     dropCard(view);
     Workspace* workspace = view->workspace();
     if (workspace == nullptr || !view->mapped()) {
@@ -1400,6 +1514,8 @@ namespace umbriel {
     }
     return stateFor(workspace->group()->output());
   }
+
+  bool Overview::padRow(const Workspace* workspace) { return workspace != nullptr && workspace->scratchpad(); }
 
   Overview::Card* Overview::findCard(const View* view) {
     for (const auto& state : m_outputs) {
@@ -1569,7 +1685,8 @@ namespace umbriel {
         const wlr_box preview = previewBox(metrics, state->rowScroll.target(), index);
         std::vector<PositionedCard> previewCards;
         for (const auto& card : state->cards) {
-          if (card->workspaceIndex != index
+          if (card->transient
+              || card->workspaceIndex != index
               || card->view == nullptr
               || !card->view->mapped()
               || card->view->tabHidden()) {
@@ -1682,6 +1799,56 @@ namespace umbriel {
     }
   }
 
+  void Overview::populatePadCards(OutputState& state) {
+    ScratchpadManager* scratchpad = m_server->scratchpadManager();
+    if (scratchpad == nullptr || !scratchpad->hasVisiblePad(state.output)) {
+      return;
+    }
+    // A pad covers the whole output, so its members belong to the row of the workspace that was active under it. Their
+    // cards fade with the opening inside that row, and the pad's dim rides along in the same preview: everything the
+    // pad drew is inside one workspace preview, never under the filmstrip.
+    state.pad.faded = true;
+    state.pad.workspace = state.output->workspaceGroup()->workspaceAt(state.activeWorkspaceIndex);
+    state.pad.row = state.activeWorkspaceIndex;
+    const bool modal = scratchpad->modalOn(state.output);
+    state.pad.dim = modal ? static_cast<float>(config().animation.scratchpad.dim) : 0.0F;
+    state.pad.fade = scratchpad->backdropFadeOn(state.output);
+    // Created after the workspace cards and before the pad's own, so the backdrop covers what the pad covered and never
+    // the pad itself. The blur goes first: the pad's dim tints what its blur softened.
+    state.pad.create(state.tree, modal && config().animation.scratchpad.blur && config().appearance.blur.enabled);
+    for (View* view : scratchpad->visibleMembersOn(state.output)) {
+      Card* card = createCard(state, view, state.pad.row, /*transient=*/true);
+      if (card == nullptr) {
+        continue;
+      }
+      card->fadeFrom = static_cast<float>(std::clamp(view->presentedOpacity(), 0.0F, 1.0F));
+      card->focused = view->borderFocused();
+      const wlr_scene_shadow* shadow = view->shadowNode();
+      if (shadow != nullptr) {
+        std::ranges::copy(shadow->color, card->shadowColor.begin());
+      }
+    }
+  }
+
+  void Overview::dropPadCards(OutputState& state) {
+    std::erase_if(state.cards, [this](const std::unique_ptr<Card>& card) {
+      if (!card->transient) {
+        return false;
+      }
+      destroyCard(card.get());
+      return true;
+    });
+    // The pad backdrop belongs to the opening. Left behind, its dim would climb back as the closing zoom runs.
+    state.pad.destroy();
+  }
+
+  void Overview::dropTransientCards() {
+    for (const auto& state : m_outputs) {
+      dropPadCards(*state);
+    }
+    m_shortcutsDirty = true;
+  }
+
   void Overview::buildState() {
     UMBRIEL_ZONE("Overview::buildState");
     m_tree = m_server->overviewTree();
@@ -1715,6 +1882,7 @@ namespace umbriel {
       OutputState* raw = state.get();
       m_outputs.push_back(std::move(state));
       populateCards(*raw);
+      populatePadCards(*raw);
     }
   }
 
@@ -1761,6 +1929,9 @@ namespace umbriel {
     m_server->cursor()->resetWheelAccumulation();
 
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
+      // The pads leave the desktop now and reappear as fading cards inside their workspace preview, so nothing of
+      // them is left under the filmstrip where every preview would cover it.
+      scratchpad->beginOverviewDismissal();
       scratchpad->hideAll();
     }
 
@@ -2011,6 +2182,11 @@ namespace umbriel {
   void Overview::finishAnimation() {
     if (!m_closing) {
       applyProgress();
+      // The opening settled: the pads stay dismissed and their cards have faded out completely.
+      dropTransientCards();
+      if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
+        scratchpad->commitOverviewDismissal();
+      }
       return;
     }
     View* focus = m_pendingFocus;
@@ -2097,6 +2273,10 @@ namespace umbriel {
     wlr_scene_node_set_enabled(&m_server->xdgTree()->node, true);
     wlr_scene_node_set_enabled(&m_server->fullscreenTree()->node, true);
     wlr_scene_node_set_enabled(&m_server->pinnedTree()->node, true);
+    // A gesture that never opened the overview hands its pads back; one that settled already forgot them.
+    if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
+      scratchpad->restoreOverviewDismissal();
+    }
     if (m_active) {
       applyPinnedOpacity(1.0F);
     }
@@ -2168,7 +2348,8 @@ namespace umbriel {
       return;
     }
     Workspace* workspace = view->workspace();
-    OutputState* state = stateForWorkspace(workspace);
+    // A pad stays dismissed while the overview is up, so a member that maps now has no card until the pad shows again.
+    OutputState* state = padRow(workspace) ? nullptr : stateForWorkspace(workspace);
     if (state == nullptr || findCard(view) != nullptr) {
       return;
     }
@@ -2212,7 +2393,9 @@ namespace umbriel {
     // A pinned window shows through the overview only at the desktop chrome's alpha; a card mirrors full opacity.
     view->setOverviewOpacity(view->pinned() ? desktopChromeAlpha() : 1.0F);
     Card* card = findCard(view);
-    OutputState* state = card != nullptr ? card->owner : stateForWorkspace(view->workspace());
+    Workspace* workspace = view->workspace();
+    // A pad stays dismissed while the overview is up, so unpinning one of its members shows no card of its own.
+    OutputState* state = card != nullptr ? card->owner : (padRow(workspace) ? nullptr : stateForWorkspace(workspace));
     if (view->pinned()) {
       if (card == nullptr) {
         return;
@@ -2305,14 +2488,15 @@ namespace umbriel {
     }
     Workspace* workspace = view->workspace();
     OutputState* state = stateForWorkspace(workspace);
-    if (Card* card = findCard(view); card != nullptr && animateClose) {
+    // A pad card is already an image on the opening's own clock; a close snapshot would outlive it unclipped.
+    if (Card* card = findCard(view); card != nullptr && animateClose && !card->transient) {
       snapshotCardForClose(*card);
     }
     dropCard(view);
     // The overview keeps the focus chrome while it owns the seat, so a closed focused window hands focus to the nearest
     // survivor now rather than at zoom-out. Ask before layout detachment so the closing view still identifies its row
     // and column; the replacement is its predecessor, or the next neighbor at the leading edge.
-    if (workspace != nullptr && workspace->focusedView() == view) {
+    if (workspace != nullptr && !padRow(workspace) && workspace->focusedView() == view) {
       View* replacement = workspace->focusReplacementForRemoval(view);
       if (replacement != nullptr) {
         // The layout judges the pair once this column is gone, so the reveal this unblocks may only fit the survivor.
@@ -2344,7 +2528,22 @@ namespace umbriel {
 
     Card* card = findCard(view);
     Workspace* workspace = view->workspace();
-    OutputState* target = stateForWorkspace(workspace);
+    if (card != nullptr && card->transient) {
+      // The member left its pad while the pad's image was still fading: that image no longer holds it, so it goes.
+      OutputState* target = padRow(workspace) ? nullptr : stateForWorkspace(workspace);
+      OutputState* source = card->owner;
+      dropCard(view);
+      if (target != nullptr) {
+        createCard(*target, view, workspace->index());
+      }
+      if (source != nullptr) {
+        layoutOutput(*source);
+        wlr_output_schedule_frame(source->output->wlr());
+      }
+      assignShortcuts();
+      return;
+    }
+    OutputState* target = padRow(workspace) ? nullptr : stateForWorkspace(workspace);
     if (card == nullptr) {
       if (target != nullptr) {
         createCard(*target, view, workspace->index());
@@ -2465,6 +2664,27 @@ namespace umbriel {
       state->activeWorkspaceIndex = active->index();
       state->rowScroll.translate(delta);
     }
+    // `syncWorkspaceRows` renumbers window cards from their workspaces; the pad has none, so it takes the row its
+    // workspace moved to. A pruned workspace leaves nothing for the pad to sit in.
+    if (state->pad.faded) {
+      size_t row = group->workspaceCount();
+      for (size_t index = 0; index < group->workspaceCount(); ++index) {
+        if (group->workspaceAt(index) == state->pad.workspace) {
+          row = index;
+          break;
+        }
+      }
+      if (row == group->workspaceCount()) {
+        dropPadCards(*state);
+      } else {
+        state->pad.row = row;
+        for (const auto& card : state->cards) {
+          if (card->transient) {
+            card->workspaceIndex = row;
+          }
+        }
+      }
+    }
     syncWorkspaceRows(*state, *group);
     layoutOutput(*state);
     wlr_output_schedule_frame(state->output->wlr());
@@ -2568,7 +2788,8 @@ namespace umbriel {
         continue;
       }
       for (const auto& card : std::views::reverse(state->cards)) {
-        if (card->tree == nullptr || !card->tree->node.enabled) {
+        // A fading pad card is visual only: it is gone before the overview accepts input.
+        if (card->transient || card->tree == nullptr || !card->tree->node.enabled) {
           continue;
         }
         wlr_box hit = card->box;
@@ -2581,6 +2802,32 @@ namespace umbriel {
       }
     }
     return nullptr;
+  }
+
+  bool Overview::transientAt(double lx, double ly) const {
+    for (const auto& state : m_outputs) {
+      PreviewMetrics metrics{};
+      if (!previewMetrics(*state, *m_server, zoom(), metrics)) {
+        continue;
+      }
+      for (const auto& card : state->cards) {
+        if (!card->transient || card->tree == nullptr || !card->tree->node.enabled || card->opacity <= 0.01F) {
+          continue;
+        }
+        // Only the part of the frame the card draws is the card's: the tree clip trims it to the preview, and the
+        // output clip trims it to the output.
+        wlr_box hit{};
+        const wlr_box preview = previewBox(metrics, state->rowScroll.current(), card->workspaceIndex);
+        if (!wlr_box_intersection(&hit, &card->frameBox, &preview)
+            || !wlr_box_intersection(&hit, &hit, &metrics.outputBox)) {
+          continue;
+        }
+        if (boxContains(hit, lx, ly)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   View* Overview::tabAt(double lx, double ly) {
@@ -2814,6 +3061,10 @@ namespace umbriel {
       return true;
     }
 
+    // A pad card is topmost wherever it still shows, so it owns the press even over a workspace card it covers.
+    if (transientAt(lx, ly)) {
+      return true;
+    }
     Card* card = cardAt(lx, ly);
     if (button == BTN_MIDDLE) {
       m_middlePressCard = card;
@@ -3783,7 +4034,8 @@ namespace umbriel {
       syncDesktopMirrors(state);
     }
     for (const auto& card : state.cards) {
-      if (card->view != nullptr && card->view->workspace() != nullptr) {
+      // A pad card follows the row its pad covered; its member's own workspace is not a strip row.
+      if (!card->transient && card->view != nullptr && card->view->workspace() != nullptr) {
         card->workspaceIndex = card->view->workspace()->index();
       }
     }
