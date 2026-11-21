@@ -2790,13 +2790,20 @@ namespace umbriel {
       }
     }
     // Dropping the snapshot unregisters it and destroys its scene tree.
+    m_reapedSnapshotsScratch.clear();
     std::erase_if(m_closeSnapshots, [this, output](const std::unique_ptr<CloseSnapshot>& snap) {
       if (!snap->animatesOn(output)) {
         return false;
       }
+      m_reapedSnapshotsScratch.push_back(snap->id());
       unregisterAnimatable(snap.get());
       return true;
     });
+    if (m_scratchpadManager != nullptr) {
+      for (const CloseSnapshotId id : m_reapedSnapshotsScratch) {
+        m_scratchpadManager->forgetCloseSnapshot(id);
+      }
+    }
 
     Output* fallback = nullptr;
     for (const auto& entry : m_outputs) {

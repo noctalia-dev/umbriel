@@ -94,6 +94,8 @@ namespace umbriel {
       }
     }
 
+    syncTrackedCloseSnapshots();
+
     if (m_hidingViews.empty()) {
       return movedBackdrop;
     }
@@ -109,6 +111,7 @@ namespace umbriel {
 
   bool ScratchpadManager::hasActiveAnimations() const {
     return !m_hidingViews.empty()
+        || !m_trackedCloseSnapshots.empty()
         || std::ranges::any_of(m_backdropFades, [](const auto& entry) { return entry.second.animating(); });
   }
 
@@ -118,7 +121,10 @@ namespace umbriel {
     if (fade != m_backdropFades.end() && fade->second.animating()) {
       return true;
     }
-    return std::ranges::any_of(m_hidingViews, [this, output](const View* view) { return outputFor(view) == output; });
+    return std::ranges::any_of(m_hidingViews, [this, output](const View* view) { return outputFor(view) == output; })
+        || std::ranges::any_of(m_trackedCloseSnapshots, [output](const TrackedCloseSnapshot& tracked) {
+             return tracked.output == output;
+           });
   }
 
   ScratchpadManager::Scratchpad* ScratchpadManager::findScratchpad(std::string_view name) {
@@ -681,6 +687,16 @@ namespace umbriel {
     if (output == nullptr || m_server == nullptr) {
       return;
     }
+    // A mid-fade wrapper is clipped to its capture output's box, which a layout change moves.
+    if (!m_trackedCloseSnapshots.empty()) {
+      wlr_box outputBox{};
+      wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &outputBox);
+      for (const TrackedCloseSnapshot& tracked : m_trackedCloseSnapshots) {
+        if (tracked.layer != nullptr && tracked.output == output) {
+          wlr_scene_tree_set_clip(tracked.layer, &outputBox);
+        }
+      }
+    }
     const wlr_box targetArea = usableArea(*m_server, output);
     if (targetArea.width <= 0 || targetArea.height <= 0) {
       return;
@@ -793,6 +809,52 @@ namespace umbriel {
     }
   }
 
+  wlr_scene_tree* ScratchpadManager::createCloseSnapshotLayer(Output* output) {
+    if (output == nullptr) {
+      return nullptr;
+    }
+    wlr_scene_tree* layer = wlr_scene_tree_create(m_root);
+    if (layer == nullptr) {
+      return nullptr;
+    }
+    // The snapshot keeps canvas coordinates, so the wrapper sits at the origin and clips in the same global space.
+    wlr_box box{};
+    wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &box);
+    wlr_scene_node_set_position(&layer->node, 0, 0);
+    wlr_scene_tree_set_clip(layer, &box);
+    return layer;
+  }
+
+  void ScratchpadManager::trackCloseSnapshot(CloseSnapshotId id, Output* output, wlr_scene_tree* layer) {
+    if (id == kInvalidCloseSnapshot) {
+      return;
+    }
+    m_trackedCloseSnapshots.push_back({.id = id, .output = output, .layer = layer});
+    syncTrackedCloseSnapshots();
+  }
+
+  void ScratchpadManager::syncTrackedCloseSnapshots() {
+    for (const TrackedCloseSnapshot& tracked : m_trackedCloseSnapshots) {
+      const auto fade = m_backdropFades.find(tracked.output);
+      // A pad with no fade entry is fully hidden.
+      m_server->setCloseSnapshotFade(
+          tracked.id, fade != m_backdropFades.end() ? static_cast<float>(fade->second.current()) : 0.0F
+      );
+    }
+  }
+
+  void ScratchpadManager::forgetCloseSnapshot(CloseSnapshotId id) {
+    std::erase_if(m_trackedCloseSnapshots, [id](const TrackedCloseSnapshot& tracked) {
+      if (tracked.id != id) {
+        return false;
+      }
+      if (tracked.layer != nullptr) {
+        wlr_scene_node_destroy(&tracked.layer->node);
+      }
+      return true;
+    });
+  }
+
   void ScratchpadManager::releaseOutput(Output* output) {
     std::vector<std::string> stranded;
     for (auto& [name, scratchpad] : m_scratchpads) {
@@ -833,6 +895,8 @@ namespace umbriel {
         fade.snap(visibleOn(output) ? 1.0 : 0.0);
         updateDimAndBlur(output);
       }
+      // The snap skips the tick that would have pushed the new value.
+      syncTrackedCloseSnapshots();
       for (const Entry& entry : m_entries) {
         if (entry.view == nullptr) {
           continue;

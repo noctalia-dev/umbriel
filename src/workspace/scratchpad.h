@@ -97,6 +97,13 @@ namespace umbriel {
     void reconcileConfig();
     // Return entries to the output they were parked on. Entries whose output is still gone park on `fallback`.
     size_t restoreDisplaced(Output* fallback);
+    // A member's close snapshot draws above the pad's dim and blur, in a layer of the pad tree. Nullptr leaves the
+    // capture where it is.
+    wlr_scene_tree* createCloseSnapshotLayer(Output* output);
+    // The manager drops the layer once the server reaps the snapshot.
+    void trackCloseSnapshot(CloseSnapshotId id, Output* output, wlr_scene_tree* layer);
+    // Drop a just-reaped snapshot's wrapper layer, called from the reap itself.
+    void forgetCloseSnapshot(CloseSnapshotId id);
 
   private:
     struct PendingSpawn {
@@ -167,6 +174,8 @@ namespace umbriel {
     bool restoreView(View* view, Output* fallback, bool focus, Workspace* target = nullptr);
     // Retarget the backdrop dim/blur fade for `output` and refresh its scene nodes.
     void retargetBackdrop(Output* output, bool visible, bool animateTransition = true);
+    // Push each tracked snapshot's current backdrop fade.
+    void syncTrackedCloseSnapshots();
     wlr_scene_rect* dimRectFor(Output* output);
     wlr_scene_blur* blurNodeFor(Output* output);
     void updateDimAndBlur(Output* output);
@@ -177,6 +186,12 @@ namespace umbriel {
     std::vector<Entry> m_entries;
     // Views mid fade-out on hide, still enabled until tickAnimations disables the node once the fade completes.
     std::vector<View*> m_hidingViews;
+    struct TrackedCloseSnapshot {
+      CloseSnapshotId id = kInvalidCloseSnapshot;
+      Output* output = nullptr;
+      wlr_scene_tree* layer = nullptr;
+    };
+    std::vector<TrackedCloseSnapshot> m_trackedCloseSnapshots;
     std::unordered_map<Output*, wlr_scene_rect*> m_dimRects;
     std::unordered_map<Output*, wlr_scene_blur*> m_blurNodes;
     std::unordered_map<Output*, AnimatedValue> m_backdropFades;
