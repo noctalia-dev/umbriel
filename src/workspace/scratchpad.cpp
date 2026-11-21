@@ -500,6 +500,27 @@ namespace umbriel {
       }
     }
     updateDimAndBlur(output);
+    updateStacking();
+  }
+
+  void ScratchpadManager::updateStacking() {
+    const auto overFullscreen = [this](const auto& entry) {
+      const auto& [name, scratchpad] = entry;
+      if (!scratchpad.visible || scratchpad.output == nullptr) {
+        return false;
+      }
+      return scratchpad.output->fullscreenAboveTopLayer() || std::ranges::any_of(m_entries, [&](const Entry& member) {
+               return member.scratchpad == name
+                   && member.view != nullptr
+                   && (member.view->scheduledFullscreen() || member.view->currentFullscreen());
+             });
+    };
+    // Anchor to the tree below, so a drag tree that View::enterDragPresentation stacks above the pad stays there.
+    if (std::ranges::any_of(m_scratchpads, overFullscreen)) {
+      wlr_scene_node_place_above(&m_root->node, &m_server->fullscreenTree()->node);
+    } else {
+      wlr_scene_node_place_above(&m_root->node, &m_server->xdgTree()->node);
+    }
   }
 
   void ScratchpadManager::moveScratchpad(
