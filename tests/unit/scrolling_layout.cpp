@@ -1634,6 +1634,60 @@ UMBRIEL_TEST(arrangeHonorsClientMinHeight) {
   CHECK(fixture.layout.targetBox(stub(1)).height >= 600);
 }
 
+UMBRIEL_TEST(rowsJoiningAFullHeightRowFitTheColumn) {
+  Fixture fixture;
+  fixture.addColumns(5);
+  fixture.layout.setConstraints([](const View*) { return LayoutConstraints{.minHeight = 120}; });
+  CHECK(fixture.layout.consume(stub(1), -1));
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.setHeightFraction(stub(0), 1.0));
+  for (int id = 2; id < 5; ++id) {
+    CHECK(fixture.layout.consume(stub(id), -1));
+    fixture.layout.arrange(kUsable);
+  }
+
+  for (int id = 0; id < 5; ++id) {
+    const wlr_box box = fixture.layout.targetBox(stub(id));
+    CHECK(box.height >= 120);
+    CHECK(box.y + box.height <= kUsable.height - fixture.config.edgePad);
+  }
+}
+
+UMBRIEL_TEST(aRowAtItsMinimumDoesNotStopAnotherFromGrowing) {
+  Fixture fixture;
+  fixture.addColumns(3);
+  fixture.layout.setConstraints([](const View*) { return LayoutConstraints{.minHeight = 100}; });
+  CHECK(fixture.layout.consume(stub(1), -1));
+  CHECK(fixture.layout.consume(stub(2), -1));
+  fixture.layout.arrange(kUsable);
+  CHECK(fixture.layout.setHeightFraction(stub(0), 0.0));
+  fixture.layout.arrange(kUsable);
+  const int topHeight = fixture.layout.targetBox(stub(0)).height;
+  const int bottomHeight = fixture.layout.targetBox(stub(2)).height;
+
+  CHECK(fixture.layout.setHeightFraction(stub(2), fixture.layout.heightFraction(stub(2)) + 0.1));
+  fixture.layout.arrange(kUsable);
+
+  CHECK_EQ(topHeight, 100);
+  CHECK_EQ(fixture.layout.targetBox(stub(0)).height, topHeight);
+  CHECK(fixture.layout.targetBox(stub(2)).height > bottomHeight);
+}
+
+UMBRIEL_TEST(theLastRowTakesTheSpaceACappedRowLeaves) {
+  Fixture fixture;
+  fixture.addColumns(3);
+  fixture.layout.setConstraints([](const View* view) {
+    return LayoutConstraints{.maxHeight = view == stub(1) ? 100 : 0};
+  });
+  CHECK(fixture.layout.consume(stub(1), -1));
+  CHECK(fixture.layout.consume(stub(2), -1));
+  fixture.layout.arrange(kUsable);
+
+  const wlr_box last = fixture.layout.targetBox(stub(2));
+  CHECK_EQ(fixture.layout.targetBox(stub(1)).height, 100);
+  CHECK_EQ(last.y + last.height, kUsable.height - fixture.config.edgePad);
+}
+
 UMBRIEL_TEST(targetBoxOfAnUnknownViewIsEmpty) {
   Fixture fixture;
   fixture.addColumns(1);
