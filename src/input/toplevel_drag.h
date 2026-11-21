@@ -23,6 +23,7 @@ namespace umbriel {
     void start(wlr_drag* drag);
     void finish();
     void dropWithoutTarget(uint32_t button);
+    bool active() const { return m_active != nullptr; }
     bool rejectSelection(wlr_data_source* source);
     bool attached(const wlr_xdg_toplevel* toplevel) const;
     void mapped(View* view, bool tileOnDrop);

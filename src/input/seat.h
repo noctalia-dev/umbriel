@@ -11,6 +11,7 @@ namespace umbriel {
 
   class Server;
   class ToplevelDragManager;
+  class View;
 
   class Seat {
   public:
@@ -23,6 +24,11 @@ namespace umbriel {
     wlr_seat* wlr() const { return m_seat; }
 
     ToplevelDragManager& toplevelDrags() const { return *m_toplevelDrags; }
+    View* takeDropTarget() {
+      View* target = m_dropTarget;
+      m_dropTarget = nullptr;
+      return target;
+    }
 
     void applyConfig();
     void updateCapabilities(bool hasKeyboard, bool hasTouch);
@@ -74,6 +80,7 @@ namespace umbriel {
     wl_listener m_dragDrop{};
     wl_listener m_dragModifierClientDestroy{};
     wlr_seat_client* m_dragModifierClient = nullptr;
+    View* m_dropTarget = nullptr;
   };
 
 } // namespace umbriel
