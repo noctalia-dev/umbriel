@@ -1,12 +1,13 @@
 #define SOURCE % d
 #define EFFECTS % d
 #define SAMPLE_CLAMP % d
+#define DOWNSAMPLE % d
 
 #define SOURCE_TEXTURE_RGBA 1
 #define SOURCE_TEXTURE_RGBX 2
 #define SOURCE_TEXTURE_EXTERNAL 3
 
-#if !defined(SOURCE) || !defined(EFFECTS) || !defined(SAMPLE_CLAMP)
+#if !defined(SOURCE) || !defined(EFFECTS) || !defined(SAMPLE_CLAMP) || !defined(DOWNSAMPLE)
 #error "Missing shader preamble"
 #endif
 
@@ -74,15 +75,32 @@ uniform float discard_transparent;
 // every other draw keeps the exact fetch drivers already handle well.
 uniform vec4 sample_bounds;
 #define SAMPLE_UV clamp(v_texcoord, sample_bounds.xy, sample_bounds.zw)
+#define SAMPLE_AT(uv) clamp((uv), sample_bounds.xy, sample_bounds.zw)
 #else
 #define SAMPLE_UV v_texcoord
+#define SAMPLE_AT(uv) (uv)
 #endif
 
-vec4 sample_texture() {
+#if DOWNSAMPLE
+// Area (box) average for a minified source. Along each axis independently, up
+// to 4:1 every texel the fragment's footprint touches is fetched at its center
+// and weighted by the area it covers (box_ratio texels per pixel, at least
+// one). Above 4:1 on an axis, `taps` bilinear samples at ratio/taps texel steps
+// tile that axis instead, which bounds the cost of thumbnails.
+uniform vec2 box_ratio;
+uniform vec2 box_texture_size;
+uniform vec2 taps;
+uniform vec2 tap_step;
+// The curve a passthrough pass's content is in (0 when the pass converts). A passthrough draw converts nothing, so
+// `source_tf` says the pass is passthrough and `box_tf` says whether its content is encoded or already linear.
+uniform int box_tf;
+#endif
+
+vec4 sample_texel(vec2 uv) {
 #if SOURCE == SOURCE_TEXTURE_RGBA || SOURCE == SOURCE_TEXTURE_EXTERNAL
-  return texture2D(tex, SAMPLE_UV);
+  return texture2D(tex, SAMPLE_AT(uv));
 #elif SOURCE == SOURCE_TEXTURE_RGBX
-  return vec4(texture2D(tex, SAMPLE_UV).rgb, 1.0);
+  return vec4(texture2D(tex, SAMPLE_AT(uv)).rgb, 1.0);
 #endif
 }
 
@@ -154,11 +172,9 @@ vec3 hdr_to_sdr(vec3 color) {
   return color * (mapped_peak / peak);
 }
 
-vec4 convert_color(vec4 color) {
-  if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
-    return color;
-  }
-
+// Premultiplied source color to premultiplied linear light, before any
+// luminance, primaries or target encoding is applied.
+vec4 decode_color(vec4 color) {
   float color_alpha = color.a;
   vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
   // Extended-linear negative channels carry colors outside the source gamut.
@@ -181,6 +197,14 @@ vec4 convert_color(vec4 color) {
     rgb = bt1886_color_to_linear(rgb);
   }
 
+  return vec4(rgb * color_alpha, color_alpha);
+}
+
+// Premultiplied linear light from decode_color() to the pass's target.
+vec4 encode_color(vec4 color) {
+  float color_alpha = color.a;
+  vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
+
   rgb *= lum_multiplier;
   rgb = primaries_matrix * rgb;
   if (map_hdr_to_sdr) {
@@ -195,6 +219,113 @@ vec4 convert_color(vec4 color) {
   return vec4(rgb * color_alpha, color_alpha);
 }
 
+vec4 convert_color(vec4 color) {
+  if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
+    return color;
+  }
+  return encode_color(decode_color(color));
+}
+
+#if DOWNSAMPLE
+// The box averages in linear light, so a passthrough draw still needs a curve: its content is already in the pass's
+// own target space, which `box_tf` names. That space is only ever an SDR swapchain, which the compositor writes
+// sRGB-encoded, or extended linear, which is already linear and needs no curve (treating it as encoded
+// over-brightens every mixed pixel). The output's gamma 2.2 SDR transfer is not the swapchain curve, so it never
+// reaches a passthrough draw.
+vec4 passthrough_to_linear(vec4 color) {
+  float color_alpha = color.a;
+  vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
+  if (box_tf == TRANSFER_FUNCTION_SRGB) {
+    rgb = srgb_color_to_linear(max(rgb, vec3(0.0)));
+  }
+  return vec4(rgb * color_alpha, color_alpha);
+}
+
+vec4 linear_to_passthrough(vec4 color) {
+  float color_alpha = color.a;
+  vec3 rgb = color_alpha == 0.0 ? vec3(0.0) : color.rgb / color_alpha;
+  if (box_tf == TRANSFER_FUNCTION_SRGB) {
+    rgb = linear_color_to_srgb(max(rgb, vec3(0.0)));
+  }
+  return vec4(rgb * color_alpha, color_alpha);
+}
+
+vec4 sample_linear(vec2 uv) {
+  vec4 color = sample_texel(uv);
+  if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
+    return passthrough_to_linear(color);
+  }
+  return decode_color(color);
+}
+
+vec4 encode_linear(vec4 color) {
+  if (source_tf == TRANSFER_FUNCTION_PASSTHROUGH) {
+    return linear_to_passthrough(color);
+  }
+  return encode_color(color);
+}
+#endif
+
+#if DOWNSAMPLE
+// One axis of a footprint: up to 4:1 every texel center the axis touches, with
+// the weight of the area it covers; above that `taps` bilinear samples at
+// ratio/taps texel steps. `box_ratio` texels per pixel, at least one.
+void box_axis_sample(
+    int index, float ratio, float taps, float coord, float size, float step, out float uv, out float weight
+) {
+  if (ratio <= 4.0) {
+    float lo = coord * size - 0.5 * ratio;
+    float texel = floor(lo) + float(index);
+    weight = min(lo + ratio, texel + 1.0) - max(lo, texel);
+    uv = (texel + 0.5) / size;
+  } else {
+    weight = float(index) < taps ? 1.0 / taps : 0.0;
+    uv = coord + (float(index) + 0.5 - taps * 0.5) * step;
+  }
+}
+
+// Exact area average on every axis within 4:1: each texel is fetched at its
+// center, where the bilinear filter returns it unmixed, and decoded before it
+// is weighted, so encoded values are never blended and the result conserves
+// coverage at every ratio and phase. Above 4:1 on an axis the tap grid tiles
+// that axis instead, which bounds the cost of thumbnails. The axes dispatch
+// independently, so an anisotropic draw stays exact on the axis it can.
+vec4 sample_box() {
+  vec4 acc = vec4(0.0);
+  for (int y = 0; y < 5; y++) {
+    float uv_y, weight_y;
+    box_axis_sample(y, box_ratio.y, taps.y, v_texcoord.y, box_texture_size.y, tap_step.y, uv_y, weight_y);
+    if (weight_y <= 0.0) {
+      continue;
+    }
+    for (int x = 0; x < 5; x++) {
+      float uv_x, weight_x;
+      box_axis_sample(x, box_ratio.x, taps.x, v_texcoord.x, box_texture_size.x, tap_step.x, uv_x, weight_x);
+      if (weight_x <= 0.0) {
+        continue;
+      }
+      acc += (weight_x * weight_y) * sample_linear(vec2(uv_x, uv_y));
+    }
+  }
+  // A texel-path axis normalizes by the whole covered area, a tap-path axis by
+  // its unit sample weights.
+  float norm_x = box_ratio.x <= 4.0 ? box_ratio.x : 1.0;
+  float norm_y = box_ratio.y <= 4.0 ? box_ratio.y : 1.0;
+  return encode_linear(acc / (norm_x * norm_y));
+}
+#endif
+
+// Source color converted for the pass. Downsampling averages the box in linear
+// light: averaging encoded values darkens every partially covered pixel, which
+// thins light text on dark backgrounds and fattens dark text on light ones.
+vec4 sample_converted() {
+#if DOWNSAMPLE
+  return sample_box();
+#else
+  return convert_color(sample_texel(SAMPLE_UV));
+#endif
+}
+
 #if EFFECTS
 float corner_alpha(
     vec2 size, vec2 position, bool is_cutout, float radius_tl, float radius_tr, float radius_bl, float radius_br
@@ -202,7 +333,7 @@ float corner_alpha(
 #endif
 
 void main() {
-  vec4 color = convert_color(sample_texture());
+  vec4 color = sample_converted();
 #if EFFECTS
   float quad_corner_alpha = corner_alpha(
       size - 0.5, position + 0.25, false, radius_top_left, radius_top_right, radius_bottom_left, radius_bottom_right
