@@ -695,6 +695,14 @@ namespace umbriel {
     m_dragSlotBound = false;
     // The snapshot holds the frozen deformation; the live sheet ends here.
     m_dragPhysics = DragPhysics{};
+    // Land the resting tree so a later remap cannot reappear unclipped under the
+    // drag tree. homeTree() is authoritative: the states above are already stripped.
+    const bool needsRehome = m_pendingHomeParent != nullptr || m_sceneTree->node.parent == m_server->dragTree();
+    m_releaseRehomeArmed = false;
+    m_pendingHomeParent = nullptr;
+    if (needsRehome) {
+      setSceneParent(homeTree());
+    }
     // The window slots leave with the snapshot; a remap binds them again.
     if (m_effects.needsSurface()) {
       wlr_surface* surface = rootSurface();

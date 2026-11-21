@@ -513,7 +513,11 @@ namespace umbriel {
     }
   }
 
-  void View::endDragPhysics() { m_dragPhysics.release(); }
+  void View::endDragPhysics() {
+    m_dragPhysics.release();
+    // The resting re-home's wait covers the reparents the release issues.
+    m_releaseRehomeArmed = true;
+  }
 
   void View::restoreHomePresentation() {
     // The drag derived its own presented size and crop; drop them so the
@@ -525,7 +529,6 @@ namespace umbriel {
       m_ssdFrame->setBlurLive(false);
     }
     setFadeAlpha(m_fadeAlpha);
-    wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
         scratchpad != nullptr && scratchpad->contains(this)) {
       scratchpad->restorePresentation(this);
@@ -1028,7 +1031,7 @@ namespace umbriel {
       applyBorderColors();
       active = active || m_borderColorAnim.animating() || m_outerBorderColorAnim.animating();
     }
-    if (m_dragPhysics.active() || m_dragPhysics.grabbed()) {
+    if (dragSheetDisplaced()) {
       if (effectRegistry().deformationShader() == nullptr) {
         // Without the program (physics turned off), the window stays rigid for the rest of the drag.
         m_dragPhysics = DragPhysics{};
@@ -1047,6 +1050,20 @@ namespace umbriel {
     if (openingFinished) {
       releaseOpeningPresentation(true);
       active = hasActiveAnimations() || active;
+    }
+    // The wait lands in the tick the spring settles (a later tick may never come),
+    // or earlier while the overview needs the home tree. A displaced view always
+    // animates on some output, so this backstop cannot starve.
+    m_releaseRehomeArmed = false;
+    if (m_pendingHomeParent != nullptr
+        && (!dragSheetDisplaced() || (m_server->overview() != nullptr && m_server->overview()->active()))) {
+      flushReleaseRehome();
+      if (m_workspace != nullptr && !m_pinned) {
+        m_workspace->restackFloatingViews();
+        if (m_mapped) {
+          m_workspace->syncViewPresentation(this);
+        }
+      }
     }
     syncAnimationEffects();
     if (!active && m_mapped && m_xsurface != nullptr) {
