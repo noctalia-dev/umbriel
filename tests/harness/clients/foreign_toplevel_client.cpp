@@ -23,6 +23,7 @@ namespace {
     std::vector<wl_output*> outputs;
     bool closed = false;
     bool minimized = false;
+    bool fullscreen = false;
   };
 
   struct State {
@@ -74,6 +75,8 @@ namespace {
     const std::span entries(static_cast<const uint32_t*>(states->data), states->size / sizeof(uint32_t));
     static_cast<Toplevel*>(data)->minimized =
         std::ranges::contains(entries, uint32_t{ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED});
+    static_cast<Toplevel*>(data)->fullscreen =
+        std::ranges::contains(entries, uint32_t{ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN});
   }
   void toplevelDone(void*, zwlr_foreign_toplevel_handle_v1*) {}
   void toplevelClosed(void* data, zwlr_foreign_toplevel_handle_v1*) { static_cast<Toplevel*>(data)->closed = true; }
@@ -139,8 +142,9 @@ int main(int argc, char** argv) {
           && command != "activate"
           && command != "minimize"
           && command != "unminimize"
-          && command != "state")) {
-    std::println(stderr, "usage: foreign-toplevel-client TITLE OUTPUT [activate|minimize|unminimize|state]");
+          && command != "state"
+          && command != "fullscreen")) {
+    std::println(stderr, "usage: foreign-toplevel-client TITLE OUTPUT [activate|minimize|unminimize|state|fullscreen]");
     return 2;
   }
   const std::string_view wantedTitle = argv[1];
@@ -201,6 +205,9 @@ int main(int argc, char** argv) {
   }
   if (reportMinimized && target != state.toplevels.end()) {
     std::println("minimized={}", (*target)->minimized ? 1 : 0);
+  }
+  if (command == "fullscreen" && target != state.toplevels.end()) {
+    std::println("fullscreen={}", (*target)->fullscreen ? 1 : 0);
   }
 
   for (const auto& toplevel : state.toplevels) {
