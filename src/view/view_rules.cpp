@@ -9,6 +9,7 @@
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/effect_registry.h"
+#include "scene/ssd_frame.h"
 #include "scene/surface_blur.h"
 #include "server/server.h"
 #include "view/size_hints.h"
@@ -719,6 +720,13 @@ namespace umbriel {
     if (m_titleBarButtons != rule.titleBarButtons) {
       m_titleBarButtons = rule.titleBarButtons;
       syncTitleBarButtons();
+    }
+    // syncSsdFrame runs before a reload applies the rules, so a change has to reach an existing frame here too.
+    if (m_titleBarColorSource != rule.titleBarColorSource) {
+      m_titleBarColorSource = rule.titleBarColorSource;
+      if (m_ssdFrame != nullptr) {
+        m_ssdFrame->setColorSource(m_titleBarColorSource);
+      }
     }
     // Tile spacing stays on the global border width, so a decoration change redraws this window without an arrange.
     const bool ringChanged = m_decoration.applyRule(rule);
