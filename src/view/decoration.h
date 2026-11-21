@@ -72,6 +72,7 @@ namespace umbriel {
     bool shadowPooled() const { return m_shadowPooled; }
     // Only a pooled container needs these; under the frame it inherits both.
     void setShadowPosition(int x, int y);
+    bool setShadowFractionalTransform(double x, double y, double scaleX, double scaleY);
     void setShadowEnabled(bool enabled);
     void updateShadow(int contentWidth, int contentHeight, int borderInset, int cornerRadius, int topExtension);
     void hideShadow();

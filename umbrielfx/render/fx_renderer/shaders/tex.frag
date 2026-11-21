@@ -65,13 +65,9 @@ uniform float discard_transparent;
 
 #if SAMPLE_CLAMP
 // Normalized texel range the fragment may sample: xy is the first sampled texel
-// center, zw the last. A cropped surface whose crop edge falls between texels
-// snaps its source box to whole texels for sharpness, which can leave the box
-// reaching one texel past the crop. Clamping here duplicates the last texel
-// inside the crop instead of pulling in whatever the client left outside it,
-// which for a client-side-decorated window is its transparent shadow margin.
-// The clamp is compiled only into the variants selected for such crops, so
-// every other draw keeps the exact fetch drivers already handle well.
+// center, zw the last. Source snapping and fractional filtering can reach past
+// an interior crop, including its integer edges. Clamp to the retained texel
+// centers so the client's transparent CSD margin cannot bleed into the content.
 uniform vec4 sample_bounds;
 #define SAMPLE_UV clamp(v_texcoord, sample_bounds.xy, sample_bounds.zw)
 #else

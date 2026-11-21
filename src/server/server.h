@@ -541,8 +541,11 @@ namespace umbriel {
         int topExtension = 0
     );
     // Place a snapshot's captured box at a canvas origin in output-root coordinates, or hide it while its workspace
-    // is not showing.
-    void presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible);
+    // is not showing. Fractional offsets adjust the frozen presentation relative to capture time.
+    void presentCloseSnapshot(
+        CloseSnapshotId id, int canvasX, int canvasY, bool visible, double fractionalOffsetX = 0.0,
+        double fractionalOffsetY = 0.0
+    );
     // False once the snapshot has been reaped.
     bool closeSnapshotAlive(CloseSnapshotId id) const;
     // End a held snapshot; it is reaped at the end of the current animation tick.
@@ -853,7 +856,7 @@ namespace umbriel {
       void release() { m_held = false; }
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
-      void present(int canvasX, int canvasY, bool visible);
+      void present(int canvasX, int canvasY, bool visible, double fractionalOffsetX, double fractionalOffsetY);
 
       AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
       bool tickAnimations(double nowMsec) override;
@@ -876,6 +879,11 @@ namespace umbriel {
       wlr_box m_captured{};
       int m_canvasX = 0;
       int m_canvasY = 0;
+      // Frozen node-local correction: x/y translation and width/height scale.
+      wlr_fbox m_capturedPresentation{0, 0, 1, 1};
+      wlr_fbox m_capturedShadowPresentation{0, 0, 1, 1};
+      double m_fractionalOffsetX = 0.0;
+      double m_fractionalOffsetY = 0.0;
       bool m_visible = true;
       // A snapshot under the output's background layer is part of the shared blur input until its final frame.
       bool m_blurBackground = false;

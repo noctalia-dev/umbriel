@@ -21,6 +21,7 @@ extern "C" {
 #include "view/view_internal.h"
 // clang-format off
 #include <cassert>
+#include <cmath>
 #include <ranges>
 #include <utility>
 #include <variant>
@@ -842,17 +843,53 @@ namespace umbriel {
         ? m_workspace->tileShadowLayer()
         : nullptr;
     m_decoration.poolShadow(m_sceneTree, pool, layoutX(), layoutY(), m_sceneTree->node.enabled);
+    syncFractionalPresentation();
   }
 
-  void View::setScenePosition(int x, int y) {
+  void View::setScenePosition(double x, double y) {
     // An attached dialog's frame offset belongs to its parent's layoutAttachments().
     if (attached()) {
       return;
     }
-    wlr_scene_node_set_position(&m_sceneTree->node, x, y);
-    m_decoration.setShadowPosition(x, y);
+    const int ix = static_cast<int>(std::lround(x));
+    const int iy = static_cast<int>(std::lround(y));
+    m_fractionalX = x - ix;
+    m_fractionalY = y - iy;
+    wlr_scene_node_set_position(&m_sceneTree->node, ix, iy);
+    m_decoration.setShadowPosition(ix, iy);
+    syncFractionalPresentation();
     if (m_xsurface != nullptr) {
       syncXwaylandConfigure();
+    }
+  }
+
+  wlr_fbox View::fractionalPresentedBox() const {
+    wlr_fbox box{};
+    wlr_scene_node_get_presentation_box(&m_sceneTree->node, &m_presentedBox, &box);
+    return box;
+  }
+
+  void View::syncFractionalPresentation() {
+    double x = attached() ? 0.0 : m_fractionalX;
+    double y = attached() ? 0.0 : m_fractionalY;
+    const Cursor* cursor = m_server->cursor();
+    if (m_tiled && m_workspace != nullptr && (cursor == nullptr || !cursor->isDraggingView(this))) {
+      if (const ScrollingLayout* scrolling = m_workspace->scrollingLayout();
+          scrolling != nullptr && scrolling->columnOf(this) >= 0) {
+        const double remainder = std::round(scrolling->scroll()) - scrolling->scroll();
+        (m_workspace->scrollingVertical() ? y : x) += remainder;
+      }
+    }
+    const bool fractionalSize = !presentsCommittedSize();
+    const double sx = fractionalSize && m_presentedBox.width > 0 && m_presentation.width() == m_presentedBox.width
+        ? std::max(1.0, m_presentation.fractionalWidth()) / m_presentedBox.width
+        : 1.0;
+    const double sy = fractionalSize && m_presentedBox.height > 0 && m_presentation.height() == m_presentedBox.height
+        ? std::max(1.0, m_presentation.fractionalHeight()) / m_presentedBox.height
+        : 1.0;
+    if (!wlr_scene_node_set_fractional_transform(&m_sceneTree->node, x, y, sx, sy)
+        || !m_decoration.setShadowFractionalTransform(x, y, sx, sy)) {
+      kLog.error("failed to store fractional presentation");
     }
   }
 

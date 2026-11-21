@@ -785,6 +785,9 @@ namespace umbriel {
     m_current = value;
     m_velocity = 0.0;
     m_initialVelocity = 0.0;
+    m_pixelAlignedFrom.reset();
+    m_lastPixelAlignedCurrent.reset();
+    m_pixelAlignmentTargetPixels.reset();
     m_progress = 1.0;
     m_startMsec = 0;
     m_animating = false;
@@ -805,6 +808,7 @@ namespace umbriel {
     const AnimationTransition transition = beginAnimationTransition();
     m_transitionId = transition.id;
     m_shaderSeed = transition.seed;
+    m_pixelAlignedFrom = m_animating ? m_lastPixelAlignedCurrent : std::nullopt;
     m_from = m_current;
     m_target = to;
     m_durationMsec = curve.easing == Easing::Spring ? static_cast<uint64_t>(springDurationMs(curve.spring))
@@ -840,6 +844,7 @@ namespace umbriel {
     const AnimationTransition transition = beginAnimationTransition();
     m_transitionId = transition.id;
     m_shaderSeed = transition.seed;
+    m_pixelAlignedFrom = m_animating ? m_lastPixelAlignedCurrent : std::nullopt;
     m_from = m_current;
     m_target = to;
     m_curve = AnimationCurve{.easing = Easing::Spring, .spring = spring};
@@ -869,10 +874,99 @@ namespace umbriel {
     return true;
   }
 
+  double AnimatedValue::pixelAlignedCurrent(
+      double pixelsPerUnit, double origin, std::optional<double> exactTargetPixels,
+      std::optional<double> exactFromPixels
+  ) const {
+    if (!m_animating || !std::isfinite(pixelsPerUnit) || pixelsPerUnit <= 0.0 || !std::isfinite(origin)) {
+      m_lastPixelAlignedCurrent.reset();
+      return m_current;
+    }
+    const double fromPixels = m_pixelAlignedFrom
+        ? (*m_pixelAlignedFrom - origin) * pixelsPerUnit
+        : exactFromPixels.value_or(std::round((m_from - origin) * pixelsPerUnit));
+    const double targetPixels = exactTargetPixels.value_or(std::round((m_target - origin) * pixelsPerUnit));
+    if (!std::isfinite(fromPixels) || !std::isfinite(targetPixels)) {
+      m_lastPixelAlignedCurrent.reset();
+      return m_current;
+    }
+    const double span = m_target - m_from;
+    const double alignedTarget = origin + targetPixels / pixelsPerUnit;
+    double presented;
+    if (span == 0.0) {
+      // A same-target release can carry velocity or a distinct presented starting edge.
+      if (m_pixelAlignedFrom && m_physics) {
+        const double elapsed = m_startMsec == 0.0 ? 0.0 : std::max(0.0, m_lastTickMsec - m_startMsec);
+        presented = solveSpringPhysics(
+            *m_pixelAlignedFrom, alignedTarget, m_initialVelocity, elapsed / 1000.0, m_curve.spring, nullptr
+        );
+      } else if (!m_physics) {
+        presented = std::lerp(origin + fromPixels / pixelsPerUnit, alignedTarget, applyEasing(m_curve, m_progress));
+      } else {
+        presented = m_current - m_target + alignedTarget;
+      }
+    } else {
+      presented = origin + std::lerp(fromPixels, targetPixels, (m_current - m_from) / span) / pixelsPerUnit;
+    }
+    m_lastPixelAlignedCurrent = presented;
+    m_pixelAlignmentScale = pixelsPerUnit;
+    m_pixelAlignmentOrigin = origin;
+    m_pixelAlignmentTargetPixels = exactTargetPixels;
+    return presented;
+  }
+
+  bool AnimatedValue::finishPixelAlignedSpringTail(
+      double pixelsPerUnit, double origin, std::optional<double> exactTargetPixels,
+      std::optional<double> exactFromPixels, double roundingMarginPixels
+  ) {
+    if (!m_animating
+        || !m_physics
+        || !std::isfinite(pixelsPerUnit)
+        || pixelsPerUnit <= 0.0
+        || !std::isfinite(origin)
+        || !std::isfinite(roundingMarginPixels)
+        || roundingMarginPixels <= 0.0) {
+      return false;
+    }
+    const double span = m_target - m_from;
+    const double fromPixels = m_pixelAlignedFrom
+        ? (*m_pixelAlignedFrom - origin) * pixelsPerUnit
+        : exactFromPixels.value_or(std::round((m_from - origin) * pixelsPerUnit));
+    const double targetPixels = exactTargetPixels.value_or(std::round((m_target - origin) * pixelsPerUnit));
+    if (!std::isfinite(fromPixels) || !std::isfinite(targetPixels)) {
+      return false;
+    }
+    const double presentedScale = span == 0.0 ? pixelsPerUnit : std::abs((targetPixels - fromPixels) / span);
+    double remaining = springDisplacementBound(m_current, m_target, m_velocity, m_curve.spring) * presentedScale;
+    if (span == 0.0 && m_pixelAlignedFrom) {
+      const double alignedTarget = origin + targetPixels / pixelsPerUnit;
+      const double elapsed = m_startMsec == 0.0 ? 0.0 : std::max(0.0, m_lastTickMsec - m_startMsec);
+      double velocity = 0.0;
+      const double presented = solveSpringPhysics(
+          *m_pixelAlignedFrom, alignedTarget, m_initialVelocity, elapsed / 1000.0, m_curve.spring, &velocity
+      );
+      remaining = springDisplacementBound(presented, alignedTarget, velocity, m_curve.spring) * pixelsPerUnit;
+    }
+    // Aligned endpoints own a whole half-pixel rounding cell even when the logical target does not.
+    // A composed edge may reserve part of that cell for another animation.
+    if (!std::isfinite(remaining) || remaining >= std::min(0.5, roundingMarginPixels)) {
+      return false;
+    }
+    snap(m_target);
+    return true;
+  }
+
   void AnimatedValue::translate(double delta) {
     m_from += delta;
     m_target += delta;
     m_current += delta;
+    if (m_pixelAlignedFrom) {
+      *m_pixelAlignedFrom += delta;
+    }
+    if (m_lastPixelAlignedCurrent) {
+      *m_lastPixelAlignedCurrent += delta;
+    }
+    m_pixelAlignmentOrigin += delta;
   }
 
   double AnimatedValue::progress() const { return m_progress; }
@@ -886,6 +980,7 @@ namespace umbriel {
     }
 
     const double elapsed = std::max(0.0, nowMsec - m_startMsec);
+    m_lastTickMsec = nowMsec;
 
     if (m_physics) {
       double velocity = 0.0;
@@ -894,6 +989,20 @@ namespace umbriel {
       const double span = m_target - m_from;
       m_progress = span != 0.0 ? std::clamp((m_current - m_from) / span, 0.0, 1.0) : 1.0;
       if (m_current == m_target && velocity == 0.0) {
+        if (span == 0.0 && m_pixelAlignedFrom) {
+          const double alignedTarget = m_pixelAlignmentOrigin
+              + m_pixelAlignmentTargetPixels.value_or(
+                    std::round((m_target - m_pixelAlignmentOrigin) * m_pixelAlignmentScale)
+                ) / m_pixelAlignmentScale;
+          double presentedVelocity = 0.0;
+          const double presented = solveSpringPhysics(
+              *m_pixelAlignedFrom, alignedTarget, m_initialVelocity, elapsed / 1000.0, m_curve.spring,
+              &presentedVelocity
+          );
+          if (presented != alignedTarget || presentedVelocity != 0.0) {
+            return true;
+          }
+        }
         m_progress = 1.0;
         m_animating = false;
       }

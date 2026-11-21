@@ -123,6 +123,11 @@ namespace umbriel {
       return {};
     }
     wlr_scene_node_set_position(&tree->node, source->x, source->y);
+    // The sibling shadow must retain the snapshot frame's effective presentation.
+    if (!wlr_scene_node_copy_fractional_transform_for_snapshot(&tree->node, source)) {
+      wlr_scene_node_destroy(&tree->node);
+      return {};
+    }
     if (inPool) {
       wlr_scene_node_lower_to_bottom(&tree->node);
     } else {
