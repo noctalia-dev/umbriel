@@ -614,6 +614,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   app.focusOnActivate = false;
   app.vrr = VrrMode::Disabled;
   app.allowTearing = false;
+  app.supersample = false;
   app.allowShortcutsInhibit = false;
   app.hdr = umbriel::HdrMode::Off;
   app.defaultPosition = umbriel::WindowPosition{
@@ -629,6 +630,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   title.focusOnActivate = true;
   title.vrr = VrrMode::Always;
   title.allowTearing = true;
+  title.supersample = true;
   title.allowShortcutsInhibit = true;
   title.hdr = umbriel::HdrMode::On;
   title.defaultPinned = false;
@@ -657,6 +659,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   CHECK(resolved.focusOnActivate && *resolved.focusOnActivate);
   CHECK(resolved.vrr == VrrMode::Always);
   CHECK(resolved.allowTearing && *resolved.allowTearing);
+  CHECK(resolved.supersample && *resolved.supersample);
   CHECK(resolved.allowShortcutsInhibit && *resolved.allowShortcutsInhibit);
   CHECK(resolved.hdr == umbriel::HdrMode::On);
 
@@ -666,6 +669,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   CHECK(appOnly.defaultScrollingColumnOrder && *appOnly.defaultScrollingColumnOrder == 20);
   CHECK(appOnly.vrr == VrrMode::Disabled);
   CHECK(appOnly.allowTearing && !*appOnly.allowTearing);
+  CHECK(appOnly.supersample && !*appOnly.supersample);
   CHECK(appOnly.allowShortcutsInhibit && !*appOnly.allowShortcutsInhibit);
   CHECK(appOnly.hdr == umbriel::HdrMode::Off);
 
@@ -1300,6 +1304,27 @@ UMBRIEL_TEST(layerRulesMergeMatchingFieldsInOrder) {
   const auto blankNamespace = umbriel::resolveLayerRules(config, "", umbriel::LayerShellLayer::Top, 0);
   CHECK(blankNamespace.blur && *blankNamespace.blur);
   CHECK(!umbriel::resolveLayerRules(config, std::nullopt, umbriel::LayerShellLayer::Top, 0).blur);
+}
+
+UMBRIEL_TEST(layerRulesResolveSupersample) {
+  Config config;
+  CHECK(!umbriel::resolveLayerRules(config, "overlay", umbriel::LayerShellLayer::Overlay, 0).supersample);
+
+  LayerRule optOut;
+  optOut.namespacePatterns.add("^overlay$");
+  optOut.supersample = false;
+  config.layerRules.push_back(std::move(optOut));
+
+  const auto resolved = umbriel::resolveLayerRules(config, "overlay", umbriel::LayerShellLayer::Overlay, 0);
+  CHECK(resolved.supersample && !*resolved.supersample);
+  CHECK(!umbriel::resolveLayerRules(config, "panel", umbriel::LayerShellLayer::Top, 0).supersample);
+
+  LayerRule optIn;
+  optIn.namespacePatterns.add("^overlay$");
+  optIn.supersample = true;
+  config.layerRules.push_back(std::move(optIn));
+  const auto later = umbriel::resolveLayerRules(config, "overlay", umbriel::LayerShellLayer::Overlay, 0);
+  CHECK(later.supersample && *later.supersample);
 }
 
 UMBRIEL_TEST(layerRulesAcceptSeveralNamespacePatterns) {

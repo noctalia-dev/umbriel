@@ -368,6 +368,9 @@ namespace umbriel {
       if (rule.allowTearing) {
         resolved.allowTearing = rule.allowTearing;
       }
+      if (rule.supersample) {
+        resolved.supersample = rule.supersample;
+      }
       if (rule.hdr) {
         resolved.hdr = rule.hdr;
       }
@@ -454,6 +457,9 @@ namespace umbriel {
       }
       if (rule.optimized) {
         resolved.optimized = rule.optimized;
+      }
+      if (rule.supersample) {
+        resolved.supersample = rule.supersample;
       }
     }
     return resolved;
