@@ -198,6 +198,12 @@ void fx_effect_shader_set_shape_preserving(struct fx_effect_shader* shader, bool
   }
 }
 
+void fx_effect_shader_set_bounded(struct fx_effect_shader* shader, bool bounded) {
+  if (shader != NULL) {
+    shader->bounded = bounded;
+  }
+}
+
 enum fx_effect_kind fx_effect_shader_kind(const struct fx_effect_shader* shader) { return shader->kind; }
 
 void fx_effect_shader_unref(struct fx_effect_shader* shader) {

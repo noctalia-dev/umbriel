@@ -44,6 +44,9 @@ struct fx_gles_render_pass {
   // Set while an add_* call renders into an offscreen buffer instead of the
   // pass target, so it must not extend updated_region.
   bool suppress_updated;
+  // Set while drawing to a scratch target or stencil mask so capture-cleanliness
+  // tracking does not treat internal passes as visible draws in the active capture.
+  bool suppress_capture_draws;
   // Reject the frame instead of displaying a partially applied animation.
   bool require_animation_success;
   bool animation_failed;
@@ -64,6 +67,7 @@ struct fx_gles_render_pass {
   struct fx_framebuffer* animation_parents[FX_ANIMATION_DEPTH];
   struct wlr_texture* animation_textures[FX_ANIMATION_DEPTH];
   bool animation_suppress[FX_ANIMATION_DEPTH];
+  bool animation_has_draws[FX_ANIMATION_DEPTH];
   struct wlr_box animation_boxes[FX_ANIMATION_DEPTH];
   // One past the capture index of the open group capture, or 0. Captures
   // inside it allocate from the offscreen group set.

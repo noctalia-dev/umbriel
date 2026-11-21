@@ -38,6 +38,7 @@ struct fx_effect_shader {
   GLint progress, linear_progress, direction, random_seed;
   GLint size, scale, expand;
   bool shape_preserving;
+  bool bounded;
   unsigned uniform_count;
   struct fx_effect_uniform uniforms[FX_EFFECT_UNIFORM_CACHE];
 };

@@ -4,6 +4,7 @@
 #include "render/fx_renderer/effect.h"
 #include "render_fixture.h"
 #include "umbrielfx/render/effect.h"
+#include "umbrielfx/render/fx_renderer/fx_offscreen_buffers.h"
 #include "umbrielfx/render/pass.h"
 #include "umbrielfx/types/scene_capture.h"
 
@@ -1052,6 +1053,279 @@ static bool test_offscreen_margin(struct fixture* fixture) {
   }
   fx_effect_shader_unref(border);
   fx_effect_shader_unref(drag);
+  return ok;
+}
+
+// A node with FX_SLOT_DRAG whose undeformed bounds fit inside the output must
+// not enter a group capture even when its drag expand crosses an output edge.
+static bool test_drag_onscreen_capture(struct fixture* fixture) {
+  struct fx_effect_shader* drag = fx_effect_shader_create(
+      fixture->renderer, FX_EFFECT_ANIMATION, "vec4 animation(vec2 uv) { return umbriel_sample(uv); }", "drag-onscreen"
+  );
+  bool ok = check(drag != NULL, "drag program compiles");
+  if (!ok) {
+    return false;
+  }
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+  const float white[4] = {1, 1, 1, 1};
+  struct wlr_scene_rect* rect = wlr_scene_rect_create(&scene->tree, 10, 10, white);
+  wlr_scene_node_set_position(&rect->node, 3, 3);
+  struct fx_animation_parameters parameters = {
+      .progress = 1, .linear_progress = 1, .direction = 1, .transition_id = 1, .expand = 8
+  };
+  wlr_scene_node_set_animation(&rect->node, FX_SLOT_DRAG, drag, &parameters);
+
+  struct wlr_output_state state;
+  struct wlr_buffer* rendered = fixture_render_scene(fixture, scene_output, &state);
+  ok &= check(rendered != NULL, "onscreen drag scene renders");
+  if (rendered != NULL) {
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+  struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_try_get(fixture->output);
+  ok &= check(fbos != NULL, "offscreen buffers exist");
+  if (fbos != NULL) {
+    ok &= check(
+        fbos->group.animation_buffers[0] == NULL, "onscreen FX_SLOT_DRAG node does not allocate group capture buffer"
+    );
+  }
+
+  // Moving the node partially offscreen triggers the group capture so clipped pixels survive.
+  wlr_scene_node_set_position(&rect->node, -2, 3);
+  rendered = fixture_render_scene(fixture, scene_output, &state);
+  ok &= check(rendered != NULL, "offscreen drag scene renders");
+  if (rendered != NULL) {
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+  if (fbos != NULL) {
+    ok &= check(
+        fbos->group.animation_buffers[0] != NULL, "partially offscreen FX_SLOT_DRAG node uses group capture buffer"
+    );
+  }
+
+  wlr_scene_node_destroy(&scene->tree.node);
+  fx_effect_shader_unref(drag);
+  return ok;
+}
+
+// A blur node at animation depth 1 with no prior draws in its capture reuses
+// the parent buffer directly without allocating or clearing animation_backdrop.
+// Adding a lower sibling inside the capture falls back to compositing both.
+static bool test_animation_backdrop_fast_path(struct fixture* fixture) {
+  struct fx_effect_shader* identity = fx_effect_shader_create(
+      fixture->renderer, FX_EFFECT_ANIMATION, "vec4 animation(vec2 uv) { return umbriel_sample(uv); }",
+      "backdrop-identity"
+  );
+  bool ok = check(identity != NULL, "identity animation program compiles");
+  if (!ok) {
+    return false;
+  }
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+  wlr_scene_set_blur_data(scene, 1, 1, 0, 1, 1, 1);
+
+  const float blue[4] = {0, 0, 1, 1}, green[4] = {0, 1, 0, 1}, red[4] = {1, 0, 0, 1};
+  wlr_scene_rect_create(&scene->tree, TEST_WIDTH / 2, TEST_HEIGHT, blue);
+  struct wlr_scene_rect* right = wlr_scene_rect_create(&scene->tree, TEST_WIDTH / 2, TEST_HEIGHT, green);
+  wlr_scene_node_set_position(&right->node, TEST_WIDTH / 2, 0);
+
+  struct wlr_scene_tree* animated = wlr_scene_tree_create(&scene->tree);
+  struct wlr_scene_blur* blur = wlr_scene_blur_create(animated, 10, 10);
+  wlr_scene_node_set_position(&blur->node, 3, 3);
+  wlr_scene_blur_set_alpha(blur, 1.0F);
+  struct fx_animation_parameters parameters = {.progress = 1, .linear_progress = 1, .direction = 1, .transition_id = 1};
+  wlr_scene_node_set_animation(&animated->node, FX_SLOT_WINDOWS_IN, identity, &parameters);
+
+  struct wlr_output_state state;
+  struct wlr_buffer* rendered = fixture_render_scene(fixture, scene_output, &state);
+  ok &= check(rendered != NULL, "clean animated blur scene renders");
+  if (rendered != NULL) {
+    uint8_t seam[4];
+    if (fixture_read_pixel(fixture, rendered, TEST_WIDTH / 2, 8, seam)) {
+      ok &= check(seam[0] > 20 && seam[1] > 20, "clean capture blurs parent scene background across seam");
+    } else {
+      ok = false;
+    }
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+
+  struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_try_get(fixture->output);
+  ok &= check(fbos != NULL, "offscreen buffers exist");
+  if (fbos != NULL) {
+    ok &= check(fbos->output.animation_backdrop == NULL, "clean depth-1 capture skips animation_backdrop allocation");
+  }
+
+  // A sibling rect rendered below the blur inside the capture must appear in the blur sample.
+  struct wlr_scene_rect* sibling = wlr_scene_rect_create(animated, 6, 10, red);
+  wlr_scene_node_set_position(&sibling->node, 3, 3);
+  wlr_scene_node_lower_to_bottom(&sibling->node);
+  rendered = fixture_render_scene(fixture, scene_output, &state);
+  ok &= check(rendered != NULL, "dirty animated blur scene renders");
+  if (rendered != NULL) {
+    uint8_t over_sibling[4];
+    if (fixture_read_pixel(fixture, rendered, 5, 8, over_sibling)) {
+      ok &= check(over_sibling[2] > 100, "blur samples sibling rendered earlier inside the same capture");
+    } else {
+      ok = false;
+    }
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+  if (fbos != NULL) {
+    ok &= check(fbos->output.animation_backdrop != NULL, "dirty depth-1 capture composites animation_backdrop");
+  }
+
+  // Nested animation captures (depth >= 2) composite all outer capture layers.
+  struct wlr_scene_tree* nested = wlr_scene_tree_create(animated);
+  struct wlr_scene_blur* inner_blur = wlr_scene_blur_create(nested, 4, 4);
+  wlr_scene_node_set_position(&inner_blur->node, 4, 6);
+  wlr_scene_blur_set_alpha(inner_blur, 1.0F);
+  wlr_scene_node_set_animation(&nested->node, FX_SLOT_WINDOWS_OUT, identity, &parameters);
+  rendered = fixture_render_scene(fixture, scene_output, &state);
+  ok &= check(rendered != NULL, "nested animated blur scene renders");
+  if (rendered != NULL) {
+    uint8_t nested_px[4];
+    if (fixture_read_pixel(fixture, rendered, 5, 8, nested_px)) {
+      ok &= check(nested_px[2] > 100, "depth-2 capture blur composites enclosing capture sibling");
+    } else {
+      ok = false;
+    }
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+
+  // An offset group capture at depth 1 must composite animation_backdrop rather
+  // than aliasing the unshifted output parent buffer.
+  const struct wlr_drm_format* fmt = get_render_format(fixture, DRM_FORMAT_ARGB8888);
+  struct wlr_swapchain* cap_swapchain =
+      fmt != NULL ? wlr_swapchain_create(fixture->allocator, TEST_WIDTH, TEST_HEIGHT, fmt) : NULL;
+  struct wlr_buffer* cap_buf = cap_swapchain != NULL ? wlr_swapchain_acquire(cap_swapchain) : NULL;
+  if (check(cap_buf != NULL, "acquire buffer for group-captured blur")) {
+    struct wlr_render_pass* wlr_pass =
+        wlr_renderer_begin_buffer_pass(fixture->renderer, cap_buf, &(struct wlr_buffer_pass_options){0});
+    struct fx_gles_render_pass* fx_pass = wlr_pass != NULL ? fx_get_render_pass(wlr_pass) : NULL;
+    if (check(
+            fx_pass != NULL && fx_render_pass_init_offscreen_buffers(wlr_pass, fixture->output), "begin group blur pass"
+        )) {
+      wlr_render_pass_add_rect(
+          wlr_pass, &(struct wlr_render_rect_options){.box = {0, 0, TEST_WIDTH, TEST_HEIGHT}, .color = {0, 0, 0, 1}}
+      );
+      wlr_render_pass_add_rect(
+          wlr_pass, &(struct wlr_render_rect_options){.box = {8, 0, TEST_WIDTH - 8, TEST_HEIGHT}, .color = {0, 1, 0, 1}}
+      );
+      const struct wlr_box capture_box = {.x = 6, .y = 2, .width = 10, .height = 10};
+      if (check(fx_render_pass_begin_capture(fx_pass, &capture_box), "begin offset group capture")) {
+        const struct wlr_box local_box = {.x = 0, .y = 0, .width = 6, .height = 6};
+        pixman_region32_t local_clip;
+        pixman_region32_init_rect(&local_clip, 0, 0, 6, 6);
+        const float opacity = 1.0F;
+        struct blur_data blur_data = {.num_passes = 1, .radius = 1, .brightness = 1, .contrast = 1, .saturation = 1};
+        struct fx_render_blur_pass_options blur_opts = {
+            .tex_options =
+                {.base =
+                     {
+                         .dst_box = local_box,
+                         .clip = &local_clip,
+                         .transform = WL_OUTPUT_TRANSFORM_NORMAL,
+                         .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                         .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+                         .alpha = &opacity,
+                     },
+                 .clip_box = &local_box},
+            .blur_data = &blur_data,
+            .blur_strength = 1.0F,
+        };
+        fx_render_pass_add_blur(fx_pass, &blur_opts);
+        pixman_region32_fini(&local_clip);
+        pixman_region32_t end_clip;
+        pixman_region32_init_rect(&end_clip, 6, 2, 10, 10);
+        fx_render_pass_end_capture(fx_pass, &capture_box, &end_clip);
+        pixman_region32_fini(&end_clip);
+      }
+      wlr_render_pass_submit(wlr_pass);
+      uint8_t captured_seam[4];
+      if (fixture_read_pixel(fixture, cap_buf, 7, 4, captured_seam)) {
+        ok &= check(captured_seam[1] > 10, "group-captured blur samples parent at capture_box offset");
+      } else {
+        ok = false;
+      }
+    }
+    wlr_buffer_unlock(cap_buf);
+  }
+  if (cap_swapchain != NULL) {
+    wlr_swapchain_destroy(cap_swapchain);
+  }
+
+  wlr_scene_node_destroy(&scene->tree.node);
+  fx_effect_shader_unref(identity);
+  return ok;
+}
+
+// A bounded FX_SLOT_DRAG shader confines damage to its drawn box (node plus
+// expand), keeps opaque culling on unrelated stationary nodes, and expands
+// partial damage overlapping its box so captures never tear.
+static bool test_bounded_drag_confinement(struct fixture* fixture) {
+  struct wlr_swapchain* swapchain = create_swapchain(fixture);
+  struct fx_effect_shader* shader = fx_effect_shader_create(
+      fixture->renderer, FX_EFFECT_ANIMATION,
+      "uniform float gain;\nvec4 animation(vec2 uv) { return umbriel_sample(uv) * gain; }", "bounded-drag"
+  );
+  bool ok = check(swapchain != NULL && shader != NULL, "swapchain and bounded drag program");
+  if (!ok) {
+    wlr_swapchain_destroy(swapchain);
+    fx_effect_shader_unref(shader);
+    return false;
+  }
+  fx_effect_shader_set_bounded(shader, true);
+
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+  const float blue[4] = {0, 0, 1, 1}, green[4] = {0, 1, 0, 1}, red[4] = {1, 0, 0, 1}, white[4] = {1, 1, 1, 1};
+  struct wlr_scene_rect* background = wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, blue);
+  struct wlr_scene_rect* stationary = wlr_scene_rect_create(&scene->tree, 6, 6, green);
+  wlr_scene_node_set_position(&stationary->node, 10, 10);
+
+  struct wlr_scene_tree* dragged_tree = wlr_scene_tree_create(&scene->tree);
+  wlr_scene_node_set_position(&dragged_tree->node, 2, 2);
+  struct wlr_scene_rect* dragged_rect = wlr_scene_rect_create(dragged_tree, 4, 4, red);
+  struct wlr_scene_rect* marker = wlr_scene_rect_create(dragged_tree, 1, 1, white);
+  wlr_scene_node_set_position(&marker->node, 1, 1);
+  struct wlr_scene_rect* occluder = wlr_scene_rect_create(&scene->tree, 4, 4, green);
+  wlr_scene_node_set_position(&occluder->node, 4, 2);
+
+  struct fx_animation_parameters parameters = {
+      .progress = 1, .linear_progress = 1, .direction = 1, .transition_id = 1, .expand = 2
+  };
+  struct fx_uniform* gain = fx_parameters_add_uniform(&parameters, "gain", FX_UNIFORM_FLOAT, 1);
+  gain->floats[0] = 1.0F;
+  wlr_scene_node_set_animation(&dragged_tree->node, FX_SLOT_DRAG, shader, &parameters);
+  ok &= warm_up(scene_output, swapchain);
+
+  gain->floats[0] = 0.5F;
+  wlr_scene_node_set_animation(&dragged_tree->node, FX_SLOT_DRAG, shader, &parameters);
+  ok &= frame_damage_is(
+      scene_output, swapchain, 0, 0, 8, 8, "bounded FX_SLOT_DRAG tick confines damage to node plus expand"
+  );
+  ok &= check(
+      !pixman_region32_contains_point(&background->node.visible, 12, 12, NULL),
+      "stationary opaque node keeps culling background during bounded FX_SLOT_DRAG"
+  );
+  ok &= check(
+      pixman_region32_contains_point(&dragged_rect->node.visible, 5, 3, NULL),
+      "bounded deforming FX_SLOT_DRAG keeps occluded input pixels alive"
+  );
+
+  wlr_scene_rect_set_color(marker, blue);
+  ok &= frame_damage_is(
+      scene_output, swapchain, 0, 0, 8, 8, "partial damage inside bounded FX_SLOT_DRAG grows to full drawn box"
+  );
+
+  wlr_scene_node_destroy(&scene->tree.node);
+  fx_effect_shader_unref(shader);
+  wlr_swapchain_destroy(swapchain);
   return ok;
 }
 
@@ -3124,6 +3398,12 @@ int main(int argc, char* argv[]) {
     ok = test_move_margin_damage(&fixture);
   } else if (strcmp(argv[1], "offscreen-margin") == 0) {
     ok = test_offscreen_margin(&fixture);
+  } else if (strcmp(argv[1], "drag-onscreen-capture") == 0) {
+    ok = test_drag_onscreen_capture(&fixture);
+  } else if (strcmp(argv[1], "animation-backdrop-reuse") == 0) {
+    ok = test_animation_backdrop_fast_path(&fixture);
+  } else if (strcmp(argv[1], "bounded-drag-confinement") == 0) {
+    ok = test_bounded_drag_confinement(&fixture);
   } else if (strcmp(argv[1], "border-geometry") == 0) {
     ok = test_border_geometry(&fixture);
   } else if (strcmp(argv[1], "border-geometry-tree") == 0) {

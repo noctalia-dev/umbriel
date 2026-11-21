@@ -142,6 +142,9 @@ void fx_effect_shader_unref(struct fx_effect_shader* shader);
 // A shape-preserving shader only scales its input's alpha uniformly. Shadows
 // keep their analytic fast path under it instead of capturing a silhouette.
 void fx_effect_shader_set_shape_preserving(struct fx_effect_shader* shader, bool shape_preserving);
+// A bounded shader reads only inside its node and writes only inside its drawn
+// box (node bounds plus expand), confining damage and occlusion exemptions.
+void fx_effect_shader_set_bounded(struct fx_effect_shader* shader, bool bounded);
 // True when the linked program has an active uniform of that name.
 bool fx_effect_shader_reads(const struct fx_effect_shader* shader, const char* uniform);
 enum fx_effect_kind fx_effect_shader_kind(const struct fx_effect_shader* shader);
