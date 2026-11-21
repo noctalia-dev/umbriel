@@ -13,6 +13,7 @@ background_blur = true
 workspace_wallpaper = true
 shortcuts = true
 shortcut_keys = "1234567890"
+right_button_pan = false
 ```
 
 | Key                        | Default        | Description                                                  |
@@ -24,6 +25,7 @@ shortcut_keys = "1234567890"
 | `workspace_wallpaper`      | `true`         | Show each output's background inside its workspace previews. |
 | `shortcuts`                | `true`         | Show and accept keyboard shortcut badges.                    |
 | `shortcut_keys`            | `"1234567890"` | Preferred keys for shortcut badges.                          |
+| `right_button_pan`         | `false`        | Also pan the filmstrip and workspace rows with a held right-button drag, like the middle button. A right release never closes a card. |
 
 Background blur uses `[appearance.blur]`. Preview backgrounds use `colors.overview.workspace_background` when wallpaper mirroring is disabled or no background surface is available.
 
@@ -35,6 +37,8 @@ Press `Mod+O` by default, or use an [overview action](actions.md#overview). Open
 - Middle-click a window to close it.
 - Drag a window to move it to another workspace.
 - Use the wheel to navigate vertically and Shift+wheel horizontally.
+- Hold the middle button to pan the filmstrip across the workspace axis and step workspace rows along it.
+- With `right_button_pan = true`, a held right-button drag pans the same way; a right release never closes a card.
 - Use a four-finger swipe to open or close the overview.
 
 Two-finger scrolling and three-finger swipes navigate continuously. Movement along the output's [workspace axis](workspaces.md#workspace-axis) moves between workspaces. Movement across it pans a scrolling workspace preview. Dwindle and Master layouts have no strip to pan.
