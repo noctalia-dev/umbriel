@@ -11,6 +11,7 @@ namespace umbriel {
 
   class Server;
   class ToplevelDragManager;
+  class View;
 
   class Seat {
   public:
@@ -74,6 +75,7 @@ namespace umbriel {
     wl_listener m_dragDrop{};
     wl_listener m_dragModifierClientDestroy{};
     wlr_seat_client* m_dragModifierClient = nullptr;
+    View* m_dropTarget = nullptr;
   };
 
 } // namespace umbriel

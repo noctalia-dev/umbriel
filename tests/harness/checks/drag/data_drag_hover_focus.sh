@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# A data-device drag owns wlroots' pointer and keyboard grabs. Ending it must refresh hover focus at the cursor and
-# replay that selected view into the default keyboard grab before the next key is delivered.
+# A data-device drag owns wlroots' pointer and keyboard grabs. An accepted drop must focus the target window even with
+# follows_mouse disabled, and replay that view into the default keyboard grab before the next key is delivered.
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -39,7 +39,7 @@ duration_ms = 1
 curve = "linear"
 
 [input.focus]
-follows_mouse = "sloppy"
+follows_mouse = "off"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -96,8 +96,8 @@ wait "$DRAG_PID" || {
   exit 1
 }
 
-# The drag grab consumed motion while crossing into the target. Releasing over it must refresh hover focus at the
-# unchanged cursor position, without an IPC focus command or another border crossing.
+# The drag grab consumed motion while crossing into the target. Releasing over it must focus the accepted target,
+# without follows_mouse, an IPC focus command, or another border crossing.
 if [[ $(active_title) != data-drag-hover-target ]]; then
   echo "drag completion did not focus the window under the pointer: $("$UMBRIEL" windows --json)"
   exit 1
@@ -116,4 +116,4 @@ if grep -q '^key 30 1$' "$SOURCE_LOG" 2>/dev/null; then
   exit 1
 fi
 
-echo "data-device drag completion focused the hovered target"
+echo "data-device drop focused the target with follows_mouse disabled"

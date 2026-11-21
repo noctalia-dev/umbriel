@@ -83,7 +83,9 @@ An active data-device drag or compositor window move held near a scrolling works
 
 Layout movement can place a new drop target beneath a pointer that has not moved. The output's post-arrange scene refresh therefore sends pointer enter, motion, or clear through wlroots' notify APIs while the data-device grab is active. This updates the grab's drop focus instead of only changing base pointer focus. During a compositor window move it recomputes the drop target and insert hint instead; client pointer focus stays suspended. Drag-icon buffers are excluded from scene hit testing, including buffers created later for nested subsurfaces, so the icon cannot hide the client below it from this refresh.
 
-With `follows_mouse` enabled, that refresh selects the window under the pointer when it is not already focused. Activation, border state, and keyboard focus then follow the drag target without requiring another border crossing. With `follows_mouse` disabled, the refresh restores normal pointer delivery and the client cursor while retaining the existing window focus.
+With `follows_mouse` enabled, that refresh selects the window under the pointer when it is not already focused. Activation, border state, and keyboard focus then follow the drag target without requiring another border crossing. With `follows_mouse` disabled, the refresh restores normal pointer delivery and the client cursor while retaining the existing window focus during the drag.
+
+An accepted drop focuses the window that received it once the grab ends, even with `follows_mouse` disabled. Umbriel resolves the view from wlroots' drop focus, so hover policy never decides which window gets the payload and the keyboard. An unaccepted drop or a drop outside a window keeps the existing replay of the previously activated view.
 
 ## Static inventory
 
