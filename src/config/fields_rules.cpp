@@ -173,6 +173,7 @@ namespace umbriel {
           strict(regexField("app_id", &W::appIdPatterns)),
           strict(regexField("title", &W::titlePatterns)),
           strict(regexField("xdg_tag", &W::xdgTagPatterns)),
+          strict(regexField("output", &W::outputPatterns)),
           strict(registry::choice("content_type", &W::matchContentType, contentTypes())),
           registry::checked<W>(
               "layout", KeyDescription("enum_or_array").withValues(registry::choiceNames(layoutModes())),

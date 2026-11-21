@@ -450,6 +450,8 @@ namespace umbriel {
     RegexPatterns appIdPatterns;
     RegexPatterns titlePatterns;
     RegexPatterns xdgTagPatterns;
+    // The output the window is on or about to open on: connector name or "<make> <model> <serial>" descriptor.
+    RegexPatterns outputPatterns;
     std::optional<ContentType> matchContentType;
     std::vector<LayoutMode> matchLayouts;
     std::optional<bool> matchFocused;
@@ -526,6 +528,7 @@ namespace umbriel {
       return appIdPatterns == other.appIdPatterns
           && titlePatterns == other.titlePatterns
           && xdgTagPatterns == other.xdgTagPatterns
+          && outputPatterns == other.outputPatterns
           && matchContentType == other.matchContentType
           && matchLayouts == other.matchLayouts
           && matchFocused == other.matchFocused
