@@ -275,6 +275,8 @@ namespace umbriel {
     const bool sameScratchpad = existing != nullptr && existing->scratchpad == name;
     const bool wasActivated = view->activated();
     Output* sourceOutput = options.focusOrigin != nullptr ? options.focusOrigin : view->currentOutput();
+    // Read before the member joins the pad, whose output then resolves the window's own.
+    Output* arrivalOutput = view->currentOutput();
     std::string previousScratchpad;
     // Set when the window leaving another scratchpad was the one that scratchpad showed on its own.
     bool leftPreviousSolo = false;
@@ -380,6 +382,14 @@ namespace umbriel {
     }
     view->setSceneParent(m_root);
     view->setInScratchpad(true);
+    // An interactive admission is the only shape that needs this: a window still opening is placed afterwards by
+    // View::handleMap against the pad's output, and a rule admission is followed by its own summon back to the rule's
+    // output, so remapping either would scale or clamp the window twice.
+    if (admission == Admission::Interactive && arrivalOutput != nullptr && arrivalOutput != output) {
+      remapViewGeometry(
+          view, usableArea(*m_server, arrivalOutput), usableArea(*m_server, output), usesProportionalSize(name), true
+      );
+    }
     scratchpad->pendingSpawn.reset();
     const bool visible = scratchpad->visible;
     // A pad showing one window shows a window the user moves in, in place of the others; a dialog brings the member it
@@ -435,7 +445,6 @@ namespace umbriel {
       state->active = false;
     }
     Output* output = state->output;
-    const wlr_box targetArea = usableArea(*m_server, output);
     const auto& animation = config().animation;
     const auto& scratchpad = animation.scratchpad;
     const bool animate = animateTransition && output != nullptr && animation.enabled && scratchpad.enabled;
@@ -452,22 +461,8 @@ namespace umbriel {
         std::erase(m_hidingViews, view);
         view->cancelPositionAnimation();
         view->setNodeEnabled(true);
-        const int width = view->presentation().width();
-        const int height = view->presentation().height();
-        if (width > 0 && height > 0 && targetArea.width > 0 && targetArea.height > 0) {
-          const int centerX = view->layoutX() + width / 2;
-          const int centerY = view->layoutY() + height / 2;
-          const bool centerOnTarget = centerX >= targetArea.x
-              && centerX < targetArea.x + targetArea.width
-              && centerY >= targetArea.y
-              && centerY < targetArea.y + targetArea.height;
-          if (!centerOnTarget) {
-            view->snapPosition(
-                targetArea.x + std::max(0, (targetArea.width - width) / 2),
-                targetArea.y + std::max(0, (targetArea.height - height) / 2)
-            );
-          }
-        }
+        // A show never reframes a member: the floating margin keeps a window grabbable wherever it was left, and a pad
+        // that changes output remaps its members in moveScratchpad().
         if (animate) {
           view->animateFadeTo(1.0F, scratchpad.durationMs, scratchpad.curve);
         } else {
@@ -558,8 +553,9 @@ namespace umbriel {
       if (clearDisplacement) {
         entry.displacedPosition.reset();
       }
-      if ((previous != nullptr || proportionalSize)
-          && output != nullptr
+      // A pad with no output keeps the last area it was sized against, so members land on the output that replaces it
+      // instead of keeping coordinates that belong to the dead one.
+      if (output != nullptr
           && previousArea.width > 0
           && previousArea.height > 0
           && targetArea.width > 0
@@ -1484,10 +1480,14 @@ namespace umbriel {
               || entry.view->m_floatingMaximized;
           if (entry.displacedPosition && !managerOwnedGeometry && homeArea.width > 0 && homeArea.height > 0) {
             entry.view->cancelPositionAnimation();
-            entry.view->setPosition(
-                homeArea.x + static_cast<int>(std::lround((*entry.displacedPosition)[0] * homeArea.width)),
-                homeArea.y + static_cast<int>(std::lround((*entry.displacedPosition)[1] * homeArea.height))
-            );
+            const FloatingPoint restored{
+                .x = homeArea.x + static_cast<int>(std::lround((*entry.displacedPosition)[0] * homeArea.width)),
+                .y = homeArea.y + static_cast<int>(std::lround((*entry.displacedPosition)[1] * homeArea.height)),
+            };
+            // A wider output scales the fraction past the grabbable margin, so the placement is clamped like any other
+            // restore.
+            const FloatingPoint origin = entry.view->grabbableOrigin(restored, home->usableArea());
+            entry.view->setPosition(origin.x, origin.y);
             if (scratchpad->visible) {
               restorePresentation(entry.view);
             }
