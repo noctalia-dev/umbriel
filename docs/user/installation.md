@@ -166,10 +166,8 @@ Pre-built `x86_64-linux` and `aarch64-linux` packages for Umbriel and its portal
 ```nix
 {
   nix.settings = {
-    extra-substituters = [ "https://umbriel.cachix.org" ];
-    extra-trusted-public-keys = [
-      "umbriel.cachix.org-1:JfNq/2yg2S6D6z4Z2dVSZrZlDPQTKtexB6GAVLD98nw="
-    ];
+    extra-substituters = [ "https://noctalia.cachix.org" ];
+    extra-trusted-public-keys = [ "noctalia.cachix.org-1:pCOR47nnMEo5thcxNDtzWpOxNFQsBRglJzxWPp3dkU4=" ];
   };
 }
 ```
@@ -342,3 +340,22 @@ Umbriel writes its main log to `$XDG_CACHE_HOME/umbriel/umbriel.log`. If `XDG_CA
 Messages from wlroots appear with the `[wlr]` tag at info level and above. To include wlroots debug output when reporting a rendering or display problem, start Umbriel with `UMBRIEL_WLR_DEBUG=1` set in its environment.
 
 When standard output or standard error is connected to a TTY, raw writes from Umbriel and its child processes are redirected to `$XDG_CACHE_HOME/umbriel/umbriel-stderr.log`, or `~/.cache/umbriel/umbriel-stderr.log` when `XDG_CACHE_HOME` is unset.
+
+A `spawn` action, an autostart entry, and the `-s` startup command hand their command to `/bin/sh`, so what they report is the handoff and nothing about the program. Each launch is recorded in Umbriel's own log, naming the command and the process it forked, and the scope unit that owns that process when the session runs applications in their own scopes:
+
+```text
+launch requested for 'kitty' (pid 4210, unit app-umbriel-1180-3.scope) on WAYLAND_DISPLAY=wayland-0
+launch requested for 'events.lid_close' (pid 4211, unit app-umbriel-1180-4.scope, command 'umbriel msg output-disable eDP-1') on WAYLAND_DISPLAY=wayland-0
+```
+
+The command appears in the record when Umbriel launched it on behalf of something else with a name of its own, such as a lid-close event or a scratchpad's `spawn_when_empty`. A session that does not run applications in their own scopes has no unit.
+
+`journalctl --user -u umbriel.service | grep 'launch requested'` lists every launch the compositor performed in a session started through `start-umbriel`: it writes that record from its own process, so it appears whether or not the program does anything. A session started any other way has no journal entry, and its record is in `umbriel.log`.
+
+What the program itself wrote is reachable with the identifier query, including a shell diagnostic for a name that resolves to nothing:
+
+```text
+journalctl --user -t umbriel
+```
+
+journald resolves the unit from the process that writes, so a program that is still running when it writes is attributed to the scope unit the launch record named: `journalctl --user -u app-umbriel-1180-3.scope`. A program that writes and exits at once, which is what a missing command does, may be recorded with the `umbriel` identifier and no unit, because there is no process left to look up. Such a record is missed by a unit query and still found by `-t umbriel`. A program that writes nothing, or redirects its own diagnostics away, leaves only the launch record. Under a TTY the child's own output also reaches `umbriel-stderr.log`.

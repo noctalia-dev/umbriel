@@ -1494,12 +1494,11 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+#ifdef UMBRIEL_HARNESS
   nlohmann::json IpcCommands::settle(Server& /*server*/, IpcArgs /*args*/) { return nlohmann::json{{"ok", nullptr}}; }
 
-  nlohmann::json IpcCommands::clockFreeze([[maybe_unused]] Server& server, IpcArgs /*args*/) {
-#ifdef UMBRIEL_HARNESS
+  nlohmann::json IpcCommands::clockFreeze(Server& server, IpcArgs /*args*/) {
     server.freezeAnimationClock();
-#endif
     return nlohmann::json{{"ok", nullptr}};
   }
 
@@ -1507,14 +1506,11 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
-  nlohmann::json IpcCommands::clockResume([[maybe_unused]] Server& server, IpcArgs /*args*/) {
-#ifdef UMBRIEL_HARNESS
+  nlohmann::json IpcCommands::clockResume(Server& server, IpcArgs /*args*/) {
     server.resumeAnimationClock();
-#endif
     return nlohmann::json{{"ok", nullptr}};
   }
 
-#ifdef UMBRIEL_HARNESS
   namespace {
     // The harness commands below parse their words as one whitespace-separated stream.
     std::string joinArgs(IpcArgs args) {

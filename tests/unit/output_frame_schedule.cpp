@@ -1,6 +1,7 @@
 #include "check.h"
 #include "output/frame_schedule.h"
 
+using umbriel::frameRetryDelayMs;
 using umbriel::OutputFrameFollowup;
 using umbriel::outputFrameFollowup;
 using umbriel::TearingCommitRecovery;
@@ -37,6 +38,15 @@ UMBRIEL_TEST(failedAnimatedFrameDoesNotScheduleImmediately) {
   wlr_session session{};
   session.active = true;
   CHECK_EQ(outputFrameFollowup(false, &session, true, true), OutputFrameFollowup::RetryDelayed);
+}
+
+UMBRIEL_TEST(failedFrameRetriesSoonThenBacksOff) {
+  CHECK_EQ(frameRetryDelayMs(0), 1);
+  CHECK_EQ(frameRetryDelayMs(1), 2);
+  CHECK_EQ(frameRetryDelayMs(2), 4);
+  CHECK_EQ(frameRetryDelayMs(3), 8);
+  CHECK_EQ(frameRetryDelayMs(4), 16);
+  CHECK_EQ(frameRetryDelayMs(1000), 16);
 }
 
 UMBRIEL_TEST(idleSuccessfulFrameNeedsNoFollowup) {

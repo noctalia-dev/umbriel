@@ -664,7 +664,7 @@ UMBRIEL_TEST(consumeFromBelowAStandaloneRowStandsBeforeTheGroup) {
   CHECK(umbriel::tabGroupOf(fixture.column(), stub(3)) == nullptr);
   CHECK_EQ(fixture.layout.rowOf(stub(3)), 1);
   CHECK_EQ(fixture.column().tabs.unitCount(fixture.column().views.size()), size_t{3});
-  CHECK_EQ(shownTab(fixture.column()), stub(0));
+  CHECK_EQ(shownTab(fixture.column()), stub(1));
 }
 
 UMBRIEL_TEST(movingATabStepsOutOfItsGroup) {
@@ -683,6 +683,21 @@ UMBRIEL_TEST(movingATabStepsOutOfItsGroup) {
   CHECK(umbriel::tabGroupOf(fixture.column(), stub(1)) != nullptr);
   CHECK_EQ(shownTab(fixture.column()), stub(1));
   CHECK_EQ(fixture.layout.rowOf(stub(1)), 2);
+}
+
+UMBRIEL_TEST(aTabSteppingOutShowsTheTabBeforeIt) {
+  ScrollingFixture fixture;
+  fixture.stack(4);
+  fixture.layout.setTabbed(stub(2), true);
+  CHECK(fixture.layout.moveViewVertical(stub(2), -1));
+  CHECK_EQ(shownTab(fixture.column()), stub(1));
+  fixture.layout.selectTab(stub(1));
+  CHECK(fixture.layout.moveViewVertical(stub(1), 1));
+  CHECK_EQ(shownTab(fixture.column()), stub(0));
+  // Back in as the first tab and out again: none is before it, so the tab after it shows.
+  CHECK(fixture.layout.moveViewVertical(stub(2), 1));
+  CHECK(fixture.layout.moveViewVertical(stub(2), 1));
+  CHECK_EQ(shownTab(fixture.column()), stub(0));
 }
 
 UMBRIEL_TEST(aTabSteppingOutBelowTheColumnFillsItsFreeSpace) {

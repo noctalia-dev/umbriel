@@ -2601,6 +2601,10 @@ namespace umbriel {
       if (match == nullptr && m_tabletDevices.size() == 1) {
         match = m_tabletDevices.front().get();
       }
+      if (pad->tablet != match && pad->enteredSurface != nullptr) {
+        wlr_tablet_v2_tablet_pad_notify_leave(pad->v2, pad->enteredSurface);
+        pad->enteredSurface = nullptr;
+      }
       pad->tablet = match;
     }
   }
@@ -2771,14 +2775,6 @@ namespace umbriel {
     if (m_insertHint != nullptr && m_insertHint->output() == output) {
       m_insertHint->hideImmediate();
     }
-    // Dropping the snapshot unregisters it and destroys its scene tree.
-    std::erase_if(m_closeSnapshots, [this, output](const std::unique_ptr<CloseSnapshot>& snap) {
-      if (!snap->animatesOn(output)) {
-        return false;
-      }
-      unregisterAnimatable(snap.get());
-      return true;
-    });
     // wlroots 0.20 does not track output lifetime for layer surfaces, so their wlr_output pointer would dangle once the
     // output is freed. Destroy them now while the wlr_output is still valid.
     {
@@ -2793,6 +2789,14 @@ namespace umbriel {
         wlr_layer_surface_v1_destroy(ls);
       }
     }
+    // Dropping the snapshot unregisters it and destroys its scene tree.
+    std::erase_if(m_closeSnapshots, [this, output](const std::unique_ptr<CloseSnapshot>& snap) {
+      if (!snap->animatesOn(output)) {
+        return false;
+      }
+      unregisterAnimatable(snap.get());
+      return true;
+    });
 
     Output* fallback = nullptr;
     for (const auto& entry : m_outputs) {

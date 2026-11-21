@@ -682,8 +682,8 @@ namespace umbriel {
       return;
     }
 
-    // Park the strip exactly on the chosen snap before selecting its column. Gesture focus must keep this placement
-    // instead of revealing the column again from the overscrolled position.
+    // Park the strip exactly on the chosen snap before selecting its column. Gesture focus keeps this placement instead
+    // of revealing the column again from the overscrolled position; only the centering policy moves it from here.
     scrolling->setScroll(bestSnap);
 
     View* focused = workspace->focusedView();
@@ -696,6 +696,8 @@ namespace umbriel {
       // A tab group is entered on the tab it shows, as a directional focus move enters it.
       View* target = columnEntry(scrolling->columns()[static_cast<size_t>(best)]);
       m_server->focusView(target, FocusReason::Gesture);
+      // The swipe chose the column, so the centering policy says where it rests, as after a focus move.
+      scrolling->activateColumn(best, m_viewportPrimary);
       workspace->markArrange(true);
     } else {
       workspace->ensureFocusedVisible();
