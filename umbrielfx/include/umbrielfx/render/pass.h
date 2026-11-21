@@ -44,6 +44,9 @@ struct fx_gles_render_pass {
   // Set while an add_* call renders into an offscreen buffer instead of the
   // pass target, so it must not extend updated_region.
   bool suppress_updated;
+  // Set while drawing to a scratch target or stencil mask so capture-cleanliness
+  // tracking does not treat internal passes as visible draws in the active capture.
+  bool suppress_capture_draws;
   // Reject the frame instead of displaying a partially applied animation.
   bool require_animation_success;
   bool animation_failed;
@@ -64,6 +67,7 @@ struct fx_gles_render_pass {
   struct fx_framebuffer* animation_parents[FX_ANIMATION_DEPTH];
   struct wlr_texture* animation_textures[FX_ANIMATION_DEPTH];
   bool animation_suppress[FX_ANIMATION_DEPTH];
+  bool animation_has_draws[FX_ANIMATION_DEPTH];
   struct wlr_box animation_boxes[FX_ANIMATION_DEPTH];
   // One past the capture index of the open group capture, or 0. Captures
   // inside it allocate from the offscreen group set.
@@ -80,6 +84,9 @@ struct fx_gles_render_pass {
 };
 
 bool fx_render_pass_begin_animation(struct fx_gles_render_pass* pass);
+// Opens a node-scoped capture over `box` in parent buffer pixels; callers must
+// translate subtree draws and damage by (-box->x, -box->y).
+bool fx_render_pass_begin_animation_box(struct fx_gles_render_pass* pass, const struct wlr_box* box);
 bool fx_render_pass_begin_isolation(struct fx_gles_render_pass* pass);
 void fx_render_pass_cancel_isolation(struct fx_gles_render_pass* pass);
 // Opens the pass's single group capture. box is in parent pixels; translate
@@ -88,6 +95,8 @@ bool fx_render_pass_begin_capture(struct fx_gles_render_pass* pass, const struct
 void fx_render_pass_end_capture(
     struct fx_gles_render_pass* pass, const struct wlr_box* box, const pixman_region32_t* clip
 );
+// Records that a captured shadow caster was reused instead of re-rendered, for tests.
+void fx_render_pass_note_shadow_caster_reuse(struct fx_gles_render_pass* pass);
 // `box` and `logical_box` are the node's boxes; `expand` (logical px) grows the
 // drawn rectangle on every side. `uv` in the program spans the drawn rectangle.
 void fx_render_pass_end_animation(
@@ -97,10 +106,12 @@ void fx_render_pass_end_animation(
 );
 
 // Consume the current capture as a shadow caster. Always restores the parent
-// target, including on allocation failure. False requests the analytic fallback.
+// target, including on allocation failure. When `out_caster` is non-NULL and
+// the shadow renders, ownership of the caster texture transfers to `*out_caster`
+// instead of destroying it. False requests the analytic fallback.
 bool fx_render_pass_end_animation_shadow(
     struct fx_gles_render_pass* pass, float softness, float offset_x, float offset_y, const float color[4],
-    const pixman_region32_t* clip
+    const pixman_region32_t* clip, struct wlr_texture** out_caster
 );
 
 struct fx_gradient {
