@@ -138,12 +138,16 @@ Use `umbriel workspaces --json` for scripts. Each entry includes its stable `id`
 [workspaces]
 back_and_forth = true
 empty_above = false
+skip_empty = false
 ```
 
 | Key              | Default | Description                                                                |
 | ---------------- | ------- | -------------------------------------------------------------------------- |
 | `back_and_forth` | `false` | Selecting the active workspace returns to the previous one on that output. |
 | `empty_above`    | `false` | Keep a leading empty workspace on dynamic outputs.                         |
+| `skip_empty`     | `false` | Skip unoccupied workspaces for workspace swipes and next/previous actions. |
+
+Direct workspace selection and moving windows still allow empty destinations. If no occupied workspace exists in the chosen direction, focus stays where it is. With `cyclic_workspaces`, the action search wraps around the output. On dynamic outputs, the trailing empty workspace is skipped too. Touchpad workspace swipes also skip empty workspaces. To hide empty workspaces in the overview, see [`hide_empty_workspaces`](workspaces-overview.md#settings-and-behavior).
 
 ## Workspace rules
 

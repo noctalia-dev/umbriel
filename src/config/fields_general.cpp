@@ -243,6 +243,7 @@ namespace umbriel {
           real("scroll_factor_vertical", 0.1, 10.0, &O::scrollFactorVertical),
           boolean("background_blur", &O::backgroundBlur),
           boolean("workspace_wallpaper", &O::workspaceWallpaper),
+          boolean("hide_empty_workspaces", &O::hideEmptyWorkspaces),
           boolean("shortcuts", &O::shortcuts),
           registry::custom<O>(
               "shortcut_keys", registry::KeyDescription("string"),
@@ -313,6 +314,7 @@ namespace umbriel {
       static const registry::Fields<W> fields{
           registry::boolean("back_and_forth", &W::backAndForth),
           registry::boolean("empty_above", &W::emptyAbove),
+          registry::boolean("skip_empty", &W::skipEmpty),
       };
       return fields;
     }

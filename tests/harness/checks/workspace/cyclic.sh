@@ -96,4 +96,59 @@ expect_workspace 1 "workspace-switch back to the first workspace"
 "$UMBRIEL" msg workspace-previous > /dev/null
 expect_workspace 1 "workspace-previous without the key"
 
+# Switching can skip empty slots without changing direct selection or moves.
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[workspaces]
+skip_empty = true
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg workspace-next > /dev/null
+expect_workspace 3 "skip the empty second workspace"
+"$UMBRIEL" msg workspace-previous > /dev/null
+expect_workspace 3 "stop when no occupied workspace precedes this one"
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
+expect_workspace 2 "direct selection of an empty workspace"
+"$UMBRIEL" msg workspace-next > /dev/null
+expect_workspace 3 "leave an empty workspace for an occupied one"
+"$UMBRIEL" msg window-move-to-workspace-previous > /dev/null
+expect_window_at cyclic-a "HEADLESS-1:2" "move to an empty workspace with skip_empty enabled"
+sed -i 's/^cyclic_workspaces = false$/cyclic_workspaces = true/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
+"$UMBRIEL" msg workspace-next > /dev/null
+expect_workspace 2 "wrap past empty workspace 1 to occupied workspace 2"
+
+# With only the active workspace occupied, a cyclic search must return without
+# selecting an empty workspace or looping forever.
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 2 > /dev/null
+expect_window_at cyclic-b "HEADLESS-1:2" "move the last window onto workspace 2"
+"$UMBRIEL" msg workspace-next > /dev/null
+expect_workspace 2 "cyclic search with only the active workspace occupied"
+
+# Swipes skip empty workspaces too; the direct manipulation target must match
+# the workspace selected when the gesture settles.
+"$UMBRIEL" msg window-move-to-workspace 3 > /dev/null
+expect_window_at cyclic-b "HEADLESS-1:3" "place second window on workspace 3"
+"$UMBRIEL" msg window-focus "$FOCUS_ID" > /dev/null
+"$UMBRIEL" msg window-move-to-workspace 1 > /dev/null
+expect_window_at cyclic-a "HEADLESS-1:1" "place first window on workspace 1"
+"$UMBRIEL" settle
+"$UMBRIEL" swipe-test begin 1000 > /dev/null
+"$UMBRIEL" swipe-test update 1100 0 -240 > /dev/null
+"$UMBRIEL" swipe-test end 1600 0 > /dev/null
+expect_workspace 3 "swipe past empty workspace 2"
+"$UMBRIEL" settle
+"$UMBRIEL" swipe-test begin 2000 > /dev/null
+"$UMBRIEL" swipe-test update 2100 0 240 > /dev/null
+"$UMBRIEL" swipe-test end 2600 0 > /dev/null
+expect_workspace 1 "reverse swipe past empty workspace 2"
+"$UMBRIEL" settle
+"$UMBRIEL" swipe-test begin 3000 > /dev/null
+"$UMBRIEL" swipe-test update 3100 0 -240 > /dev/null
+"$UMBRIEL" msg overview-open > /dev/null
+"$UMBRIEL" settle
+expect_workspace 3 "open the overview during a swipe over an empty workspace"
+
 echo "workspace steps wrapped at both ends with the key, for the switch and the column, window, and edge moves, and stopped without it"
