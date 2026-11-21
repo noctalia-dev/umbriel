@@ -2576,7 +2576,10 @@ namespace umbriel {
           && !wlr_seat_keyboard_has_grab(seat)
           && !m_server->sessionLocked()
           && m_server->exclusiveKeyboardLayer() == nullptr) {
-        m_server->refocusExplicit(m_server->outputFromWlr(pointerOutput));
+        // follows_mouse crossing an output boundary is not a deliberate focus
+        // steal; refocus() keeps a scratchpad already visible there focused,
+        // same as an explicit output-focus action.
+        m_server->refocus(m_server->outputFromWlr(pointerOutput));
       }
     }
   }

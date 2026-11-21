@@ -1759,7 +1759,11 @@ namespace umbriel {
     // Outputs
     bool focusOutput(Server& server, Output& target) {
       warpToOutputCenter(server, target);
-      server.refocusExplicit(&target);
+      // Deliberately switching which output is focused must not dismiss a
+      // scratchpad already visible there; refocus() keeps it, unlike
+      // refocusExplicit(), which is for actions that should steal focus away
+      // from a visible scratchpad (e.g. clicking empty background).
+      server.refocus(&target);
       WorkspaceGroup* group = target.workspaceGroup();
       Workspace* workspace = group != nullptr ? group->active() : nullptr;
       maybeWarpCursorToWindow(server, workspace != nullptr ? workspace->focusedView() : nullptr);
