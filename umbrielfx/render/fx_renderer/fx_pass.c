@@ -2082,6 +2082,21 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   glUniform1i(shader->tex, 0);
   glUniform1f(shader->alpha, alpha);
 
+  // Measure the downscale in texture axes, including rotated outputs. Other
+  // draws retain their existing single-fetch nearest/bilinear path.
+  int sample_width = dst_box.width, sample_height = dst_box.height;
+  wlr_output_transform_coords(options->transform, &sample_width, &sample_height);
+  float footprint_x = 0.0F, footprint_y = 0.0F;
+  if (fx_options->mitchell_downscale
+      && options->filter_mode == WLR_SCALE_FILTER_BILINEAR
+      && sample_width > 0
+      && sample_height > 0) {
+    footprint_x = src_fbox.width * options->texture->width / sample_width;
+    footprint_y = src_fbox.height * options->texture->height / sample_height;
+  }
+  glUniform2f(shader->texel_size, 1.0F / options->texture->width, 1.0F / options->texture->height);
+  glUniform2f(shader->sample_footprint, footprint_x, footprint_y);
+
   struct wlr_color_primaries primaries_srgb;
   wlr_color_primaries_from_named(&primaries_srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
   const float lum_multiplier = options->luminance_multiplier != NULL ? *options->luminance_multiplier : 1.0F;

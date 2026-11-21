@@ -2883,6 +2883,15 @@ void wlr_scene_buffer_set_filter_mode(struct wlr_scene_buffer* scene_buffer, enu
   scene_node_update(&scene_buffer->node, NULL);
 }
 
+void wlr_scene_buffer_set_mitchell_downscale(struct wlr_scene_buffer* scene_buffer, bool enabled) {
+  if (scene_buffer->mitchell_downscale == enabled) {
+    return;
+  }
+
+  scene_buffer->mitchell_downscale = enabled;
+  scene_node_update(&scene_buffer->node, NULL);
+}
+
 void wlr_scene_buffer_set_transfer_function(
     struct wlr_scene_buffer* scene_buffer, enum wlr_color_transfer_function transfer_function
 ) {
@@ -3797,6 +3806,13 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
           || (snapped_src_box.y + snapped_src_box.height > sample_box.y + sample_box.height
               && sample_box.y + sample_box.height < texture->height);
     }
+    // Mitchell's wider support also reaches outside an otherwise exact crop.
+    if (scene_buffer->mitchell_downscale && !wlr_fbox_empty(&sample_box)) {
+      crosses_crop_edge |= sample_box.x > 0
+          || sample_box.y > 0
+          || sample_box.x + sample_box.width < texture->width
+          || sample_box.y + sample_box.height < texture->height;
+    }
     if (!crosses_crop_edge) {
       sample_box = (struct wlr_fbox){0};
     }
@@ -3826,6 +3842,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .corners = fx_corner_radii_scale(buffer_corners, data->scale),
         .clipped_region = {0},
         .sample_box = sample_box,
+        .mitchell_downscale = scene_buffer->mitchell_downscale,
         .luminances = scene_buffer->luminances.reference > 0.0f ? &scene_buffer->luminances : NULL,
         .map_hdr_to_sdr = !data->hdr
             && (source_tf == WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ

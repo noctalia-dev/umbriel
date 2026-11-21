@@ -62,6 +62,8 @@ uniform float clip_radius_bottom_right;
 #endif
 
 uniform float discard_transparent;
+uniform vec2 texel_size;
+uniform vec2 sample_footprint;
 
 #if SAMPLE_CLAMP
 // Normalized texel range the fragment may sample: xy is the first sampled texel
@@ -70,20 +72,75 @@ uniform float discard_transparent;
 // reaching one texel past the crop. Clamping here duplicates the last texel
 // inside the crop instead of pulling in whatever the client left outside it,
 // which for a client-side-decorated window is its transparent shadow margin.
-// The clamp is compiled only into the variants selected for such crops, so
-// every other draw keeps the exact fetch drivers already handle well.
+// The clamp is compiled only into the variants selected for such crops.
 uniform vec4 sample_bounds;
-#define SAMPLE_UV clamp(v_texcoord, sample_bounds.xy, sample_bounds.zw)
+#define SAMPLE_UV(uv) clamp(uv, sample_bounds.xy, sample_bounds.zw)
 #else
-#define SAMPLE_UV v_texcoord
+#define SAMPLE_UV(uv) uv
 #endif
 
-vec4 sample_texture() {
+vec4 sample_texture_at(vec2 uv) {
 #if SOURCE == SOURCE_TEXTURE_RGBA || SOURCE == SOURCE_TEXTURE_EXTERNAL
-  return texture2D(tex, SAMPLE_UV);
+  return texture2D(tex, SAMPLE_UV(uv));
 #elif SOURCE == SOURCE_TEXTURE_RGBX
-  return vec4(texture2D(tex, SAMPLE_UV).rgb, 1.0);
+  return vec4(texture2D(tex, SAMPLE_UV(uv)).rgb, 1.0);
 #endif
+}
+
+// Mitchell-Netravali with B = C = 1/3.
+float mitchell(float x) {
+  x = abs(x);
+  if (x < 1.0) {
+    return ((7.0 * x - 12.0) * x * x + 16.0 / 3.0) / 6.0;
+  }
+
+  if (x < 2.0) {
+    return (((-7.0 / 3.0 * x + 12.0) * x - 20.0) * x + 32.0 / 3.0) / 6.0;
+  }
+
+  return 0.0;
+}
+
+vec4 sample_texture() {
+  if (max(sample_footprint.x, sample_footprint.y) <= 1.0) {
+    return sample_texture_at(v_texcoord);
+  }
+
+  // Widen the kernel to suppress aliasing.
+  vec2 footprint = clamp(sample_footprint, vec2(1.0), vec2(15.0));
+  vec2 center = v_texcoord / texel_size - 0.5;
+  vec2 start = ceil(center - 2.0 * footprint);
+  vec4 color = vec4(0.0);
+  float weight = 0.0;
+  for (int y = 0; y < 64; ++y) {
+    float py = start.y + float(y);
+    if (py > center.y + 2.0 * footprint.y) {
+      break;
+    }
+
+    float wy = mitchell((py - center.y) / footprint.y);
+    for (int x = 0; x < 64; ++x) {
+      float px = start.x + float(x);
+      if (px > center.x + 2.0 * footprint.x) {
+        break;
+      }
+      float w = wy * mitchell((px - center.x) / footprint.x);
+      color += sample_texture_at((vec2(px, py) + 0.5) * texel_size) * w;
+      weight += w;
+    }
+  }
+
+  color /= weight;
+
+  // Negative lobes mustn't produce invalid premultiplied alpha at edges.
+  color.a = clamp(color.a, 0.0, 1.0);
+  color.rgb = max(color.rgb, vec3(0.0));
+  if (color.a == 0.0) {
+    color.rgb = vec3(0.0);
+  }
+
+  // Fade to avoid a sharpness jump.
+  return mix(sample_texture_at(v_texcoord), color, clamp(max(footprint.x, footprint.y) - 1.0, 0.0, 1.0));
 }
 
 float srgb_channel_to_linear(float x) { return x > 0.04045 ? pow((x + 0.055) / 1.055, 2.4) : x / 12.92; }

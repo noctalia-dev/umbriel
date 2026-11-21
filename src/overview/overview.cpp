@@ -848,6 +848,7 @@ namespace umbriel {
         continue;
       }
       wlr_scene_buffer_set_filter_mode(buffer, WLR_SCALE_FILTER_BILINEAR);
+      wlr_scene_buffer_set_mitchell_downscale(buffer, true);
       buffer->point_accepts_input = rejectInput;
       auto mirror = std::make_unique<DesktopMirror>();
       mirror->source = source.get();
@@ -1094,6 +1095,7 @@ namespace umbriel {
     entry->sy = sy + walk->dy;
     entry->isRoot = surface == card->view->rootSurface();
     wlr_scene_buffer_set_filter_mode(buffer, WLR_SCALE_FILTER_BILINEAR);
+    wlr_scene_buffer_set_mitchell_downscale(buffer, true);
     buffer->point_accepts_input = rejectInput;
     entry->commit.notify = onCardSurfaceCommit;
     wl_signal_add(&surface->events.commit, &entry->commit);
@@ -1291,6 +1293,7 @@ namespace umbriel {
         colorManager->applySurfaceDescriptionToBuffer(entry->surface, copy);
       }
       wlr_scene_buffer_set_filter_mode(copy, WLR_SCALE_FILTER_BILINEAR);
+      wlr_scene_buffer_set_mitchell_downscale(copy, true);
       ++buffersCopied;
     }
     if (buffersCopied == 0) {
