@@ -218,7 +218,7 @@ border_color_unfocused = "#5C4A2AFF"
 
 Show and hide transitions and backdrop dimming and blur are configured under [`animation.scratchpad`](animation.md#animation).
 
-Window state, size, and [layout](#layout) actions work on a focused scratchpad window. Pinning, minimizing, and moving a single window to another monitor do not: a scratchpad moves between monitors as a whole.
+Window state, size, and [layout](#layout) actions work on a focused scratchpad window. `window-toggle-pinned` takes the window out of the scratchpad and pins it on the workspace under the scratchpad; unpinning it later returns it to its saved tiled or floating state there. Minimizing and moving a single window to another monitor do not work: a scratchpad moves between monitors as a whole.
 
 ## Troubleshooting
 
@@ -226,4 +226,4 @@ Window state, size, and [layout](#layout) actions work on a focused scratchpad w
 - If restore or focus-next does nothing, show the scratchpad first.
 - If a named action does nothing, check its suffix against configured names.
 - If it appears on the wrong monitor, move the pointer before showing it.
-- Restore a window before pinning or minimizing it.
+- Restore a window before minimizing it.

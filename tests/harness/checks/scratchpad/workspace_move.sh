@@ -143,4 +143,18 @@ accepts scratchpad-toggle
 wait_field scratch-move-member workspace "$one"
 wait_field scratch-move-peer scratchpad default
 
-echo "workspace moves release scratchpad membership and preserve follow/silent behavior and saved layout state"
+# Pinning a scratchpad window takes it out of the scratchpad onto the workspace under it, and unpinning returns it to
+# its saved tiled state there. The peer stays in the scratchpad.
+prepare false
+accepts window-toggle-pinned
+wait_field scratch-move-member pinned true
+wait_field scratch-move-member scratchpad ""
+wait_field scratch-move-member workspace "$one"
+wait_field scratch-move-member active true
+wait_field scratch-move-peer scratchpad default
+accepts window-toggle-pinned
+wait_field scratch-move-member pinned false
+wait_field scratch-move-member floating false
+wait_field scratch-move-member workspace "$one"
+
+echo "workspace moves and pinning release scratchpad membership and preserve follow/silent behavior and saved layout state"

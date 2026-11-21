@@ -1315,12 +1315,24 @@ namespace umbriel {
     }
 
     bool actionTogglePinned(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
-      if (scratchpadHoldsFocus(server)) {
+      View* view = placementTarget(server, {}, FocusSource::Seat).value_or(nullptr);
+      if (view == nullptr) {
         return true;
       }
-      if (View* view = placementTarget(server, {}, FocusSource::Seat).value_or(nullptr)) {
-        view->togglePinned();
+      // Pinning a scratchpad window takes it out of the scratchpad: it returns to the workspace under the pad, keeping
+      // its saved tiled state for a later unpin, and is pinned there.
+      if (ScratchpadManager* scratchpad = server.scratchpadManager(); scratchpad != nullptr
+          && scratchpad->contains(view)
+          && !view->scheduledFullscreen()
+          && !view->currentFullscreen()) {
+        Output* output = scratchpad->outputFor(view);
+        Workspace* target =
+            output != nullptr && output->workspaceGroup() != nullptr ? output->workspaceGroup()->active() : nullptr;
+        if (target == nullptr || !scratchpad->restoreToWorkspace(view, target)) {
+          return true;
+        }
       }
+      view->togglePinned();
       return true;
     }
 
