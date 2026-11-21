@@ -378,11 +378,7 @@ namespace umbriel {
     m_dragDestroy.link.prev = nullptr;
     m_toplevelDrags->finish();
     m_server->cursor()->handleDataDragEnded();
-    View* target = m_dropTarget;
-    m_dropTarget = nullptr;
-    if (target != nullptr) {
-      m_server->focusView(target, FocusReason::DragDrop);
-    } else {
+    if (m_dropTarget == nullptr) {
       m_server->restoreActivatedViewKeyboardFocus();
     }
   }

@@ -24,6 +24,11 @@ namespace umbriel {
     wlr_seat* wlr() const { return m_seat; }
 
     ToplevelDragManager& toplevelDrags() const { return *m_toplevelDrags; }
+    View* takeDropTarget() {
+      View* target = m_dropTarget;
+      m_dropTarget = nullptr;
+      return target;
+    }
 
     void applyConfig();
     void updateCapabilities(bool hasKeyboard, bool hasTouch);
