@@ -1530,4 +1530,32 @@ UMBRIEL_TEST(maximizedToEdgesSelectsCurrentState) {
   CHECK(edges.titleBar == umbriel::TitleBarMode::Off);
 }
 
+UMBRIEL_TEST(fullscreenMatcherSelectsEffectsAndRestoresDefaults) {
+  Config config;
+  WindowRule base;
+  base.windowEffect = "normal";
+  config.windowRules.push_back(base);
+  WindowRule fullscreen;
+  fullscreen.matchFullscreen = true;
+  fullscreen.windowEffect = "fullscreen";
+  config.windowRules.push_back(fullscreen);
+  const auto resolve = [&](const umbriel::WindowRuleState& state) {
+    return umbriel::resolveWindowRules(config, "app", "title", std::nullopt, ContentType::None, state, 0);
+  };
+  CHECK(resolve({}).windowEffect == "normal");
+  CHECK(resolve({.fullscreen = true}).windowEffect == "fullscreen");
+  CHECK(resolve({.maximizedToEdges = true}).windowEffect == "normal");
+  CHECK(resolve({}).windowEffect == "normal");
+  WindowRule windowed;
+  windowed.matchFullscreen = false;
+  windowed.windowEffect = "off";
+  config.windowRules.push_back(windowed);
+  CHECK(resolve({}).windowEffect == "off");
+  CHECK(resolve({.fullscreen = true}).windowEffect == "fullscreen");
+  WindowRule changed = fullscreen;
+  changed.matchFullscreen = false;
+  CHECK(!(changed == fullscreen));
+  CHECK((umbriel::WindowRuleState{} != umbriel::WindowRuleState{.fullscreen = true}));
+}
+
 int main() { return RUN_TESTS(); }

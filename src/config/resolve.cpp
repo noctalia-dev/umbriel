@@ -265,6 +265,9 @@ namespace umbriel {
       if (rule.matchFloating && *rule.matchFloating != state.floating) {
         continue;
       }
+      if (rule.matchFullscreen && *rule.matchFullscreen != state.fullscreen) {
+        continue;
+      }
       if (rule.matchMaximizedToEdges && *rule.matchMaximizedToEdges != state.maximizedToEdges) {
         continue;
       }

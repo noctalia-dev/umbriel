@@ -646,6 +646,7 @@ namespace umbriel {
     return {
         .focused = m_borderFocusedState,
         .floating = !m_tiled,
+        .fullscreen = scheduledFullscreen(),
         .maximizedToEdges = m_maximizedToEdges,
         .pinned = m_pinned,
         .scratchpad = m_inScratchpad,
