@@ -260,12 +260,12 @@ namespace {
   void keyboardEnter(void* data, wl_keyboard*, uint32_t, wl_surface* surface, wl_array*) {
     auto& state = *static_cast<State*>(data);
     state.keyboardFocused = surface == state.surface;
-    if (state.targetMode && state.keyboardFocused) {
-      std::println("keyboard-enter");
-      std::fflush(stdout);
-    } else if (state.activeOffer != nullptr) {
+    if (state.activeOffer != nullptr) {
       state.failed = true;
       std::println("unexpected-keyboard-enter");
+      std::fflush(stdout);
+    } else if (state.keepTargetAfterDrop && state.keyboardFocused) {
+      std::println("keyboard-enter");
       std::fflush(stdout);
     }
   }
@@ -277,16 +277,16 @@ namespace {
   }
   void keyboardKey(void* data, wl_keyboard*, uint32_t, uint32_t, uint32_t key, uint32_t keyState) {
     auto& state = *static_cast<State*>(data);
-    if (state.targetMode) {
-      if (state.keyboardFocused) {
-        std::println("key {} {}", key, keyState);
-        std::fflush(stdout);
-      }
+    if (state.activeOffer != nullptr || !state.keepTargetAfterDrop) {
+      state.failed = true;
+      std::println("unexpected-keyboard-key");
+      std::fflush(stdout);
       return;
     }
-    state.failed = true;
-    std::println("unexpected-keyboard-key");
-    std::fflush(stdout);
+    if (state.keyboardFocused) {
+      std::println("key {} {}", key, keyState);
+      std::fflush(stdout);
+    }
   }
   void keyboardModifiers(
       void* data, wl_keyboard*, uint32_t, uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group
