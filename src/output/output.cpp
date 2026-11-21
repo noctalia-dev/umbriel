@@ -862,7 +862,14 @@ namespace umbriel {
       kLog.warn("output '{}': VRR requested but adaptive sync is not supported", m_output->name);
     }
 
-    const bool tryVrrOn = vrrRequested && vrrSupported;
+    const bool vrrLive = m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
+    if (stageGeometry) {
+      m_vrrTransition.reset();
+    }
+    // An HDR transition modesets, so it could switch VRR on where a frame commit cannot; if the driver then rejects
+    // switching it off again, VRR stays on after the fullscreen content that wanted it is gone. Leave enabling to the
+    // frame path, which tests the change and remembers a rejection.
+    const bool tryVrrOn = vrrRequested && vrrSupported && (stageGeometry || vrrLive);
 
     // HDR pre-flight.
     std::string_view earlyHdrFail;
@@ -1318,7 +1325,7 @@ namespace umbriel {
       return;
     }
     const bool currentlyEnabled = m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
-    if (configuredVrrEnabled() == currentlyEnabled) {
+    if (!m_vrrTransition.shouldTry(configuredVrrEnabled(), currentlyEnabled)) {
       return;
     }
     // Apply with the next frame commit: a separate commit supersedes the pending page flip, and wlroots then never
@@ -1967,6 +1974,7 @@ namespace umbriel {
     } else {
       // Mode changes can drop the DRM gamma LUT; re-apply on the next frame.
       m_gammaDirty = true;
+      m_vrrTransition.reset();
       // A mode change also rebuilds the SDR gamut transform so the supplied
       // scene transform is re-established from the current characterization.
       updateSdrGamutTransform(findOutputRule(config(), identity()), true);
@@ -2290,13 +2298,18 @@ namespace umbriel {
         if (m_vrrPending && hasBuffer) {
           m_vrrPending = false;
           const bool enabled = configuredVrrEnabled();
-          if (enabled != (m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED)) {
+          if (m_vrrTransition.shouldTry(enabled, m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED)) {
             wlr_output_state_set_adaptive_sync_enabled(&state, enabled);
             if (wlr_output_test_state(m_output, &state)) {
               vrrChange = enabled;
             } else {
               state.committed &= ~WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED;
-              kLog.warn("output '{}': failed to {} VRR", m_output->name, enabled ? "enable" : "disable");
+              m_vrrTransition.reject(enabled);
+              kLog.warn(
+                  "output '{}': backend rejected {} VRR without a modeset; leaving it {} until the mode or output "
+                  "configuration changes",
+                  m_output->name, enabled ? "enabling" : "disabling", enabled ? "off" : "on"
+              );
             }
           }
         }
@@ -2437,6 +2450,7 @@ namespace umbriel {
     if ((event->state->committed & (WLR_OUTPUT_STATE_MODE | WLR_OUTPUT_STATE_ENABLED)) != 0) {
       markDirty(Dirty::LayerArrange | Dirty::Banner | Dirty::Backdrop);
       m_gammaDirty = true;
+      m_vrrTransition.reset();
       updateHdrAvailability();
       m_server->updateColorPreferences();
       if (SessionLock* lock = m_server->sessionLock()) {
