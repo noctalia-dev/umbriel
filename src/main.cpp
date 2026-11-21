@@ -1,3 +1,5 @@
+#include "cli/cli_words.h"
+#include "cli/complete.h"
 #include "cli/ipc_client.h"
 #include "config/config.h"
 #include "config/config_diag.h"
@@ -12,12 +14,14 @@
 #include "server/server.h"
 
 #include <algorithm>
+#include <chrono>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <filesystem>
 #include <format>
+#include <memory>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <print>
@@ -36,13 +40,15 @@
 namespace {
   constexpr Logger kLog("main");
 
-  bool isJsonFlag(const char* arg) { return std::strcmp(arg, "--json") == 0 || std::strcmp(arg, "-j") == 0; }
+  bool isJsonFlag(const char* arg) { return arg == umbriel::kCliJsonFlag || arg == umbriel::kCliJsonShortFlag; }
+
+  bool isHelpFlag(const char* arg) { return arg == umbriel::kCliHelpFlag || arg == umbriel::kCliHelpShortFlag; }
 
   int validateConfig(int argc, char** argv) {
     const char* configPath = nullptr;
     bool json = false;
     for (int i = 3; i < argc; ++i) {
-      if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
+      if (argv[i] == umbriel::kCliConfigFlag && i + 1 < argc) {
         configPath = argv[++i];
       } else if (isJsonFlag(argv[i])) {
         json = true;
@@ -157,6 +163,10 @@ namespace {
     row("config validate [-c <config>]", "check the config file; --json lists diagnostics");
     row("config schema [--json]", "count or describe every config key");
 
+    heading("Shell completion");
+    row("completions <bash|zsh|fish>", "print a completion script to install or eval");
+    row("complete -- <word>...", "answer a completion request (used by the scripts)");
+
     if (std::ranges::any_of(umbriel::ipcCommands(), [](const auto& spec) {
           return spec.group == umbriel::IpcCommandGroup::Harness;
         })) {
@@ -168,7 +178,11 @@ namespace {
     row("help | -h | --help", "show this help");
     row("-v | -V | --version", "print version");
 
-    std::println(stream, "\nRun `umbriel msg --help` to list all available actions for `msg` and keybinds.");
+    std::println(
+        stream,
+        "\nRun `umbriel msg --help` to list all available actions for `msg` and keybinds, and `umbriel completions "
+        "<shell>` to complete them."
+    );
   }
 
   // `umbriel msg --help`: every action with its arguments, grouped as the cheatsheet groups them.
@@ -208,13 +222,13 @@ namespace {
         std::println("  {:<{}}  {}", names[i], width, summaries[i]);
       }
     }
+    std::println("");
+    std::println("These actions also complete in bash, zsh, and fish: load `umbriel completions <shell>`.");
   }
 
   // Runs an IpcCommandSpec whose words start at argv[first].
   int runSpecCommand(const umbriel::IpcCommandSpec& spec, int argc, char** argv, int first) {
-    const auto isHelpFlag = [](const char* arg) {
-      return std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0;
-    };
+
     if (!spec.takesArgs) {
       bool jf = false;
       for (int i = first; i < argc; ++i) {
@@ -255,6 +269,208 @@ namespace {
     }
     return umbriel::runIpcCommand(spec, args, jf);
   }
+
+  // Long enough for one inspect reply on a healthy compositor, short enough that a stopped one cannot stall a
+  // keystroke. Completion prints nothing when it expires.
+  constexpr int kCompletionLiveBudgetMs = 120;
+
+  void addUnique(std::vector<std::string>& values, std::string value) {
+    if (!value.empty() && std::ranges::find(values, value) == values.end()) {
+      values.push_back(std::move(value));
+    }
+  }
+
+  bool completionLiveEnabled() {
+    const char* value = std::getenv("UMBRIEL_COMPLETE_LIVE");
+    return value == nullptr || std::strcmp(value, "0") != 0;
+  }
+
+  // The shells `umbriel completions` accepts, spelled from the one table the engine and the scripts read.
+  std::string completionShellList(std::string_view separator) {
+    std::string list;
+    for (const umbriel::CompletionShellName& shell : umbriel::completionShellNames()) {
+      if (!list.empty()) {
+        list += separator;
+      }
+      list += shell.name;
+    }
+    return list;
+  }
+
+  // One deadline for the whole request: every live query spends what is left of it, so a stalled compositor cannot
+  // delay the keystroke by more than `kCompletionLiveBudgetMs` however many families the position needs.
+  class LiveBudget {
+  public:
+    std::chrono::steady_clock::time_point deadline() const { return m_deadline; }
+
+  private:
+    std::chrono::steady_clock::time_point m_deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(kCompletionLiveBudgetMs);
+  };
+
+  // The configuration is parsed once per request and only when a position the engine reaches asks for a configured
+  // name.
+  const umbriel::Config& completionConfig(bool& loaded) {
+    if (!loaded) {
+      umbriel::loadConfig(nullptr);
+      loaded = true;
+    }
+    return umbriel::config();
+  }
+
+  // A field of the expected type, or a default for a reply that carries a different one. `value` throws on a
+  // mismatched type, and a completion must degrade to the compiled-in vocabulary rather than abort a keystroke.
+  std::string stringField(const nlohmann::json& entry, std::string_view key) {
+    const auto it = entry.find(std::string(key));
+    return it != entry.end() && it->is_string() ? it->get<std::string>() : std::string{};
+  }
+
+  bool boolField(const nlohmann::json& entry, std::string_view key) {
+    const auto it = entry.find(std::string(key));
+    return it != entry.end() && it->is_boolean() && it->get<bool>();
+  }
+
+  // `section` names the array to read when the reply is an object, as `effects` wraps its presets and pools in keys;
+  // `requiresTrue` names a boolean field an entry must carry to be collected.
+  void collectLiveNames(
+      std::vector<std::string>& target, std::string_view command, std::string_view key, const LiveBudget& budget,
+      std::string_view section = {}, std::string_view requiresTrue = {}
+  ) {
+    // The query measures what the shared deadline has left for each system call, and issues none once it is spent.
+    const std::optional<nlohmann::json> reply = umbriel::queryIpcJson(command, budget.deadline());
+    if (!reply) {
+      return;
+    }
+    const nlohmann::json* json = &*reply;
+    if (!section.empty()) {
+      if (!json->is_object()) {
+        return;
+      }
+      const auto it = json->find(std::string(section));
+      if (it == json->end()) {
+        return;
+      }
+      json = &*it;
+    }
+    if (!json->is_array()) {
+      return;
+    }
+    for (const auto& entry : *json) {
+      if (!entry.is_object()) {
+        continue;
+      }
+      if (!requiresTrue.empty() && !boolField(entry, requiresTrue)) {
+        continue;
+      }
+      const std::string name = stringField(entry, key);
+      if (!name.empty()) {
+        addUnique(target, name);
+      }
+    }
+  }
+
+  // Every family loads on first use, so a position that reads none of them parses no configuration and contacts no
+  // compositor.
+  umbriel::CompletionValues completionValues() {
+    const auto loaded = std::make_shared<bool>(false);
+    const auto budget = std::make_shared<LiveBudget>();
+    const bool live = completionLiveEnabled();
+
+    const auto configNames = [loaded](std::vector<std::string>& target, const auto& take) {
+      for (const auto& entry : take(completionConfig(*loaded))) {
+        addUnique(target, entry.name);
+      }
+    };
+
+    umbriel::CompletionValues values;
+    values.outputs = umbriel::CompletionList([=](std::vector<std::string>& target) {
+      configNames(target, [](const umbriel::Config& config) -> const auto& { return config.outputs; });
+      if (live) {
+        collectLiveNames(target, "outputs", "name", *budget);
+      }
+    });
+    values.windows = umbriel::CompletionList([=](std::vector<std::string>& target) {
+      if (live) {
+        collectLiveNames(target, "windows", "id", *budget);
+      }
+    });
+    // A workspace is named either by a `[[workspace]]` rule or by a string inventory on an output; a numeric
+    // inventory creates anonymous members, which only a positional index reaches — completion never offers them.
+    values.workspaces = umbriel::CompletionList([=](std::vector<std::string>& target) {
+      const umbriel::Config& config = completionConfig(*loaded);
+      configNames(target, [](const umbriel::Config& loadedConfig) -> const auto& {
+        return loadedConfig.workspaceRules;
+      });
+      for (const umbriel::OutputRule& output : config.outputs) {
+        if (!output.workspaces) {
+          continue;
+        }
+        if (const auto* names = std::get_if<std::vector<std::string>>(&*output.workspaces)) {
+          for (const std::string& name : *names) {
+            addUnique(target, name);
+          }
+        }
+      }
+      if (live) {
+        // A live reply lists every member, and an anonymous one carries its index as a name, which `--name` refuses.
+        collectLiveNames(target, "workspaces", "name", *budget, {}, "named");
+      }
+    });
+    // A slot accepts only names of its own kind, and only a cycle demands a pool, so the kind is asked for here and
+    // the filter is the validator's own predicate rather than a second copy of the rule.
+    values.effects = umbriel::EffectCandidates([=](std::vector<std::string>& presets, std::vector<std::string>& pools,
+                                                   umbriel::EffectKind kind) {
+      const umbriel::Effects& effects = completionConfig(*loaded).effects;
+      for (const umbriel::EffectPreset& preset : effects.presets) {
+        if (umbriel::effectReferenceAccepted(
+                effects, preset.name, kind, false, umbriel::EffectReferenceConstraint::PresetOrPool
+            )) {
+          addUnique(presets, preset.name);
+        }
+      }
+      for (const umbriel::EffectPool& pool : effects.pools) {
+        if (umbriel::effectReferenceAccepted(
+                effects, pool.name, kind, false, umbriel::EffectReferenceConstraint::PoolRequired
+            )) {
+          addUnique(pools, pool.name);
+        }
+      }
+      if (!live) {
+        return;
+      }
+      const std::optional<nlohmann::json> reply = umbriel::queryIpcJson("effects", budget->deadline());
+      if (!reply) {
+        return;
+      }
+      // The running compositor answers from its own configuration, which need not be the file this process discovers
+      // (it may have started with `-c`, or hold a last-good config a broken file replaced). Its entry's own `kind` and
+      // the section it sits in are the only claims that hold, so they decide rather than this process's tables.
+      if (!reply->is_object()) {
+        return;
+      }
+      for (const char* section : {"pools", "presets"}) {
+        const auto it = reply->find(section);
+        if (it == reply->end() || !it->is_array()) {
+          continue;
+        }
+        for (const auto& entry : *it) {
+          if (!entry.is_object() || stringField(entry, "kind") != umbriel::effectKindName(kind)) {
+            continue;
+          }
+          addUnique(std::string_view(section) == "pools" ? pools : presets, stringField(entry, "name"));
+        }
+      }
+    });
+    values.scratchpads = umbriel::CompletionList([=](std::vector<std::string>& target) {
+      configNames(target, [](const umbriel::Config& config) -> const auto& { return config.scratchpads; });
+    });
+    values.submaps = umbriel::CompletionList([loaded](std::vector<std::string>& target) {
+      for (const auto& bind : completionConfig(*loaded).keybinds) {
+        addUnique(target, bind.submap);
+      }
+    });
+    return values;
+  }
 } // namespace
 
 #ifdef UMBRIEL_USE_JEMALLOC
@@ -276,15 +492,14 @@ int main(int argc, char** argv) {
   mallopt(M_ARENA_MAX, 2);
 #endif
   if (argc >= 2) {
-    auto isHelpFlag = [](const char* arg) { return std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0; };
 
     // `config validate` and `config schema` read the config without a running compositor; the other verbs are runtime
     // overrides in the running one.
-    if (std::strcmp(argv[1], "config") == 0) {
-      if (argc >= 3 && std::strcmp(argv[2], "validate") == 0) {
+    if (argv[1] == umbriel::kCliConfig) {
+      if (argc >= 3 && argv[2] == umbriel::kCliConfigValidate) {
         return validateConfig(argc, argv);
       }
-      if (argc >= 3 && std::strcmp(argv[2], "schema") == 0) {
+      if (argc >= 3 && argv[2] == umbriel::kCliConfigSchema) {
         bool json = false;
         for (int i = 3; i < argc; ++i) {
           if (isHelpFlag(argv[i])) {
@@ -300,8 +515,7 @@ int main(int argc, char** argv) {
         return printConfigSchema(json);
       }
       if (argc >= 3) {
-        const auto* spec = umbriel::findIpcCommand(std::format("config-{}", argv[2]));
-        if (spec != nullptr && spec->group == umbriel::IpcCommandGroup::Config) {
+        if (const auto* spec = umbriel::findConfigCommand(argv[2]); spec != nullptr) {
           return runSpecCommand(*spec, argc, argv, 3);
         }
       }
@@ -309,11 +523,13 @@ int main(int argc, char** argv) {
       printHelp(help ? stdout : stderr);
       return help ? EXIT_SUCCESS : EXIT_FAILURE;
     }
-    if (std::strcmp(argv[1], "help") == 0 || std::strcmp(argv[1], "-h") == 0 || std::strcmp(argv[1], "--help") == 0) {
+    if (argv[1] == umbriel::kCliHelp || argv[1] == umbriel::kCliHelpShortFlag || argv[1] == umbriel::kCliHelpFlag) {
       printHelp(stdout);
       return EXIT_SUCCESS;
     }
-    if (std::strcmp(argv[1], "--version") == 0 || std::strcmp(argv[1], "-v") == 0 || std::strcmp(argv[1], "-V") == 0) {
+    if (argv[1] == umbriel::kCliVersionFlag
+        || argv[1] == umbriel::kCliVersionShortFlag
+        || argv[1] == umbriel::kCliVersionUpperFlag) {
       constexpr std::string_view unknownRevision = "unknown";
       const std::string_view revision = umbriel::build_info::revision();
       if (!revision.empty() && revision != unknownRevision) {
@@ -324,10 +540,70 @@ int main(int argc, char** argv) {
       return EXIT_SUCCESS;
     }
 
+    // Completion reads the compiled tables, and the live state only when a session answers within the budget.
+    if (argv[1] == umbriel::kCliCompletions) {
+      if (argc == 3 && isHelpFlag(argv[2])) {
+        std::println("Usage: umbriel completions <{}>", completionShellList("|"));
+        return EXIT_SUCCESS;
+      }
+      if (argc != 3) {
+        // Both a missing and an unknown shell are usage errors on 1, clear of the 2 and 3 the scripts delegate on.
+        std::println(stderr, "error: completions needs a shell: {}", completionShellList(", "));
+        return EXIT_FAILURE;
+      }
+      const auto shell = umbriel::completionShellNamed(argv[2]);
+      if (!shell) {
+        std::println(stderr, "error: unknown shell '{}': expected {}", argv[2], completionShellList(", "));
+        return EXIT_FAILURE;
+      }
+      std::print("{}", umbriel::completionScript(*shell));
+      return EXIT_SUCCESS;
+    }
+
+    if (argv[1] == umbriel::kCliComplete) {
+      std::vector<std::string> words;
+      for (int i = 2; i < argc; ++i) {
+        if (i == 2 && std::strcmp(argv[i], "--") == 0) {
+          continue;
+        }
+        words.emplace_back(argv[i]);
+      }
+      // Completing the first word passes no argument at all; the word under the cursor is then empty.
+      if (words.empty()) {
+        words.emplace_back();
+      }
+      // stdout is machine-readable and stderr silent here, so nothing the configuration load finds may be narrated.
+      setConsoleLogging(false);
+      const umbriel::CompletionValues values = completionValues();
+      const umbriel::CompletionOutcome outcome =
+          umbriel::completeWords(words, values, [](std::string_view value, std::string_view description) {
+            // The protocol is one `value<TAB>description` line, so a value carrying a separator, as a window title
+            // may, would forge or split a candidate.
+            if (value.find_first_of("\t\n") != std::string_view::npos) {
+              return;
+            }
+            if (description.empty()) {
+              std::println("{}", value);
+            } else {
+              std::println("{}\t{}", value, description);
+            }
+          });
+      switch (outcome) {
+      case umbriel::CompletionOutcome::Candidates:
+        return EXIT_SUCCESS;
+      // The shell owns the position: 2 asks for a path, 3 for a command line.
+      case umbriel::CompletionOutcome::Delegate:
+        return 2;
+      case umbriel::CompletionOutcome::DelegateCommand:
+        return 3;
+      }
+      return EXIT_SUCCESS;
+    }
+
     // IPC subcommands
 
     // Not an IpcCommandSpec: the reply is a stream, not one response, so it has its own client path.
-    if (std::strcmp(argv[1], "subscribe") == 0) {
+    if (argv[1] == umbriel::kCliSubscribe) {
       std::vector<std::string> events;
       for (int i = 2; i < argc; ++i) {
         if (isHelpFlag(argv[i])) {
@@ -362,7 +638,7 @@ int main(int argc, char** argv) {
     }
 
     // Not an IpcCommandSpec: the words are parsed here and sent as a structured action request.
-    if (std::strcmp(argv[1], "msg") == 0) {
+    if (argv[1] == umbriel::kCliMsg) {
       if (argc == 3 && isHelpFlag(argv[2])) {
         printActionHelp();
         return EXIT_SUCCESS;
@@ -408,9 +684,9 @@ int main(int argc, char** argv) {
   const char* startupCmd = nullptr;
   const char* configPath = nullptr;
   for (int i = 1; i < argc; ++i) {
-    if (std::strcmp(argv[i], "-s") == 0 && i + 1 < argc) {
+    if (argv[i] == umbriel::kCliSpawnFlag && i + 1 < argc) {
       startupCmd = argv[++i];
-    } else if (std::strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
+    } else if (argv[i] == umbriel::kCliConfigFlag && i + 1 < argc) {
       configPath = argv[++i];
     } else {
       printHelp(stderr);

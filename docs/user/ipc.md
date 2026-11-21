@@ -296,6 +296,20 @@ Disconnect, malformed or oversized input, or 250 ms without a snapshot closes th
 
 `umbriel config set`, `config get`, and `config unset` manage [runtime overrides](configuration.md#runtime-overrides). Their requests are `{"cmd":"config-set","args":["<key>","<value>"]}`, `{"cmd":"config-get","args":["<key>"]}`, and `{"cmd":"config-unset","args":["<key>"]}` (or `["--all"]`).
 
+## Shell completions
+
+`umbriel completions <bash|zsh|fish>` prints a completion script. Packages install it for bash, zsh, and fish under `share/bash-completion/completions`, `share/zsh/site-functions`, and `share/fish/vendor_completions.d` with no further setup; an uninstalled build can eval it instead:
+
+```sh
+eval "$(umbriel completions bash)"       # bash
+eval "$(umbriel completions zsh)"        # zsh
+umbriel completions fish | source        # fish
+```
+
+Completion covers every action and its arguments, every IPC subcommand and its flags, the `config` subcommands (`validate`, `schema`, `set`, `get`, `unset`), `subscribe` event names, and `completions` shells. Action arguments complete the vocabulary their parser accepts: layout modes and `toggle` sequences, window regions, stacking anchors, `normal`/`tabbed`, scratchpad and submap names, effect preset and pool names, and `--output`/`--window`/`--name` flags that the action takes.
+
+Configured names (outputs, workspaces, scratchpads, submaps, effect presets and pools) come from the configuration file and need no session. Output names, window ids, workspace names, and effect pool names also come from the running compositor when it answers within a 120 ms budget that covers the whole request — connect, send, and reply; a stopped or absent compositor simply leaves those arguments out. Set `UMBRIEL_COMPLETE_LIVE=0` to skip that query entirely. `umbriel complete -- <word>...` is the callback the scripts use: it prints `candidate<TAB>description` lines, or exits 2 for a path (`-c`) and 3 for a command line (`spawn`, the startup `-s` flag), which the shell completes itself.
+
 ## Virtual outputs
 
 | Request                                                                                             | CLI                                   |

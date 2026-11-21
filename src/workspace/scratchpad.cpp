@@ -23,7 +23,6 @@
 namespace umbriel {
 
   namespace {
-    constexpr std::string_view kImplicitScratchpad = "default";
     constexpr std::chrono::seconds kSpawnTimeout{10};
     // How far a dialog's parent chain is followed. The bound keeps a parent cycle from looping.
     constexpr int kMaxParentDepth = 8;

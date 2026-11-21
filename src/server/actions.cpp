@@ -1,6 +1,7 @@
 #include "server/actions.h"
 
 #include "config/config.h"
+#include "config/keybind_parse.h"
 #include "input/cursor.h"
 #include "input/seat.h"
 #include "layout/layout.h"
@@ -49,7 +50,7 @@ namespace umbriel {
         return std::nullopt;
       }
 
-      const std::string_view name = arg->name.empty() ? std::string_view("default") : std::string_view(arg->name);
+      const std::string_view name = arg->name.empty() ? kImplicitScratchpad : std::string_view(arg->name);
       if (arg->name.empty() && !config().scratchpads.empty()) {
         if (error != nullptr) {
           *error = "scratchpad name required";
@@ -1721,11 +1722,8 @@ namespace umbriel {
       if (arg == nullptr) {
         return true;
       }
-      static constexpr std::array kFullCycle{
-          LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master, LayoutMode::Stacking
-      };
       const std::span<const LayoutMode> cycle = arg->toggleSequence.empty()
-          ? std::span<const LayoutMode>(kFullCycle)
+          ? std::span<const LayoutMode>(umbriel::kFullLayoutCycle)
           : std::span<const LayoutMode>(arg->toggleSequence);
       // A mode outside the cycle, or its last mode, toggles to the first.
       const auto current = std::ranges::find(cycle, workspace->layoutMode());
@@ -1868,7 +1866,7 @@ namespace umbriel {
       if (arg == nullptr) {
         return reject(error, "action carries no workspace transfer target");
       }
-      const auto target = arg->destination == "current"
+      const auto target = arg->destination == kCurrentOutputWord
           ? std::expected<Output*, std::string>(server.outputFromWlr(server.preferredOutput()))
           : resolveOutputSelector(server, arg->destination);
       if (!target) {

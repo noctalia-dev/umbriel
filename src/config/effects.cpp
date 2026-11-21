@@ -208,4 +208,11 @@ namespace umbriel {
     return std::nullopt;
   }
 
+  bool effectReferenceAccepted(
+      const Effects& effects, std::string_view name, EffectKind kind, bool allowOff,
+      EffectReferenceConstraint constraint
+  ) {
+    return !effectReferenceError(effects, name, kind, allowOff, constraint).has_value();
+  }
+
 } // namespace umbriel

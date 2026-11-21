@@ -100,6 +100,7 @@ unit_tests = [
   ['drm-policy', ['unit/drm_policy.cpp'], []],
   ['config-watcher', ['unit/config_watcher.cpp'], [umbriel_core_dep]],
   ['action-registry', ['unit/action_registry.cpp'], [umbriel_core_dep]],
+  ['completion', ['unit/completion.cpp'], [umbriel_core_dep]],
   ['ipc-commands', ['unit/ipc_commands.cpp'], [umbriel_core_dep]],
   ['config-resolve', ['unit/config_resolve.cpp'], []],
   # Reads docs/user/actions.md from the source tree: the doc's tables are generated from the same spec strings the CLI
