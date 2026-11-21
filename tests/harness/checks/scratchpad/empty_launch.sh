@@ -69,7 +69,11 @@ assert_backdrop 120 135
 home_workspace=$(field empty-home workspace)
 for action in window-toggle-floating column-focus-first "window-move-to-workspace-silent 2" \
   window-move-to-scratchpad window-toggle-scratchpad; do
-  "$UMBRIEL" msg $action > /dev/null
+  # An empty stacking pad rejects window-toggle-floating as any stacking workspace does.
+  if ! out=$("$UMBRIEL" msg $action 2>&1) && [[ $action != window-toggle-floating ]]; then
+    echo "$action failed: $out"
+    exit 1
+  fi
   if [[ $(field empty-home floating) != false || $(field empty-home active) != false \
       || $(field empty-home workspace) != "$home_workspace" || $(field empty-home scratchpad) != "" ]]; then
     echo "empty scratchpad let $action reach the workspace window: $("$UMBRIEL" windows --json)"

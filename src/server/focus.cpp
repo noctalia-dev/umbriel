@@ -545,6 +545,14 @@ namespace umbriel {
       *surface = nullptr;
       return nullptr;
     }
+    // A shown scratchpad owns its output's pointer: the windows behind it are reached by dismissing it.
+    if (ScratchpadManager* pad = m_server.scratchpadManager(); pad != nullptr
+        && !view->pinned()
+        && !pad->contains(view)
+        && pad->visibleOn(m_server.outputFromWlr(wlr_output_layout_output_at(m_server.outputLayout(), lx, ly)))) {
+      *surface = nullptr;
+      return nullptr;
+    }
     // A window with a dialog attached gets no pointer, the way it gets no keyboard. The view is still reported so a
     // press on it focuses the dialog and a Mod-drag moves it.
     if (view->blocked()) {

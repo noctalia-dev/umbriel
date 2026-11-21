@@ -380,11 +380,18 @@ namespace umbriel {
 
   void View::setWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin) {
     assert(!attached());
-    if (workspace != nullptr
-        && m_server->scratchpadManager() != nullptr
-        && m_server->scratchpadManager()->contains(this)) {
+    if (ScratchpadManager* scratchpad = m_server->scratchpadManager(); workspace != nullptr
+        && scratchpad != nullptr
+        && scratchpad->contains(this)
+        && workspace != scratchpad->workspaceOf(scratchpad->nameFor(this))) {
       return;
     }
+    // Only ScratchpadManager puts a window into a scratchpad's workspace, after recording its membership.
+    assert(
+        workspace == nullptr
+        || !workspace->scratchpad()
+        || (m_server->scratchpadManager() != nullptr && m_server->scratchpadManager()->contains(this))
+    );
     // A pinned window belongs to its output and always joins that output's active workspace. Reconciliation may still
     // name a workspace it is deactivating as the group's active one; only a workspace that is really active qualifies.
     if (m_pinned && workspace != nullptr && !workspace->active() && workspace->group() != nullptr) {
@@ -1087,9 +1094,6 @@ namespace umbriel {
     if (m_workspace != nullptr) {
       return fs || m_workspace->liftedAboveFullscreen(this) ? m_workspace->fullscreenTree()
                                                             : m_workspace->viewLayer(m_tiled);
-    }
-    if (m_inScratchpad) {
-      return fs ? m_server->fullscreenTree() : m_server->scratchpadTree();
     }
     return fs ? m_server->fullscreenTree() : m_server->xdgTree();
   }

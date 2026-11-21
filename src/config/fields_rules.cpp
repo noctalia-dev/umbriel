@@ -40,6 +40,7 @@ namespace umbriel {
           registry::text("spawn_when_empty", &ScratchpadConfig::spawnWhenEmpty),
           registry::boolean("hide_when_empty", &ScratchpadConfig::hideWhenEmpty),
           registry::boolean("proportional_size", &ScratchpadConfig::proportionalSize),
+          registry::table("layout", &ScratchpadConfig::layout, workspaceLayoutFields()),
       };
       return fields;
     }

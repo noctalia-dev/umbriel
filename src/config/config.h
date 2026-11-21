@@ -145,6 +145,8 @@ namespace umbriel {
     std::string spawnWhenEmpty;
     bool hideWhenEmpty = false;
     bool proportionalSize = false;
+    // Layout overrides as in [[workspace]]. Without `mode` the pad uses stacking, not the global [layout] mode.
+    WorkspaceLayoutOverrides layout{};
     bool operator==(const ScratchpadConfig&) const = default;
   };
 

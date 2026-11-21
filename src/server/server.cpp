@@ -1115,6 +1115,12 @@ namespace umbriel {
     wl_list_remove(&m_toplevelCaptureRequest.link);
     wl_list_remove(&m_padKeyboardFocusChange.link);
     wl_list_remove(&m_layerKeyboardFocusChange.link);
+    // Scratchpad workspaces reference their output's group and their windows; park them while both still exist.
+    if (m_scratchpadManager != nullptr) {
+      for (const auto& output : m_outputs) {
+        m_scratchpadManager->releaseOutput(output.get());
+      }
+    }
     m_configWatcher.reset();
     m_ipc.reset();
     m_insertHint.reset();
@@ -2263,7 +2269,10 @@ namespace umbriel {
         }
       }
     }
-    return true;
+    return m_scratchpadManager == nullptr
+        || std::ranges::none_of(m_scratchpadManager->workspaces(), [](const Workspace* workspace) {
+             return workspace->arrangePending();
+           });
   }
 
   CloseSnapshotId Server::animateCloseSnapshot(

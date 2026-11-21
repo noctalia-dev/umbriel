@@ -380,14 +380,7 @@ namespace umbriel {
         requestFloatingSize((*mapFloatingSize)[0], (*mapFloatingSize)[1]);
       }
     }
-    if (assignedScratchpad) {
-      // Scratchpad admission has detached the view from its workspace, so its
-      // assigned scratchpad output now supplies the correct usable area.
-      placeInUsableArea(rule.defaultPosition, mapFloatingSize);
-      if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
-        scratchpad->syncViewPresentation(this);
-      }
-    } else if (!assignedScratchpad && !m_tiled) {
+    if (!m_tiled) {
       placeInUsableArea(rule.defaultPosition, mapFloatingSize);
       // Enable + clip the float against its home output now that per-output
       // visibility is resolved data-side (no per-render-pass pass to do it).
@@ -907,10 +900,14 @@ namespace umbriel {
       const bool openingInScratchpad = !openingScratchpad.empty()
           && scratchpadManager != nullptr
           && scratchpadManager->hasScratchpad(openingScratchpad);
+      // A pad that has never had an output has no workspace yet, so its window opens floating until the pad arranges
+      // it.
+      Workspace* openingPadWorkspace =
+          openingInScratchpad ? scratchpadManager->workspaceOf(openingScratchpad) : nullptr;
       const bool passiveUtility = passiveXwaylandUtility();
       bool wantTiled = !m_server->seat()->toplevelDrags().attached(m_toplevel)
           && !passiveUtility
-          && !openingInScratchpad
+          && (!openingInScratchpad || openingPadWorkspace != nullptr)
           && !rule.defaultPinned.value_or(false)
           && (rule.defaultFloating ? !*rule.defaultFloating : looksTiled());
       if (passiveUtility) {
@@ -922,7 +919,9 @@ namespace umbriel {
       // Resolve the workspace this view will attach to, so the output and layout that will actually arrange it are the
       // ones that size the first configure.
       Workspace* launchWorkspace = m_launchWorkspace != nullptr ? m_launchWorkspace->workspace : nullptr;
-      Workspace* target = launchRuleOverride ? nullptr : (m_workspace != nullptr ? m_workspace : launchWorkspace);
+      Workspace* target = openingPadWorkspace != nullptr
+          ? openingPadWorkspace
+          : (launchRuleOverride ? nullptr : (m_workspace != nullptr ? m_workspace : launchWorkspace));
       Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
       WorkspaceGroup* targetGroup = target != nullptr
           ? target->group()

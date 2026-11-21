@@ -908,10 +908,9 @@ namespace umbriel {
     if (effects.animation && m_scratchpadManager != nullptr) {
       m_scratchpadManager->applyConfig();
     }
-    // A maximized scratchpad window follows the gap, border, and struts it is sized with; no workspace arrange reaches
-    // it.
+    // Scratchpad workspaces are in no output's inventory, so the refreshLayouts pass above does not reach them.
     if ((effects.workspaceLayout || effects.viewChrome) && m_scratchpadManager != nullptr) {
-      m_scratchpadManager->refitMaximized();
+      m_scratchpadManager->refreshLayouts();
     }
     if (effects.layerEffects) {
       for (const auto& layer : m_layerSurfaces) {
@@ -1773,7 +1772,8 @@ namespace umbriel {
           watch->launchScratchpad = m_scratchpadManager->nameFor(source);
         }
         launchWorkspace = source->workspace();
-        if (source->pinned() || launchWorkspace == nullptr) {
+        // A scratchpad window's launch returns to the workspace under the pad, as its own windows do.
+        if (source->pinned() || launchWorkspace == nullptr || launchWorkspace->scratchpad()) {
           if (Output* output = source->currentOutput(); output != nullptr && output->workspaceGroup() != nullptr) {
             launchWorkspace = output->workspaceGroup()->active();
           }
@@ -3802,7 +3802,8 @@ namespace umbriel {
     }
     if (hadKeyboardFocus) {
       notifyKeyboardClearFocus();
-      if (replacement != nullptr) {
+      // A scratchpad's replacement can be a window its single-window mode is not showing.
+      if (replacement != nullptr && replacement->onActiveWorkspace()) {
         focusView(replacement);
       } else {
         refocus(output);
