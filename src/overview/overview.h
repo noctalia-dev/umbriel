@@ -117,6 +117,10 @@ namespace umbriel {
     void endNavigation(bool cancelled, uint32_t timeMsec, NavigationSource source);
     // Drop an unfinished gesture whatever its source, leaving the filmstrip to settle on the active workspace.
     void cancelNavigation();
+    // Restore a held card and discard pending presses and close selections before workspace inventories or layouts
+    // move. Leaves the overview animation running, but neither a button release nor its completion can replay a stale
+    // selection.
+    void cancelLayoutInteraction();
     void handleTouchpadAxis(wlr_pointer* pointer, bool vertical, double delta, uint32_t timeMsec, double lx, double ly);
     void handleTouchpadFrame();
     bool handleFallbackKey(uint32_t keysym);

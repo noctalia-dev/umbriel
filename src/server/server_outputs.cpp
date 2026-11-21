@@ -10,6 +10,7 @@
 #include "workspace/workspace.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace umbriel {
 
@@ -127,6 +128,18 @@ namespace umbriel {
       }
     }
     return nullptr;
+  }
+
+  void Server::noteActiveOutput(Output* output) {
+    if (output == nullptr || !output->desktopEnabled() || !output->wlr()->enabled || m_sessionLocked) {
+      return;
+    }
+    const std::string_view name = output->identity().connector;
+    if (name.empty() || name == m_activeOutputName) {
+      return;
+    }
+    m_previousActiveOutputName = std::move(m_activeOutputName);
+    m_activeOutputName = name;
   }
 
   Output* Server::outputFromWlr(wlr_output* output) const {

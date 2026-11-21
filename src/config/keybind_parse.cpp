@@ -654,6 +654,8 @@ namespace umbriel {
          KeybindAction::WorkspaceSwapActiveOutputRight},
         {"workspace-swap-active-output-up", "", "Swap active workspace windows with the output above",
          KeybindAction::WorkspaceSwapActiveOutputUp},
+        {"workspace-swap-all-output", "[<source> [--output <destination>]]", "Swap all workspaces with another output",
+         KeybindAction::WorkspaceSwapAllOutput, ActionArgKind::WorkspaceSwapAllOutput},
         {"workspace-switch", "<workspace> [--output <output>]", "Switch to the selected workspace",
          KeybindAction::WorkspaceSwitch, ActionArgKind::Workspace},
         {"workspace-toggle-show-desktop", "", "Minimize or restore the workspace's floating windows",
@@ -916,6 +918,16 @@ namespace umbriel {
         }
         arg.workspace = parseWorkspaceSelector(*split);
         return arg.workspace ? std::make_optional<KeybindPayload>(std::move(arg)) : std::nullopt;
+      }
+      case ActionArgKind::WorkspaceSwapAllOutput: {
+        const auto split = splitActionWords(words, kFlagOutput);
+        if (!split || split->positional.size() > 1 || (split->positional.empty() && split->output)) {
+          return std::nullopt;
+        }
+        return WorkspaceSwapAllOutputArg{
+            .destination = std::string(split->output.value_or(std::string_view{})),
+            .output = split->positional.empty() ? std::string{} : std::string(split->positional.front())
+        };
       }
       case ActionArgKind::WindowEffectSet:
       case ActionArgKind::WindowEffectCycle:
