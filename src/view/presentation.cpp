@@ -180,4 +180,35 @@ namespace umbriel {
     );
   }
 
+  wlr_box minimizeCollapseBox(const wlr_box& resting, double scale, const wlr_box& usable, MinimizeAnchor anchor) {
+    const double factor = std::clamp(scale, 0.0, 1.0);
+    wlr_box collapsed = resting;
+    collapsed.width = std::max(1, static_cast<int>(std::lround(resting.width * factor)));
+    collapsed.height = std::max(1, static_cast<int>(std::lround(resting.height * factor)));
+    switch (anchor) {
+    case MinimizeAnchor::Center:
+      // The scaled box keeps the resting centre.
+      collapsed.x = resting.x + (resting.width - collapsed.width) / 2;
+      collapsed.y = resting.y + (resting.height - collapsed.height) / 2;
+      break;
+    case MinimizeAnchor::Left:
+      collapsed.x = usable.x;
+      collapsed.y = usable.y + (usable.height - collapsed.height) / 2;
+      break;
+    case MinimizeAnchor::Right:
+      collapsed.x = usable.x + usable.width - collapsed.width;
+      collapsed.y = usable.y + (usable.height - collapsed.height) / 2;
+      break;
+    case MinimizeAnchor::TopCenter:
+      collapsed.x = usable.x + (usable.width - collapsed.width) / 2;
+      collapsed.y = usable.y;
+      break;
+    case MinimizeAnchor::BottomCenter:
+      collapsed.x = usable.x + (usable.width - collapsed.width) / 2;
+      collapsed.y = usable.y + usable.height - collapsed.height;
+      break;
+    }
+    return collapsed;
+  }
+
 } // namespace umbriel

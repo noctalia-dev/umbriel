@@ -51,4 +51,51 @@ UMBRIEL_TEST(fullscreenCenteringSurvivesSceneReconfiguration) {
   wlr_scene_node_destroy(&scene->tree.node);
 }
 
+// A minimizing window collapses toward its anchor with its own box scaled, and never to an empty box.
+UMBRIEL_TEST(minimizeCollapseScalesAboutTheConfiguredAnchor) {
+  const wlr_box resting{100, 200, 400, 300};
+  const wlr_box usable{0, 0, 1280, 720};
+
+  // Center: the scaled box keeps the resting centre.
+  const wlr_box centered = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::Center);
+  CHECK_EQ(centered.width, 200);
+  CHECK_EQ(centered.height, 150);
+  CHECK_EQ(centered.x + centered.width / 2, resting.x + resting.width / 2);
+  CHECK_EQ(centered.y + centered.height / 2, resting.y + resting.height / 2);
+
+  const wlr_box left = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::Left);
+  CHECK_EQ(left.x, usable.x);
+  CHECK_EQ(left.y + left.height / 2, usable.y + usable.height / 2);
+
+  const wlr_box right = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::Right);
+  CHECK_EQ(right.x + right.width, usable.x + usable.width);
+  CHECK_EQ(right.y + right.height / 2, usable.y + usable.height / 2);
+
+  const wlr_box top = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::TopCenter);
+  CHECK_EQ(top.y, usable.y);
+  CHECK_EQ(top.x + top.width / 2, usable.x + usable.width / 2);
+
+  const wlr_box bottom = umbriel::minimizeCollapseBox(resting, 0.5, usable, umbriel::MinimizeAnchor::BottomCenter);
+  CHECK_EQ(bottom.y + bottom.height, usable.y + usable.height);
+  CHECK_EQ(bottom.x + bottom.width / 2, usable.x + usable.width / 2);
+}
+
+UMBRIEL_TEST(minimizeCollapseIsIdentityAtFullScaleAndNeverEmpty) {
+  const wlr_box resting{100, 200, 400, 300};
+  const wlr_box usable{0, 0, 1280, 720};
+  const wlr_box full = umbriel::minimizeCollapseBox(resting, 1.0, usable, umbriel::MinimizeAnchor::Center);
+  CHECK_EQ(full.x, resting.x);
+  CHECK_EQ(full.y, resting.y);
+  CHECK_EQ(full.width, resting.width);
+  CHECK_EQ(full.height, resting.height);
+
+  // Out-of-range scales clamp, and the box keeps at least one pixel on each axis.
+  const wlr_box tiny = umbriel::minimizeCollapseBox(resting, 0.0, usable, umbriel::MinimizeAnchor::Center);
+  CHECK_EQ(tiny.width, 1);
+  CHECK_EQ(tiny.height, 1);
+  const wlr_box over = umbriel::minimizeCollapseBox(resting, 4.0, usable, umbriel::MinimizeAnchor::Left);
+  CHECK_EQ(over.width, resting.width);
+  CHECK_EQ(over.height, resting.height);
+}
+
 int main() { return RUN_TESTS(); }
