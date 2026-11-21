@@ -3,7 +3,6 @@
   config,
   pkgs,
   lib,
-  modulesPath,
   ...
 }:
 let
@@ -37,6 +36,9 @@ in
       {
         hardware.graphics.enable = lib.mkDefault true;
 
+        security.polkit.enable = lib.mkDefault true;
+        programs.dconf.enable = lib.mkDefault true;
+
         assertions = [
           {
             assertion = cfg.package != null;
@@ -56,8 +58,8 @@ in
         # Required for greetd / noctalia-greeter to discover the session (Name=Umbriel).
         # Plain systemPackages .desktop files are not enough; NixOS aggregates via this.
         services.displayManager.sessionPackages = [ cfg.package ];
-
         systemd.packages = [ cfg.package ];
+
         systemd.user.services.umbriel = {
           restartIfChanged = false;
           enableDefaultPath = false;
@@ -67,18 +69,9 @@ in
       (lib.mkIf (cfg.portalPackage != null) {
         xdg.portal = {
           enable = lib.mkDefault true;
+          configPackages = [ cfg.portalPackage ];
           extraPortals = [ cfg.portalPackage ];
-          config.umbriel.default = lib.mkDefault [
-            "umbriel"
-            "gtk"
-          ];
         };
-      })
-
-      (import "${modulesPath}/programs/wayland/wayland-session.nix" {
-        inherit lib pkgs;
-        enableXWayland = false;
-        enableWlrPortal = false;
       })
     ]
   );
