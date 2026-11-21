@@ -1654,7 +1654,7 @@ namespace umbriel {
     return m_shellLayerTrees[layer];
   }
 
-  void Server::spawn(const char* command, const char* description, bool withActivationToken) {
+  void Server::spawn(const char* command, const char* description, bool withActivationToken, bool floating) {
     if (m_socketName.empty()) {
       kLog.error("cannot spawn before the Wayland socket exists");
       return;
@@ -1731,7 +1731,7 @@ namespace umbriel {
     }
 
     if (launchToken != nullptr) {
-      trackActivationToken(launchToken, true, pid);
+      trackActivationToken(launchToken, true, pid, floating);
     }
     // Bound the label and the command so a long one cannot push the pid and unit past the log line cap; those two
     // are the only trace a program that starts nothing leaves. Bytes, not display width: a run of zero-width

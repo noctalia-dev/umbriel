@@ -530,7 +530,7 @@ namespace umbriel {
 
   bool View::assignLaunchOrigin(
       std::string_view token, std::shared_ptr<WorkspaceLaunchAnchor> workspace, uint32_t timeoutMsec,
-      std::string_view scratchpad
+      std::string_view scratchpad, bool floating
   ) {
     Workspace* target = workspace != nullptr ? workspace->workspace : nullptr;
     if (token.empty()
@@ -554,6 +554,7 @@ namespace umbriel {
     m_launchWorkspace = std::move(workspace);
     ++m_launchWorkspace->pendingViews;
     m_launchScratchpad = scratchpad;
+    m_launchFloating = floating;
     m_launchToken = token;
     m_launchWorkspaceId = target->id();
     m_launchPlacementPending = true;
@@ -594,6 +595,7 @@ namespace umbriel {
     }
     m_launchWorkspace.reset();
     m_launchScratchpad.clear();
+    m_launchFloating = false;
     m_launchPlacementPending = false;
     m_launchWorkspaceId.clear();
     if (clearToken) {

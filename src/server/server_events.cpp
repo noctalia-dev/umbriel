@@ -1746,12 +1746,15 @@ namespace umbriel {
     );
   }
 
-  void Server::trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid) {
+  void Server::trackActivationToken(
+      wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid, bool launchFloating
+  ) {
     auto* watch = new ActivationTokenWatch();
     watch->server = this;
     watch->createdAt = std::chrono::steady_clock::now();
     watch->compositorIssued = compositorIssued;
     watch->launchPid = launchPid;
+    watch->launchFloating = launchFloating;
     watch->inputBacked = !compositorIssued && token->seat != nullptr && token->surface != nullptr;
     watch->pointerBacked = watch->inputBacked && token->seat->pointer_state.grab_serial == token->serial;
     if (const char* tokenName = wlr_xdg_activation_token_v1_get_name(token)) {
@@ -1841,7 +1844,9 @@ namespace umbriel {
     }
     const bool assigned = workspace != nullptr
         && tokenName != nullptr
-        && view.assignLaunchOrigin(tokenName, std::move(launchWorkspace), timeoutMsec, watch->launchScratchpad);
+        && view.assignLaunchOrigin(
+            tokenName, std::move(launchWorkspace), timeoutMsec, watch->launchScratchpad, watch->launchFloating
+        );
     watch->launchWorkspace.reset();
     if (sourceGroup != nullptr && !m_stopping) {
       sourceGroup->reconcileDynamic();
@@ -1850,10 +1855,10 @@ namespace umbriel {
       targetGroup->reconcileDynamic();
     }
     kLog.debug(
-        "launch placement token='{}' output='{}' workspace='{}' scratchpad='{}' target_app_id='{}' pointer_drop={} "
-        "assigned={}",
+        "launch placement token='{}' output='{}' workspace='{}' scratchpad='{}' floating={} target_app_id='{}' "
+        "pointer_drop={} assigned={}",
         tokenName != nullptr ? tokenName : "<unknown>", launchOutputName, launchWorkspaceId, watch->launchScratchpad,
-        view.appId() != nullptr ? view.appId() : "", pointerDrop, assigned
+        watch->launchFloating, view.appId() != nullptr ? view.appId() : "", pointerDrop, assigned
     );
     return assigned;
   }
