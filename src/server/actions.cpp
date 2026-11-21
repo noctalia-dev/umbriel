@@ -2074,6 +2074,11 @@ namespace umbriel {
       return true;
     }
 
+    bool actionOverviewSpread(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      server.overview()->toggleSpread();
+      return true;
+    }
+
     bool actionCheatsheetToggle(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Cheatsheet* sheet = server.cheatsheet()) {
         sheet->toggle();
@@ -2328,6 +2333,7 @@ namespace umbriel {
         &actionOverviewToggle,
         &actionOverviewOpen,
         &actionOverviewClose,
+        &actionOverviewSpread,
         &actionCheatsheetToggle,
         &actionCheatsheetOpen,
         &actionCheatsheetClose,

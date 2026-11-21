@@ -4,6 +4,10 @@ This note records rendering and interaction details that are too specific for th
 
 ## Live content
 
+The window spread is another projection of the same cards. Source owners stay attached to their original outputs and workspaces; card trees live under one unclipped spread tree above all per-output backgrounds. Each card interpolates from its world box plus a workspace-axis offset into a fitted cell. The assignment minimizes total Euclidean center travel. Selection stays local until activation, while client commits, presentation feedback, explicit-sync release points, blur, and persistent effects use the existing card path. Effects use the destination output and per-card scale. Output loss closes the spread before its owners are invalidated.
+
+The spread keeps real wallpaper layers stationary, dims every output, and hides the real window trees including pinned windows. Minimized and inactive-workspace cards fade over the first quarter of their travel, so a virtual origin overlapping a physical monitor cannot show a hidden window at progress zero. Grid changes animate separately from the opening progress. Unmapped spread cards are removed immediately and surviving cards reflow.
+
 Overview cards display live window content. The real workspace windows are hidden while the overview is open. Wheel steps move one workspace at a time, while touchpad navigation drags the previews and selects on release. Configured focus actions retain their layout-specific behavior.
 
 Wheel steps along a scrolling strip record the selected column's activation direction before snapping it into view. `on_overflow` judges the neighbor that focus came from; fullscreen and maximize transitions retain that direction.
@@ -30,7 +34,9 @@ Selecting a card focuses it before the closing zoom starts. The overview still w
 
 Configured keybinds continue to dispatch during the closing zoom. A later focus or workspace selection replaces the card that initiated the close as the landing target. Workspace retargets use a separate animation value, so repeated navigation cannot extend the zoom deadline. A row scroll still travelling when the zoom lands carries on as a real workspace slide instead of stopping at teardown.
 
-A spring `curve` runs the opening and closing zoom through `AnimatedValue::settleSpring`, and `Overview::tickAnimations` ends it with `finishSpringTail` once its remaining motion is under half a logical pixel. `Overview::zoomPixelsPerUnit` supplies that scale: half the largest output extent per unit of zoom for a close, plus one row step for an open, whose end shows the neighbouring rows.
+In the workspace overview, a spring `curve` runs the opening and closing zoom through `AnimatedValue::settleSpring`, and `Overview::tickAnimations` ends it with `finishSpringTail` once its remaining motion is under half a logical pixel. `Overview::zoomPixelsPerUnit` supplies that scale: half the largest output extent per unit of zoom for a close, plus one row step for an open, whose end shows the neighbouring rows.
+
+The window spread uses `AnimatedValue::retargetTimed` to fit the configured overview curve, including springs, to `overview.spread.duration_ms`. Entry and exit share this fixed timeline; zero duration or disabled animations snaps to the endpoint. Workspace scrolling and the normal overview keep their existing timing.
 
 Window shadows and pinned windows fade with `Overview::desktopChromeAlpha`, from 1 on the desktop to 0 at the first 10% of overview progress. Each card draws a copy of its view's shadow node scaled by the zoom, kept in the output's `tileShadows` tree when the workspace pools that shadow below its tiles and under the card otherwise. Pinned windows, which have no card, stay live over the filmstrip through `View::setOverviewOpacity`. A close therefore restores both while the zoom is still settling, and the teardown swap changes no pixel.
 

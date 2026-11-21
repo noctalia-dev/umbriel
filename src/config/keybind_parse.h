@@ -105,6 +105,7 @@ namespace umbriel {
     OverviewToggle,
     OverviewOpen,
     OverviewClose,
+    OverviewSpread,
     CheatsheetToggle,
     CheatsheetOpen,
     CheatsheetClose,

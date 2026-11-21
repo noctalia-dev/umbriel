@@ -474,4 +474,46 @@ UMBRIEL_TEST(animatedColorRefreshesShaderIdentityOnlyWhenRetargeted) {
   checkShaderSeed(color.shaderSeed());
 }
 
+UMBRIEL_TEST(fixedTimelinePreservesCurvesIncludingSprings) {
+  const std::array curves{
+      umbriel::AnimationCurve{.easing = umbriel::Easing::EaseOutCubic},
+      umbriel::AnimationCurve{.easing = umbriel::Easing::Spring, .spring = {.damping = 0.8, .stiffness = 120.0}},
+      umbriel::AnimationCurve{.easing = umbriel::Easing::CustomBezier, .bezier = {0.2, 0.0, 0.4, 1.0}},
+  };
+  for (const auto& curve : curves) {
+    for (const int duration : {100, 800}) {
+      umbriel::AnimatedValue value{0.0};
+      value.retargetTimed(1.0, duration, curve);
+      CHECK_EQ(value.durationMs(), static_cast<uint64_t>(duration));
+      CHECK(value.tick(1000));
+      CHECK(value.tick(1000 + duration / 2));
+      CHECK_NEAR(value.current(), umbriel::applyEasing(curve, 0.5), 0.00001);
+      CHECK(!value.finishSpringTail(1.0));
+      CHECK(value.tick(1000 + duration - 1));
+      CHECK(value.animating());
+      CHECK(value.tick(1000 + duration));
+      CHECK_EQ(value.current(), 1.0);
+      CHECK(!value.animating());
+    }
+  }
+}
+
+UMBRIEL_TEST(fixedTimelineReversesFromCurrentValue) {
+  umbriel::AnimatedValue value{0.0};
+  const umbriel::AnimationCurve curve{.easing = umbriel::Easing::Spring};
+  value.settleSpring(1.0, curve.spring);
+  CHECK(value.tick(1000));
+  CHECK(value.tick(1100));
+  const double interrupted = value.current();
+  value.retargetTimed(0.0, 500, curve);
+  CHECK_EQ(value.current(), interrupted);
+  CHECK_EQ(value.durationMs(), uint64_t{500});
+  CHECK(value.tick(1100));
+  CHECK(value.tick(1350));
+  CHECK_NEAR(value.current(), interrupted * (1.0 - umbriel::applyEasing(curve, 0.5)), 0.00001);
+  CHECK(value.tick(1600));
+  CHECK_EQ(value.current(), 0.0);
+  CHECK(!value.animating());
+}
+
 int main() { return RUN_TESTS(); }

@@ -888,11 +888,12 @@ UMBRIEL_TEST(rejectsUnknownActions) {
   CHECK(!parseAction("window-clos", bind));        // truncated
   CHECK(!parseAction("window-close-extra", bind)); // superstring
   CHECK(!parseAction("overview-open arg", bind));  // takes no argument
-  CHECK(!parseAction("window-focus", bind));       // requires an argument
-  CHECK(!parseAction("window-focus ''", bind));    // requires a non-empty argument
-  CHECK(!parseAction("spawn", bind));              // requires an argument
-  CHECK(!parseAction("spawn   ", bind));           // requires a non-empty argument
-  CHECK(!parseAction("window-close:abc", bind));   // colon form is not an action name
+  CHECK(!parseAction("overview-spread arg", bind));
+  CHECK(!parseAction("window-focus", bind));     // requires an argument
+  CHECK(!parseAction("window-focus ''", bind));  // requires a non-empty argument
+  CHECK(!parseAction("spawn", bind));            // requires an argument
+  CHECK(!parseAction("spawn   ", bind));         // requires a non-empty argument
+  CHECK(!parseAction("window-close:abc", bind)); // colon form is not an action name
   CHECK(!parseAction("workspace-switch:2", bind));
   CHECK(!parseAction("spawn:kitty", bind));
 }

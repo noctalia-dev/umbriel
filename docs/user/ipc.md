@@ -186,6 +186,8 @@ Floating-window moves and windows carried by `xdg-toplevel-drag-v1` are reported
 
 An unknown family returns an error and closes the subscription.
 
+The `overview` payload contains `open` and `mode` (`"workspaces"` or `"spread"`). `open` becomes false when closing starts. In spread mode Umbriel owns card selection. An optional shell search field can hold keyboard focus for type-to-search and forward navigation while its query is empty through `{"cmd":"overview-key","args":["Tab"]}`. Supported keys are `Left`, `Right`, `Up`, `Down`, `Tab`, `ISO_Left_Tab`, `Return`, `KP_Enter`, `Escape`, and `Delete`; these act only on an open window spread, never on client applications. Calling `overview-key --probe` is a capability probe and returns `{"ok":{"supported":true}}`.
+
 ### Screencast payload
 
 The `screencast` event carries a monotonically increasing serial and one of six commands:

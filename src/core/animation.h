@@ -181,6 +181,9 @@ namespace umbriel {
     void retarget(double to, int durationMs, Easing easing = Easing::EaseOutCubic);
     void retarget(double to, int durationMs, const AnimationCurve& curve);
     void retarget(double to, int durationMs, std::string_view curveName);
+    // Fixed timeline, including spring curves: retain the curve shape and fit it to this duration.
+    // Restarts from the current value without carrying velocity from a previous physics spring.
+    void retargetTimed(double to, int durationMs, const AnimationCurve& curve);
     void retargetBezier(double to, int durationMs, double x1, double y1, double x2, double y2);
     void retargetSpring(double to, double damping = 0.75, double stiffness = 100.0);
     // Physics spring: continues from the current value with `initialVelocity` in units per second and settles when
