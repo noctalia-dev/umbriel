@@ -161,6 +161,18 @@ namespace umbriel {
     return nearest != nullptr ? nearest->region : m_fallback;
   }
 
+  bool XwaylandOutputs::coversX(const wlr_box& box) const {
+    // Output X boxes never overlap, so the box is covered when its overlaps with them add up to its own area.
+    long long covered = 0;
+    for (const OutputRegion& entry : m_regions) {
+      wlr_box overlap{};
+      if (wlr_box_intersection(&overlap, &box, &entry.region.x)) {
+        covered += static_cast<long long>(overlap.width) * overlap.height;
+      }
+    }
+    return covered == static_cast<long long>(box.width) * box.height;
+  }
+
   wlr_box XwaylandOutputs::xBox(const wlr_output* output) const {
     const auto found = std::ranges::find(m_regions, output, &OutputRegion::output);
     return found != m_regions.end() ? found->region.x : wlr_box{};

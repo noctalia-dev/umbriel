@@ -66,6 +66,8 @@ namespace umbriel {
     XwaylandRegion region(const wlr_output* output, int layoutX, int layoutY) const;
     // The region of the output at, or else nearest to, an X point.
     XwaylandRegion regionAtX(int x, int y) const;
+    // Whether every X pixel of `box` lies on some output.
+    bool coversX(const wlr_box& box) const;
     // The largest output scale in X pixels per layout unit: 1 unless outputs are at their physical resolution.
     double scale() const { return m_scale; }
 
