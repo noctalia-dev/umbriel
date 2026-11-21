@@ -71,6 +71,10 @@ namespace umbriel {
     // Show one window of the scratchpad at a time: the one after (`direction` > 0) or before the window on show,
     // wrapping at the ends. A hidden pad shows its most recently focused window.
     bool showStep(std::string_view name, int direction, Output* invokingOutput);
+    // Show and hide on one key: hide the pad while `focus`, the seat's focused window, is one of its windows, bring it
+    // here and focus it while another window has focus, and otherwise show only the window after (`direction` > 0) or
+    // before the one focused last.
+    bool cycle(std::string_view name, int direction, Output* invokingOutput, const View* focus);
     View* focused(std::string_view name) const;
     bool hasFocus(std::string_view name) const;
     // The most recently focused window when that focus went to a scratchpad
@@ -110,6 +114,8 @@ namespace umbriel {
       bool visible = false;
       bool active = false;
       View* lastFocused = nullptr;
+      // Where cycle() resumes once the window focused last has left the pad.
+      View* resumeAt = nullptr;
       // While visible, the one member shown in place of all of them; null when every member shows.
       View* solo = nullptr;
       std::optional<PendingSpawn> pendingSpawn;
@@ -147,8 +153,18 @@ namespace umbriel {
     // The regular member of scratchpad `name` that `view` belongs to: `view` itself, or for a dialog the member it was
     // opened from.
     View* memberFor(View* view, std::string_view name) const;
+    // Whether `entry` is a mapped regular member of scratchpad `name`; dialogs show with their member instead.
+    bool isMember(const Entry& entry, std::string_view name) const;
+    // The regular members of scratchpad `name`, in the order they joined.
+    std::vector<View*> members(std::string_view name) const;
+    // The member of scratchpad `name` after (`direction` > 0) or before `view`, wrapping at the ends; null when there
+    // is no other.
+    View* memberBeside(std::string_view name, const View* view, int direction) const;
+    // Show only `member` of scratchpad `name` on the invoking output and focus it.
+    bool showOnly(std::string_view name, Scratchpad& scratchpad, View* member, Output* invokingOutput);
     // Called as `view` leaves scratchpad `name`: if it was the window focused last, a dialog hands that over to the
-    // nearest window of the scratchpad it was opened from, and any other window clears it.
+    // nearest window of the scratchpad it was opened from, and any other window clears it and leaves cycle() to resume
+    // at the member after it.
     void forgetLastFocused(Scratchpad& scratchpad, std::string_view name, const View* view) const;
     enum class Admission { Interactive, Automatic };
     bool admit(
