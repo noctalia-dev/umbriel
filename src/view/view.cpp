@@ -148,6 +148,7 @@ namespace umbriel {
   }
 
   void View::initCommon() {
+    pixman_region32_init(&m_clientBlurRegion);
     wlr_surface* surface = rootSurface();
     m_server->registerAnimatable(this);
     // Register map/unmap listeners BEFORE creating the scene tree so our handlers fire before wlroots' internal unmap
@@ -289,6 +290,7 @@ namespace umbriel {
   }
 
   View::~View() {
+    pixman_region32_fini(&m_clientBlurRegion);
     clearLaunchPlacement(true, true);
     if (m_effectSelectionIdle != nullptr) {
       wl_event_source_remove(m_effectSelectionIdle);

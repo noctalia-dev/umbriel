@@ -145,6 +145,7 @@ namespace umbriel {
   class Gestures;
   class ColorManager;
   struct ColorDescription;
+  class BackgroundEffectManager;
   class SyncobjAcquireBarrier;
   class SyncobjSupersededRelease;
   class SyncobjUnmapRelease;
@@ -207,6 +208,7 @@ namespace umbriel {
     bool outputCaptured(const wlr_output* output) const;
     wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
     ColorManager* colorManager() const { return m_colorManager.get(); }
+    BackgroundEffectManager* backgroundEffect() const { return m_backgroundEffect.get(); }
     const ColorDescription* surfaceImageDescription(wlr_surface* surface) const;
     const ColorDescription* surfaceTreeHdrDescription(wlr_surface* surface) const;
     void updateColorPreferences();
@@ -767,6 +769,7 @@ namespace umbriel {
     wlr_content_type_manager_v1* m_contentTypeManager = nullptr;
     wlr_security_context_manager_v1* m_securityContextManager = nullptr;
     std::unique_ptr<ColorManager> m_colorManager;
+    std::unique_ptr<BackgroundEffectManager> m_backgroundEffect;
     std::unique_ptr<SyncobjAcquireBarrier> m_syncobjAcquireBarrier;
     std::unique_ptr<SyncobjUnmapRelease> m_syncobjUnmapRelease;
     std::unique_ptr<SyncobjSupersededRelease> m_syncobjSupersededRelease;
