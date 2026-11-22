@@ -2100,8 +2100,6 @@ static bool compare_odd_blur_modes(
         pixman_region32_fini(&region);
 
         struct fx_offscreen_buffers* fbos = fx_pass->fx_offscreen_buffers;
-        const int expect_swap_w = split ? width : (width + 3) / 4;
-        const int expect_swap_h = split ? height : (height + 3) / 4;
         ok = check(
                  fbos != NULL
                      && fbos->output.effects_buffer != NULL
@@ -2113,10 +2111,19 @@ static bool compare_odd_blur_modes(
             && check(
                  fbos != NULL
                      && fbos->output.effects_buffer_swapped != NULL
-                     && fbos->output.effects_buffer_swapped->buffer->width == expect_swap_w
-                     && fbos->output.effects_buffer_swapped->buffer->height == expect_swap_h,
-                 split ? "split blur sizes effects_buffer_swapped to output dimensions"
+                     && fbos->output.effects_buffer_swapped->buffer->width == (width + 3) / 4
+                     && fbos->output.effects_buffer_swapped->buffer->height == (height + 3) / 4,
+                 split ? "split blur keeps effects_buffer_swapped at quarter output dimensions"
                        : "fused blur sizes effects_buffer_swapped to quarter output dimensions"
+            )
+            && check(
+                 fbos != NULL
+                     && (split ? (fbos->output.effects_buffer_full != NULL
+                                  && fbos->output.effects_buffer_full->buffer->width == width
+                                  && fbos->output.effects_buffer_full->buffer->height == height)
+                               : fbos->output.effects_buffer_full == NULL),
+                 split ? "split blur sizes effects_buffer_full to output dimensions"
+                       : "fused blur skips effects_buffer_full allocation"
             )
             && ok;
       }
@@ -2175,68 +2182,150 @@ static bool test_blur_ping_pong_size(struct fixture* fixture) {
     ok = compare_odd_blur_modes(fixture, fused_target, split_target, width, height, &blur_data, true);
   }
 
+  // Alternating fused and split blur on the same output must reuse effects_buffer
+  // and effects_buffer_swapped without thrashing their dimensions.
+  fx_offscreen_buffers_clear_blur(fx_offscreen_buffers_lookup(fixture->output));
+  const struct fx_framebuffer* mixed_effects = NULL;
+  const struct fx_framebuffer* mixed_swapped = NULL;
+  for (int step = 0; step < 3 && ok; step++) {
+    const bool split_step = step == 1;
+    struct wlr_buffer* step_target = split_step ? split_target : fused_target;
+    fx_renderer_split_blur_composite_for_test(fixture->renderer, split_step);
+    struct wlr_render_pass* step_pass = wlr_renderer_begin_buffer_pass(fixture->renderer, step_target, NULL);
+    ok = check(step_pass != NULL, "begin mixed fused/split blur pass") && ok;
+    if (step_pass != NULL) {
+      struct wlr_box box = {.width = width, .height = height};
+      wlr_render_pass_add_rect(
+          step_pass,
+          &(struct wlr_render_rect_options){
+              .box = box,
+              .color = {.r = 0.3f, .g = 0.4f, .b = 0.5f, .a = 1.0f},
+              .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+          }
+      );
+      ok = check(fx_render_pass_init_offscreen_buffers(step_pass, fixture->output), "init mixed blur buffers") && ok;
+      if (ok) {
+        struct fx_gles_render_pass* fx_pass = fx_get_render_pass(step_pass);
+        pixman_region32_t region;
+        pixman_region32_init_rect(&region, 0, 0, width, height);
+        const float opacity = 0.9f;
+        struct fx_render_blur_pass_options mixed_opts = {
+            .tex_options =
+                {
+                    .base =
+                        {
+                            .dst_box = box,
+                            .clip = &region,
+                            .transform = WL_OUTPUT_TRANSFORM_NORMAL,
+                            .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                            .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+                            .alpha = &opacity,
+                        },
+                    .clip_box = &box,
+                },
+            .blur_data = &blur_data,
+            .blur_strength = 1.0f,
+        };
+        fx_render_pass_add_blur(fx_pass, &mixed_opts);
+        pixman_region32_fini(&region);
+        struct fx_offscreen_buffers* fbos = fx_pass->fx_offscreen_buffers;
+        if (step == 0) {
+          mixed_effects = fbos != NULL ? fbos->output.effects_buffer : NULL;
+          mixed_swapped = fbos != NULL ? fbos->output.effects_buffer_swapped : NULL;
+          ok = check(mixed_effects != NULL && mixed_swapped != NULL, "initial fused blur allocates ping-pong buffers")
+              && ok;
+        } else {
+          ok = check(
+                   fbos != NULL
+                       && fbos->output.effects_buffer == mixed_effects
+                       && fbos->output.effects_buffer_swapped == mixed_swapped
+                       && (!split_step || fbos->output.effects_buffer_full != NULL),
+                   split_step ? "split blur keeps fused ping-pong allocations and adds effects_buffer_full"
+                              : "returning to fused blur reuses ping-pong allocations"
+               )
+              && ok;
+        }
+      }
+      ok = check(wlr_render_pass_submit(step_pass), "submit mixed fused/split blur pass") && ok;
+    }
+  }
+  fx_renderer_split_blur_composite_for_test(fixture->renderer, false);
+
   wlr_buffer_drop(fused_target);
   wlr_buffer_drop(split_target);
 
-  // Single-pass fused blur never upscales through effects_buffer_swapped and must not allocate it.
-  fx_renderer_clear_blur_buffers(fixture->output);
+  // Single-pass fused and split blur never upscale through effects_buffer_swapped and must not allocate it.
+  fx_offscreen_buffers_clear_blur(fx_offscreen_buffers_lookup(fixture->output));
   struct wlr_buffer* single_target = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, width, height);
   if (!check(single_target != NULL, "allocate single-pass target")) {
     return false;
   }
-  struct wlr_render_pass* single_pass = wlr_renderer_begin_buffer_pass(fixture->renderer, single_target, NULL);
-  ok = check(single_pass != NULL, "begin single-pass fused blur pass") && ok;
-  if (single_pass != NULL) {
-    struct wlr_box box = {.width = width, .height = height};
-    wlr_render_pass_add_rect(
-        single_pass,
-        &(struct wlr_render_rect_options){
-            .box = box,
-            .color = {.r = 0.2f, .g = 0.3f, .b = 0.4f, .a = 1.0f},
-            .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
-        }
-    );
-    ok = check(fx_render_pass_init_offscreen_buffers(single_pass, fixture->output), "init single-pass buffers") && ok;
-    if (ok) {
-      struct fx_gles_render_pass* fx_pass = fx_get_render_pass(single_pass);
-      pixman_region32_t region;
-      pixman_region32_init_rect(&region, 0, 0, width, height);
-      struct blur_data single_blur = blur_data;
-      single_blur.num_passes = 1;
-      const float opacity = 0.9f;
-      struct fx_render_blur_pass_options single_opts = {
-          .tex_options =
-              {
-                  .base =
-                      {
-                          .dst_box = box,
-                          .clip = &region,
-                          .transform = WL_OUTPUT_TRANSFORM_NORMAL,
-                          .filter_mode = WLR_SCALE_FILTER_BILINEAR,
-                          .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
-                          .alpha = &opacity,
-                      },
-                  .clip_box = &box,
-              },
-          .blur_data = &single_blur,
-          .blur_strength = 1.0f,
-      };
-      fx_render_pass_add_blur(fx_pass, &single_opts);
-      pixman_region32_fini(&region);
-      struct fx_offscreen_buffers* fbos = fx_pass->fx_offscreen_buffers;
-      ok = check(
-               fbos != NULL && fbos->output.effects_buffer != NULL && fbos->output.effects_buffer_swapped == NULL,
-               "single-pass fused blur skips effects_buffer_swapped allocation"
-           )
-          && ok;
+  for (int split_mode = 0; split_mode < 2 && ok; split_mode++) {
+    const bool split_single = split_mode == 1;
+    fx_offscreen_buffers_clear_blur(fx_offscreen_buffers_lookup(fixture->output));
+    fx_renderer_split_blur_composite_for_test(fixture->renderer, split_single);
+    struct wlr_render_pass* single_pass = wlr_renderer_begin_buffer_pass(fixture->renderer, single_target, NULL);
+    ok = check(single_pass != NULL, "begin single-pass blur pass") && ok;
+    if (single_pass != NULL) {
+      struct wlr_box box = {.width = width, .height = height};
+      wlr_render_pass_add_rect(
+          single_pass,
+          &(struct wlr_render_rect_options){
+              .box = box,
+              .color = {.r = 0.2f, .g = 0.3f, .b = 0.4f, .a = 1.0f},
+              .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+          }
+      );
+      ok = check(fx_render_pass_init_offscreen_buffers(single_pass, fixture->output), "init single-pass buffers") && ok;
+      if (ok) {
+        struct fx_gles_render_pass* fx_pass = fx_get_render_pass(single_pass);
+        pixman_region32_t region;
+        pixman_region32_init_rect(&region, 0, 0, width, height);
+        struct blur_data single_blur = blur_data;
+        single_blur.num_passes = 1;
+        const float opacity = 0.9f;
+        struct fx_render_blur_pass_options single_opts = {
+            .tex_options =
+                {
+                    .base =
+                        {
+                            .dst_box = box,
+                            .clip = &region,
+                            .transform = WL_OUTPUT_TRANSFORM_NORMAL,
+                            .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                            .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+                            .alpha = &opacity,
+                        },
+                    .clip_box = &box,
+                },
+            .blur_data = &single_blur,
+            .blur_strength = 1.0f,
+        };
+        fx_render_pass_add_blur(fx_pass, &single_opts);
+        pixman_region32_fini(&region);
+        struct fx_offscreen_buffers* fbos = fx_pass->fx_offscreen_buffers;
+        ok = check(
+                 fbos != NULL
+                     && fbos->output.effects_buffer != NULL
+                     && fbos->output.effects_buffer_swapped == NULL
+                     && (split_single ? (fbos->output.effects_buffer_full != NULL
+                                         && fbos->output.effects_buffer_full->buffer->width == width
+                                         && fbos->output.effects_buffer_full->buffer->height == height)
+                                      : fbos->output.effects_buffer_full == NULL),
+                 split_single ? "single-pass split blur skips effects_buffer_swapped and allocates full buffer"
+                              : "single-pass fused blur skips effects_buffer_swapped and effects_buffer_full allocation"
+             )
+            && ok;
+      }
+      ok = check(wlr_render_pass_submit(single_pass), "submit single-pass blur") && ok;
     }
-    ok = check(wlr_render_pass_submit(single_pass), "submit single-pass fused blur") && ok;
   }
+  fx_renderer_split_blur_composite_for_test(fixture->renderer, false);
   wlr_buffer_drop(single_target);
 
   // Partial-box optimized blur must populate blur2 kernel padding outside dst_box
   // so boundary taps inside dst_box do not sample stale/black outer buffer texels.
-  fx_renderer_clear_blur_buffers(fixture->output);
+  fx_offscreen_buffers_clear_blur(fx_offscreen_buffers_lookup(fixture->output));
   struct wlr_buffer* partial_target = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, width, height);
   if (!check(partial_target != NULL, "allocate partial optimized blur target")) {
     return false;
@@ -2319,6 +2408,7 @@ static bool blur_scratch_buffers_empty(const struct fx_offscreen_buffers* fbos) 
   return fbos == NULL
       || (fbos->output.effects_buffer == NULL
           && fbos->output.effects_buffer_swapped == NULL
+          && fbos->output.effects_buffer_full == NULL
           && fbos->optimized_blur_buffer == NULL
           && fbos->optimized_no_blur_buffer == NULL
           && fbos->blur_saved_pixels_buffer == NULL);
@@ -2406,6 +2496,31 @@ static bool test_blur_scratch_lifecycle(struct fixture* fixture) {
         check(blur_scratch_buffers_empty(fbos), "idle capture-exclusion frame allocates no blur scratch buffers") && ok;
   }
 
+  // Frame 1c: live-only blur consumer alongside idle optimized_blur node must
+  // keep optimized_blur_buffer unallocated and leave the optimized node dirty.
+  {
+    struct wlr_scene_blur* live_blur = wlr_scene_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT);
+    if (!check(live_blur != NULL, "create live-only blur consumer")) {
+      wlr_scene_node_destroy(&scene->tree.node);
+      return false;
+    }
+    ok = scene_commit_and_sample(fixture, scene_output, seam_x, seam_y, pixel, "commit live-only blur") && ok;
+    fbos = fx_offscreen_buffers_try_get(fixture->output);
+    ok = check(
+             fbos != NULL
+                 && fbos->output.effects_buffer != NULL
+                 && fbos->optimized_blur_buffer == NULL
+                 && fbos->optimized_no_blur_buffer == NULL,
+             "live-only blur skips optimized_blur_buffer allocation"
+         )
+        && check(optimized->dirty, "live-only blur leaves optimized blur node dirty")
+        && check(pixel[1] > 10, "live-only blur spreads green across seam")
+        && ok;
+    wlr_scene_node_destroy(&live_blur->node);
+    ok = scene_commit_and_sample(fixture, scene_output, seam_x, seam_y, pixel, "commit live-only blur removal") && ok;
+    ok = check(blur_scratch_buffers_empty(fbos), "removing live-only blur frees blur scratch") && ok;
+  }
+
   // Frame 2: full-strength optimized blur consumer -> half-res optimized_blur_buffer, NULL optimized_no_blur_buffer.
   struct wlr_scene_blur* blur = wlr_scene_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT);
   if (!check(blur != NULL, "create blur consumer")) {
@@ -2442,6 +2557,31 @@ static bool test_blur_scratch_lifecycle(struct fixture* fixture) {
       && check(pixel[1] == full_blur_pixel[1], "undamaged live blur preserves rendered output")
       && ok;
 
+  // Frame 2c: introducing partial optimized demand when optimized_no_blur_buffer is absent
+  // must not mark optimized_blur_buffer stale for full-strength consumers.
+  {
+    struct wlr_buffer* fit_target = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+    if (check(fit_target != NULL, "allocate fit check target")) {
+      struct wlr_render_pass* fit_pass = wlr_renderer_begin_buffer_pass(fixture->renderer, fit_target, NULL);
+      if (check(fit_pass != NULL, "begin fit check pass")) {
+        ok = check(fx_render_pass_init_offscreen_buffers(fit_pass, fixture->output), "init fit check buffers") && ok;
+        struct fx_gles_render_pass* fx_pass = fx_get_render_pass(fit_pass);
+        fx_pass->skip_optimized_no_blur = false;
+        ok = check(
+                 !fx_render_pass_optimized_blur_stale(fx_pass),
+                 "missing optimized_no_blur_buffer does not stale full-strength optimized blur cache"
+             )
+            && ok;
+        ok = check(wlr_render_pass_submit(fit_pass), "submit fit check pass") && ok;
+      } else {
+        ok = false;
+      }
+      wlr_buffer_drop(fit_target);
+    } else {
+      ok = false;
+    }
+  }
+
   // Frame 3: opaque occluder over the green half above settled optimized blur, then partial blur_strength ->
   // must un-cull the green backdrop beneath optimized blur, capture optimized_no_blur_buffer, and blur across seam.
   const float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
@@ -2476,6 +2616,27 @@ static bool test_blur_scratch_lifecycle(struct fixture* fixture) {
            "returning to full strength releases optimized_no_blur_buffer and keeps optimized_blur_buffer"
        )
       && check(pixel[1] == full_blur_pixel[1], "returned full strength matches original blur")
+      && ok;
+
+  // Frame 3c: switching the sole consumer to live-only blur drops optimized_blur_buffer
+  // and dirties the optimized node while keeping live effects_buffer warm.
+  wlr_scene_blur_set_should_only_blur_bottom_layer(blur, false);
+  ok = scene_commit_and_sample(fixture, scene_output, seam_x, seam_y, pixel, "switch consumer to live-only blur") && ok;
+  const struct fx_framebuffer* warm_effects = fbos != NULL ? fbos->output.effects_buffer : NULL;
+  ok = check(
+           warm_effects != NULL && fbos->optimized_blur_buffer == NULL && fbos->optimized_no_blur_buffer == NULL,
+           "switching to live-only blur releases optimized_blur_buffer and keeps effects_buffer"
+       )
+      && check(optimized->dirty, "dropping optimized cache marks optimized node dirty")
+      && check(pixel[1] > 10, "live-only fallback still blurs seam")
+      && ok;
+  wlr_scene_blur_set_should_only_blur_bottom_layer(blur, true);
+  ok = scene_commit_and_sample(fixture, scene_output, seam_x, seam_y, pixel, "restore optimized blur consumer") && ok;
+  ok = check(
+           fbos != NULL && fbos->optimized_blur_buffer != NULL && fbos->output.effects_buffer == warm_effects,
+           "restoring optimized consumer rebuilds cache without reallocating effects_buffer"
+       )
+      && check(pixel[1] == full_blur_pixel[1], "restored optimized blur matches original output")
       && ok;
 
   // Frame 4: destroy blur consumer -> all blur scratch buffers released and optimized cache marked dirty.
@@ -2528,6 +2689,90 @@ static bool test_blur_scratch_lifecycle(struct fixture* fixture) {
       && ok;
 
   wlr_scene_node_destroy(&scene->tree.node);
+
+  // Frame 7: rebuilding a sub-output optimized_blur node keeps output_state->damage
+  // bounded around actual scene damage instead of dirtying the full node or output.
+  {
+    enum { sub_size = 160 };
+    struct wlr_output* sub_out = wlr_headless_add_output(fixture->backend, sub_size, sub_size);
+    if (check(
+            sub_out != NULL && wlr_output_init_render(sub_out, fixture->allocator, fixture->renderer),
+            "sub-output damage bound headless output"
+        )) {
+      struct wlr_output_state sub_enable;
+      wlr_output_state_init(&sub_enable);
+      wlr_output_state_set_enabled(&sub_enable, true);
+      wlr_output_state_set_custom_mode(&sub_enable, sub_size, sub_size, 60000);
+      ok = check(wlr_output_commit_state(sub_out, &sub_enable), "enable sub-output test output") && ok;
+      wlr_output_state_finish(&sub_enable);
+
+      struct wlr_scene* sub_scene = wlr_scene_create();
+      struct wlr_scene_output* sub_scene_out = sub_scene != NULL ? wlr_scene_output_create(sub_scene, sub_out) : NULL;
+      if (check(sub_scene != NULL && sub_scene_out != NULL, "create sub-output scene")) {
+        wlr_scene_set_blur_data(sub_scene, 2, 2.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+        wlr_scene_rect_create(&sub_scene->tree, 82, sub_size, green);
+        struct wlr_scene_rect* sub_right = wlr_scene_rect_create(&sub_scene->tree, sub_size - 82, sub_size, black);
+        wlr_scene_node_set_position(&sub_right->node, 82, 0);
+        struct wlr_scene_optimized_blur* sub_opt = wlr_scene_optimized_blur_create(&sub_scene->tree, 96, 96);
+        wlr_scene_node_set_position(&sub_opt->node, 16, 16);
+        struct wlr_scene_blur* sub_consumer = wlr_scene_blur_create(&sub_scene->tree, 8, 8);
+        wlr_scene_node_set_position(&sub_consumer->node, 80, 80);
+        wlr_scene_blur_set_should_only_blur_bottom_layer(sub_consumer, true);
+
+        const struct wlr_drm_format* fmt = get_render_format(fixture, DRM_FORMAT_ARGB8888);
+        struct wlr_swapchain* sc =
+            fmt != NULL ? wlr_swapchain_create(fixture->allocator, sub_size, sub_size, fmt) : NULL;
+        if (check(sc != NULL, "sub-output damage swapchain")) {
+          // Warm up swapchain buffers, then evict by disabling the consumer.
+          for (int w = 0; w < 6 && ok; w++) {
+            if (w == 2) {
+              wlr_scene_node_set_enabled(&sub_consumer->node, false);
+            }
+            struct wlr_output_state ws;
+            wlr_output_state_init(&ws);
+            const struct wlr_scene_output_state_options opts = {.swapchain = sc};
+            ok = check(wlr_scene_output_build_state(sub_scene_out, &ws, &opts), "warm sub-output scene") && ok;
+            if (ok && ws.buffer != NULL) {
+              wlr_scene_output_acknowledge_damage_for_test(sub_scene_out, &ws);
+              ok = check(wlr_output_commit_state(sub_out, &ws), "commit warm sub-output state") && ok;
+            }
+            wlr_output_state_finish(&ws);
+          }
+          struct fx_offscreen_buffers* sub_fbos = fx_offscreen_buffers_try_get(sub_out);
+          ok = check(blur_scratch_buffers_empty(sub_fbos), "evicted sub-output optimized cache") && ok;
+
+          // Re-enable the small 8x8 consumer at (80, 80) inside (16, 16, 96, 96).
+          wlr_scene_node_set_enabled(&sub_consumer->node, true);
+          struct wlr_output_state rs;
+          wlr_output_state_init(&rs);
+          const struct wlr_scene_output_state_options ropts = {.swapchain = sc};
+          ok = check(wlr_scene_output_build_state(sub_scene_out, &rs, &ropts), "rebuild sub-output optimized blur")
+              && ok;
+          if (ok && rs.buffer != NULL) {
+            const pixman_box32_t* ext = pixman_region32_extents(&rs.damage);
+            ok = check(
+                     (rs.committed & WLR_OUTPUT_STATE_DAMAGE) != 0 && ext->x1 > 32 && ext->x2 < 144,
+                     "sub-output optimized blur rebuild keeps output damage bounded to consumer region"
+                 )
+                && ok;
+            uint8_t spx[4] = {0};
+            ok = check(fixture_read_display_pixel(fixture, rs.buffer, 84, 84, spx), "read sub-output blur pixel") && ok;
+            ok = check(spx[1] > 5, "sub-output rebuild blurs seam cleanly") && ok;
+            wlr_scene_output_acknowledge_damage_for_test(sub_scene_out, &rs);
+            ok = check(wlr_output_commit_state(sub_out, &rs), "commit sub-output rebuild state") && ok;
+          }
+          wlr_output_state_finish(&rs);
+          wlr_swapchain_destroy(sc);
+        }
+        wlr_scene_node_destroy(&sub_scene->tree.node);
+      } else {
+        ok = false;
+      }
+      wlr_output_destroy(sub_out);
+    } else {
+      ok = false;
+    }
+  }
   return ok;
 }
 

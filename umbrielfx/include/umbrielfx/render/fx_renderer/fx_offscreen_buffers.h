@@ -14,6 +14,8 @@ struct fx_target_buffers {
   struct fx_framebuffer* effects_buffer;
   // Swap buffer used for effects
   struct fx_framebuffer* effects_buffer_swapped;
+  // Full-resolution blur scratch allocated only for split (non-fused) paths
+  struct fx_framebuffer* effects_buffer_full;
   // Copy of the target under an in-place effect, which the program samples
   struct fx_framebuffer* in_place_source;
   struct fx_framebuffer* animation_buffers[FX_ANIMATION_DEPTH];
@@ -52,8 +54,6 @@ struct fx_offscreen_buffers {
   int optimized_blur_source_height;
   // Whether the optimized blur buffers hold a completed render
   bool optimized_blur_valid;
-  // Set when optimized blur buffers are evicted silently so the next consumer frame un-culls the backdrop
-  bool optimized_blur_evicted;
   // sdr_tf the optimized blur buffers were rendered in linear light with, or 0
   // when they hold encoded values
   enum wlr_color_transfer_function optimized_blur_sdr_tf;
@@ -71,14 +71,14 @@ struct fx_offscreen_buffers {
 
 void fx_offscreen_buffers_destroy(struct fx_offscreen_buffers* fbos);
 void fx_offscreen_buffers_clear_group(struct fx_offscreen_buffers* fbos);
+struct fx_offscreen_buffers* fx_offscreen_buffers_lookup(struct wlr_output* output);
 struct fx_offscreen_buffers* fx_offscreen_buffers_try_get(struct wlr_output* output);
 void fx_offscreen_buffers_invalidate_blend(struct wlr_output* output);
-void fx_renderer_clear_animation_buffers(struct wlr_output* output);
-// Clears blur scratch buffers for output; returns true if any optimized blur buffer was released.
-bool fx_renderer_clear_blur_buffers(struct wlr_output* output);
-void fx_renderer_clear_optimized_no_blur(struct wlr_output* output);
-bool fx_renderer_has_optimized_no_blur(struct wlr_output* output);
-bool fx_renderer_has_optimized_blur_evicted(struct wlr_output* output);
-void fx_renderer_clear_optimized_blur_evicted(struct wlr_output* output);
+bool fx_offscreen_buffers_has_optimized_blur(const struct fx_offscreen_buffers* fbos);
+bool fx_offscreen_buffers_has_optimized_no_blur(const struct fx_offscreen_buffers* fbos);
+bool fx_offscreen_buffers_clear_blur(struct fx_offscreen_buffers* fbos);
+bool fx_offscreen_buffers_clear_optimized_blur(struct fx_offscreen_buffers* fbos);
+void fx_offscreen_buffers_clear_optimized_no_blur(struct fx_offscreen_buffers* fbos);
+void fx_offscreen_buffers_clear_animation(struct fx_offscreen_buffers* fbos);
 
 #endif

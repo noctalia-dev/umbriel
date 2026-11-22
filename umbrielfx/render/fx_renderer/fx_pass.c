@@ -2711,14 +2711,30 @@ static int blur_level_dim(int size, int divisor) {
   return dim > 0 ? dim : 1;
 }
 
+// Sizes output blur scratch buffers to at least the output dimensions so a
+// box-sized animation capture at group_depth == 0 does not shrink them only
+// for output blur on the same frame to reallocate them.
+static void
+blur_scratch_alloc_size(const struct fx_gles_render_pass* pass, int width, int height, int* alloc_w, int* alloc_h) {
+  if (pass->group_depth == 0 && pass->output_buffer != NULL) {
+    const int out_w = pass->output_buffer->buffer->width;
+    const int out_h = pass->output_buffer->buffer->height;
+    *alloc_w = width > out_w ? width : out_w;
+    *alloc_h = height > out_h ? height : out_h;
+    return;
+  }
+  *alloc_w = width;
+  *alloc_h = height;
+}
+
 // Renders one blur pass for the damaged clip into dst_buffer (swapping between
 // effects_buffer and effects_buffer_swapped when NULL) and advances
 // fx_options->current_buffer. full_bounds is the unscaled source size divided
-// by sample_divisor to clamp reduced levels inside padded FBOs.
+// by sample_divisor / dst_divisor to size draws inside output-padded FBOs.
 static void render_blur_segments(
     struct fx_gles_render_pass* pass, struct fx_render_blur_pass_options* fx_options, struct blur_shader* blur_shader,
-    struct blur2_with_effects_shader* blur_with_effects_shader, int sample_divisor, const struct wlr_box* full_bounds,
-    struct fx_framebuffer* dst_buffer
+    struct blur2_with_effects_shader* blur_with_effects_shader, int sample_divisor, int dst_divisor,
+    const struct wlr_box* full_bounds, struct fx_framebuffer* dst_buffer
 ) {
   struct fx_render_texture_options* tex_options = &fx_options->tex_options;
   struct wlr_render_texture_options* options = &tex_options->base;
@@ -2734,9 +2750,20 @@ static void render_blur_segments(
         : target_buffers(pass)->effects_buffer;
   }
   fx_framebuffer_bind(dst_buffer);
-  const int dst_buf_w = dst_buffer->buffer->width;
-  const int dst_buf_h = dst_buffer->buffer->height;
-  glViewport(0, 0, dst_buf_w, dst_buf_h);
+  const int dst_w = blur_level_dim(full_bounds->width, dst_divisor);
+  const int dst_h = blur_level_dim(full_bounds->height, dst_divisor);
+  const int pass_w = pass->buffer->buffer->width;
+  const int pass_h = pass->buffer->buffer->height;
+  // When dst fits inside the current viewport, pass->projection_matrix maps
+  // pixel coords identically onto dst_buffer without churning GL viewport state.
+  const bool resize_viewport = dst_w > pass_w || dst_h > pass_h;
+  float dst_projection[9];
+  const float* proj = pass->projection_matrix;
+  if (resize_viewport) {
+    glViewport(0, 0, dst_w, dst_h);
+    matrix_projection(dst_projection, dst_w, dst_h, WL_OUTPUT_TRANSFORM_FLIPPED_180);
+    proj = dst_projection;
+  }
 
   options->texture = fx_texture_from_buffer(&renderer->wlr_renderer, fx_options->current_buffer->buffer);
   struct fx_texture* texture = fx_get_texture(options->texture);
@@ -2745,13 +2772,11 @@ static void render_blur_segments(
    * Render
    */
 
-  const struct wlr_box dst_box = {.width = dst_buf_w, .height = dst_buf_h};
+  const struct wlr_box dst_box = {.width = dst_w, .height = dst_h};
   const struct wlr_fbox src_fbox = {
-      .width = (double)dst_buf_w / options->texture->width,
-      .height = (double)dst_buf_h / options->texture->height,
+      .width = (double)dst_w / options->texture->width,
+      .height = (double)dst_h / options->texture->height,
   };
-  float dst_projection[9];
-  matrix_projection(dst_projection, dst_buf_w, dst_buf_h, WL_OUTPUT_TRANSFORM_FLIPPED_180);
 
   glDisable(GL_BLEND);
   glDisable(GL_STENCIL_TEST);
@@ -2800,12 +2825,15 @@ static void render_blur_segments(
     glUniform2f(shader->halfpixel, 0.5F / (options->texture->width * 2.0F), 0.5F / (options->texture->height * 2.0F));
   }
 
-  set_proj_matrix(shader->proj, dst_projection, &dst_box);
+  set_proj_matrix(shader->proj, proj, &dst_box);
   set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
 
   render(&dst_box, options->clip, shader->pos_attrib);
 
   glBindTexture(texture->target, 0);
+  if (resize_viewport) {
+    glViewport(0, 0, pass_w, pass_h);
+  }
   pop_fx_debug(renderer);
   TRACY_BOTH_ZONES_END;
 
@@ -2844,14 +2872,18 @@ static struct fx_framebuffer* get_main_buffer_blur(
   fx_options->blur_data = &blur_data;
 
   struct fx_target_buffers* buffers = target_buffers(pass);
-  const int half_w = blur_level_dim(buffer_bounds.width, 2);
-  const int half_h = blur_level_dim(buffer_bounds.height, 2);
-  const bool need_swapped = !skip_final_upsample || blur_data.num_passes > 1;
-  const int swap_w = skip_final_upsample ? blur_level_dim(buffer_bounds.width, 4) : buffer_bounds.width;
-  const int swap_h = skip_final_upsample ? blur_level_dim(buffer_bounds.height, 4) : buffer_bounds.height;
+  int alloc_w, alloc_h;
+  blur_scratch_alloc_size(pass, buffer_bounds.width, buffer_bounds.height, &alloc_w, &alloc_h);
+  const int half_w = blur_level_dim(alloc_w, 2);
+  const int half_h = blur_level_dim(alloc_h, 2);
+  const bool need_swapped = blur_data.num_passes > 1;
+  const int swap_w = blur_level_dim(alloc_w, 4);
+  const int swap_h = blur_level_dim(alloc_h, 4);
   if (ensure_offscreen_buffer_size(pass, &buffers->effects_buffer, true, half_w, half_h) == NULL
       || (need_swapped
-          && ensure_offscreen_buffer_size(pass, &buffers->effects_buffer_swapped, true, swap_w, swap_h) == NULL)) {
+          && ensure_offscreen_buffer_size(pass, &buffers->effects_buffer_swapped, true, swap_w, swap_h) == NULL)
+      || (!skip_final_upsample
+          && ensure_offscreen_buffer_size(pass, &buffers->effects_buffer_full, true, alloc_w, alloc_h) == NULL)) {
     return NULL;
   }
 
@@ -2915,7 +2947,7 @@ static struct fx_framebuffer* get_main_buffer_blur(
   // Downscale
   for (int i = 0; i < blur_data.num_passes; ++i) {
     wlr_region_scale(&scaled_damage, &damage, 1.0F / (1 << (i + 1)));
-    render_blur_segments(pass, fx_options, &renderer->shaders.blur1, NULL, 1 << i, &buffer_bounds, NULL);
+    render_blur_segments(pass, fx_options, &renderer->shaders.blur1, NULL, 1 << i, 1 << (i + 1), &buffer_bounds, NULL);
   }
 
   // Upscale
@@ -2925,7 +2957,7 @@ static struct fx_framebuffer* get_main_buffer_blur(
     wlr_region_scale(&scaled_damage, &damage, 1.0F / (1 << i));
     render_blur_segments(
         pass, fx_options, &renderer->shaders.blur2, i == 0 ? &renderer->shaders.blur2_with_effects : NULL, 1 << (i + 1),
-        &buffer_bounds, NULL
+        1 << i, &buffer_bounds, i == 0 ? buffers->effects_buffer_full : NULL
     );
   }
   if (final_upsample != NULL) {
@@ -2938,7 +2970,6 @@ static struct fx_framebuffer* get_main_buffer_blur(
 
   // Bind back to the default buffer
   fx_framebuffer_bind(pass->buffer);
-  glViewport(0, 0, pass->buffer->buffer->width, pass->buffer->buffer->height);
 
   pop_fx_debug(renderer);
   TRACY_BOTH_ZONES_END;
@@ -2955,16 +2986,41 @@ static bool offscreen_buffer_matches(
       && buffer->drm_format == offscreen_buffer_format(pass, false);
 }
 
+static void output_target_size(const struct fx_gles_render_pass* pass, int* out_w, int* out_h) {
+  const struct fx_framebuffer* target = pass->output_buffer != NULL ? pass->output_buffer : pass->buffer;
+  *out_w = target->buffer->width;
+  *out_h = target->buffer->height;
+}
+
+static bool optimized_blur_target_aligned(const struct fx_gles_render_pass* pass) {
+  if (pass->group_depth != 0 || pass->isolation_depth != 0) {
+    return false;
+  }
+  int out_w, out_h;
+  output_target_size(pass, &out_w, &out_h);
+  if (pass->buffer->buffer->width != out_w || pass->buffer->buffer->height != out_h) {
+    return false;
+  }
+  for (unsigned i = 0; i < pass->animation_depth; i++) {
+    const struct wlr_box box = pass->animation_boxes[i];
+    if (box.x != 0 || box.y != 0 || box.width != out_w || box.height != out_h) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool optimized_buffers_fit(const struct fx_gles_render_pass* pass, const struct fx_offscreen_buffers* fbos) {
-  const int width = pass->buffer->buffer->width;
-  const int height = pass->buffer->buffer->height;
+  if (!optimized_blur_target_aligned(pass)) {
+    return false;
+  }
+  int width, height;
+  output_target_size(pass, &width, &height);
   return offscreen_buffer_matches(
              pass, fbos->optimized_blur_buffer, blur_level_dim(width, 2), blur_level_dim(height, 2)
          )
       && fbos->optimized_blur_source_width == width
-      && fbos->optimized_blur_source_height == height
-      && (pass->skip_optimized_no_blur
-          || offscreen_buffer_matches(pass, fbos->optimized_no_blur_buffer, width, height));
+      && fbos->optimized_blur_source_height == height;
 }
 
 // True when fx_render_pass_add_texture would draw the full-resolution blur
@@ -3099,14 +3155,15 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
 
   const bool has_strength = fx_options->blur_strength < 1.0;
   struct fx_offscreen_buffers* fbos = pass->fx_offscreen_buffers;
+  int out_w, out_h;
+  output_target_size(pass, &out_w, &out_h);
   // The optimized buffers only hold content once an optimized blur node has
   // rendered on this output at the current size. Without that, blur the live
   // pass target rather than an empty buffer.
-  // Not in a group capture; the stale check covers size, format, curve and validity.
   const bool use_optimized = fx_options->use_optimized_blur
-      && pass->group_depth == 0
+      && optimized_blur_target_aligned(pass)
       && fbos->optimized_blur_buffer != NULL
-      && (!has_strength || fbos->optimized_no_blur_buffer != NULL)
+      && (!has_strength || offscreen_buffer_matches(pass, fbos->optimized_no_blur_buffer, out_w, out_h))
       && !fx_render_pass_optimized_blur_stale(pass);
   struct fx_framebuffer* buffer = NULL;
   const bool fuse = blur_composite_is_copy(pass, tex_options);
@@ -3131,11 +3188,13 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
       if (fuse) {
         buffer = fbos->optimized_blur_buffer;
       } else {
+        const struct wlr_box full_bounds = {0, 0, pass->buffer->buffer->width, pass->buffer->buffer->height};
+        int alloc_w, alloc_h;
+        blur_scratch_alloc_size(pass, full_bounds.width, full_bounds.height, &alloc_w, &alloc_h);
         struct fx_framebuffer* full_buffer =
-            ensure_offscreen_buffer(pass, &target_buffers(pass)->effects_buffer_swapped, true);
+            ensure_offscreen_buffer_size(pass, &target_buffers(pass)->effects_buffer_full, true, alloc_w, alloc_h);
         if (full_buffer != NULL) {
           struct fx_render_blur_pass_options upsample_opts = *fx_options;
-          const struct wlr_box full_bounds = {0, 0, pass->buffer->buffer->width, pass->buffer->buffer->height};
           pixman_region32_t damage;
           init_blur_damage_region(
               &damage, fx_options->tex_options.base.clip, NULL, &final_upsample, full_bounds.width, full_bounds.height
@@ -3146,12 +3205,11 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
           upsample_opts.tex_options.base.filter_mode = WLR_SCALE_FILTER_BILINEAR;
           upsample_opts.tex_options.base.clip = &damage;
           render_blur_segments(
-              pass, &upsample_opts, &renderer->shaders.blur2, &renderer->shaders.blur2_with_effects, 2, &full_bounds,
+              pass, &upsample_opts, &renderer->shaders.blur2, &renderer->shaders.blur2_with_effects, 2, 1, &full_bounds,
               full_buffer
           );
           pixman_region32_fini(&damage);
           fx_framebuffer_bind(pass->buffer);
-          glViewport(0, 0, pass->buffer->buffer->width, pass->buffer->buffer->height);
           buffer = full_buffer;
         }
       }
@@ -3189,18 +3247,22 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   if (fuse) {
     render_blur_composite(pass, fx_options, buffer, blur_texture, &final_upsample);
   } else {
+    const int draw_w =
+        pass->buffer->buffer->width < buffer->buffer->width ? pass->buffer->buffer->width : buffer->buffer->width;
+    const int draw_h =
+        pass->buffer->buffer->height < buffer->buffer->height ? pass->buffer->buffer->height : buffer->buffer->height;
     // Draw the blurred texture
     tex_options->base.dst_box = (struct wlr_box){
         .x = 0,
         .y = 0,
-        .width = buffer->buffer->width,
-        .height = buffer->buffer->height,
+        .width = draw_w,
+        .height = draw_h,
     };
     tex_options->base.src_box = (struct wlr_fbox){
         .x = 0,
         .y = 0,
-        .width = buffer->buffer->width,
-        .height = buffer->buffer->height,
+        .width = draw_w,
+        .height = draw_h,
     };
     tex_options->base.texture = &blur_texture->wlr_texture;
     if (pass->has_color_transform) {
@@ -3226,8 +3288,8 @@ finish:
 
 bool fx_render_pass_optimized_blur_stale(const struct fx_gles_render_pass* pass) {
   const struct fx_offscreen_buffers* fbos = pass->fx_offscreen_buffers;
-  // A group capture neither draws the output blur nor can render it.
-  return pass->group_depth == 0
+  // Offset, group, and isolated captures neither draw the output blur nor sample it.
+  return optimized_blur_target_aligned(pass)
       && fbos != NULL
       && fbos->optimized_blur_buffer != NULL
       && (!fbos->optimized_blur_valid
@@ -3238,6 +3300,9 @@ bool fx_render_pass_optimized_blur_stale(const struct fx_gles_render_pass* pass)
 bool fx_render_pass_add_optimized_blur(
     struct fx_gles_render_pass* pass, struct fx_render_blur_pass_options* fx_options
 ) {
+  if (pass->animation_depth != 0) {
+    return false;
+  }
   if (pass->fx_offscreen_buffers == NULL) {
     wlr_log(WLR_ERROR, "FX Pass offscreen buffers not initialized. Skipping optimized blur...");
     return false;
@@ -3321,9 +3386,6 @@ bool fx_render_pass_add_optimized_blur(
     }
     pixman_region32_fini(&expanded_clip);
     fbos->optimized_blur_valid = rendered;
-    if (rendered) {
-      fbos->optimized_blur_evicted = false;
-    }
     fbos->optimized_blur_sdr_tf = linear_sdr_tf(pass);
   }
 
@@ -3356,6 +3418,13 @@ bool fx_render_pass_read_to_buffer(
     goto done;
   }
 
+  const int dst_w = dst_buffer->buffer->width;
+  const int dst_h = dst_buffer->buffer->height;
+  const int src_w = src_buffer->buffer->width;
+  const int src_h = src_buffer->buffer->height;
+  const int copy_w = dst_w < src_w ? dst_w : src_w;
+  const int copy_h = dst_h < src_h ? dst_h : src_h;
+
   // These buffers hold whatever the pass target holds, so the copy must not
   // convert anything. In two-pass mode that is linear light: leaving the
   // transfer function unset would make the texture path treat the source as
@@ -3374,14 +3443,14 @@ bool fx_render_pass_read_to_buffer(
           (struct wlr_box){
               .x = 0,
               .y = 0,
-              .width = dst_buffer->buffer->width,
-              .height = dst_buffer->buffer->height,
+              .width = copy_w,
+              .height = copy_h,
           },
       .src_box = (struct wlr_fbox){
           .x = 0,
           .y = 0,
-          .width = src_buffer->buffer->width,
-          .height = src_buffer->buffer->height,
+          .width = copy_w,
+          .height = copy_h,
       },
   };
   if (pass->has_color_transform) {
@@ -3392,25 +3461,32 @@ bool fx_render_pass_read_to_buffer(
   // transform, so a copy into an offscreen buffer must not extend the
   // region that gets copied out at submit time.
   const bool suppress_updated = pass->suppress_updated;
-  const int dst_w = dst_buffer->buffer->width;
-  const int dst_h = dst_buffer->buffer->height;
   const bool suppress_capture = pass->suppress_capture_draws;
+  const int pass_w = pass->buffer->buffer->width;
+  const int pass_h = pass->buffer->buffer->height;
+  const bool resize_viewport = copy_w > pass_w || copy_h > pass_h;
   float saved_projection[9];
-  memcpy(saved_projection, pass->projection_matrix, sizeof(saved_projection));
+  if (resize_viewport) {
+    memcpy(saved_projection, pass->projection_matrix, sizeof(saved_projection));
+    matrix_projection(pass->projection_matrix, copy_w, copy_h, WL_OUTPUT_TRANSFORM_FLIPPED_180);
+    glViewport(0, 0, copy_w, copy_h);
+  }
   pass->suppress_updated = suppress_updated || dst_buffer != pass->buffer;
   pass->suppress_capture_draws = suppress_capture || dst_buffer != pass->buffer;
   fx_framebuffer_bind(dst_buffer);
-  glViewport(0, 0, dst_w, dst_h);
-  matrix_projection(pass->projection_matrix, dst_w, dst_h, WL_OUTPUT_TRANSFORM_FLIPPED_180);
   wlr_render_pass_add_texture(&pass->base, &options);
-  memcpy(pass->projection_matrix, saved_projection, sizeof(saved_projection));
+  if (resize_viewport) {
+    memcpy(pass->projection_matrix, saved_projection, sizeof(saved_projection));
+  }
   pass->suppress_updated = suppress_updated;
   pass->suppress_capture_draws = suppress_capture;
   wlr_texture_destroy(src_tex);
 
   // Bind back to the main WLR buffer
   fx_framebuffer_bind(pass->buffer);
-  glViewport(0, 0, pass->buffer->buffer->width, pass->buffer->buffer->height);
+  if (resize_viewport) {
+    glViewport(0, 0, pass_w, pass_h);
+  }
   copied = true;
 
 done:
