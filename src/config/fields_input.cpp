@@ -342,6 +342,7 @@ namespace umbriel {
           boolean("follows_focus", &In::Cursor::followsFocus),
           boolean("hide_when_typing", &In::Cursor::hideWhenTyping),
           integer("hide_timeout_ms", 0, 3600000, &In::Cursor::hideTimeoutMs),
+          boolean("hide_on_touch", &In::Cursor::hideOnTouch),
       };
       static const Fields<In::DragEdgeScroll> dragEdgeScroll{
           boolean("enabled", &In::DragEdgeScroll::enabled),

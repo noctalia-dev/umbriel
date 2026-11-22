@@ -30,6 +30,11 @@ namespace umbriel {
     return animationsActive ? OutputFrameFollowup::Schedule : OutputFrameFollowup::None;
   }
 
+  // Delay before retrying a frame whose commit failed, given how many frame commits failed in a row before it. A
+  // commit that loses the race with the previous one's flip_done (EBUSY) can usually go through about 1 ms later, in
+  // time for the next vblank; failures that persist back off to one 60 Hz frame so a retry never spins.
+  inline int frameRetryDelayMs(unsigned consecutiveFailures) { return 1 << std::min(consecutiveFailures, 4U); }
+
   // Delay before the next effect-only frame. 0 follows the output's refresh (schedule immediately); otherwise the
   // interval for max_fps minus the time already elapsed, at least 1 ms so a late timer never spins.
   inline uint64_t effectFrameDelayMs(int maxFps, uint64_t nowMsec, uint64_t lastEffectFrameMsec) {

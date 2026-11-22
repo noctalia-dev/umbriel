@@ -908,10 +908,9 @@ namespace umbriel {
     if (effects.animation && m_scratchpadManager != nullptr) {
       m_scratchpadManager->applyConfig();
     }
-    // A maximized scratchpad window follows the gap, border, and struts it is sized with; no workspace arrange reaches
-    // it.
+    // Scratchpad workspaces are in no output's inventory, so the refreshLayouts pass above does not reach them.
     if ((effects.workspaceLayout || effects.viewChrome) && m_scratchpadManager != nullptr) {
-      m_scratchpadManager->refitMaximized();
+      m_scratchpadManager->refreshLayouts();
     }
     if (effects.layerEffects) {
       for (const auto& layer : m_layerSurfaces) {
@@ -1747,12 +1746,15 @@ namespace umbriel {
     );
   }
 
-  void Server::trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid) {
+  void Server::trackActivationToken(
+      wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid, bool launchFloating
+  ) {
     auto* watch = new ActivationTokenWatch();
     watch->server = this;
     watch->createdAt = std::chrono::steady_clock::now();
     watch->compositorIssued = compositorIssued;
     watch->launchPid = launchPid;
+    watch->launchFloating = launchFloating;
     watch->inputBacked = !compositorIssued && token->seat != nullptr && token->surface != nullptr;
     watch->pointerBacked = watch->inputBacked && token->seat->pointer_state.grab_serial == token->serial;
     if (const char* tokenName = wlr_xdg_activation_token_v1_get_name(token)) {
@@ -1773,7 +1775,8 @@ namespace umbriel {
           watch->launchScratchpad = m_scratchpadManager->nameFor(source);
         }
         launchWorkspace = source->workspace();
-        if (source->pinned() || launchWorkspace == nullptr) {
+        // A scratchpad window's launch returns to the workspace under the pad, as its own windows do.
+        if (source->pinned() || launchWorkspace == nullptr || launchWorkspace->scratchpad()) {
           if (Output* output = source->currentOutput(); output != nullptr && output->workspaceGroup() != nullptr) {
             launchWorkspace = output->workspaceGroup()->active();
           }
@@ -1841,7 +1844,9 @@ namespace umbriel {
     }
     const bool assigned = workspace != nullptr
         && tokenName != nullptr
-        && view.assignLaunchOrigin(tokenName, std::move(launchWorkspace), timeoutMsec, watch->launchScratchpad);
+        && view.assignLaunchOrigin(
+            tokenName, std::move(launchWorkspace), timeoutMsec, watch->launchScratchpad, watch->launchFloating
+        );
     watch->launchWorkspace.reset();
     if (sourceGroup != nullptr && !m_stopping) {
       sourceGroup->reconcileDynamic();
@@ -1850,10 +1855,10 @@ namespace umbriel {
       targetGroup->reconcileDynamic();
     }
     kLog.debug(
-        "launch placement token='{}' output='{}' workspace='{}' scratchpad='{}' target_app_id='{}' pointer_drop={} "
-        "assigned={}",
+        "launch placement token='{}' output='{}' workspace='{}' scratchpad='{}' floating={} target_app_id='{}' "
+        "pointer_drop={} assigned={}",
         tokenName != nullptr ? tokenName : "<unknown>", launchOutputName, launchWorkspaceId, watch->launchScratchpad,
-        view.appId() != nullptr ? view.appId() : "", pointerDrop, assigned
+        watch->launchFloating, view.appId() != nullptr ? view.appId() : "", pointerDrop, assigned
     );
     return assigned;
   }
@@ -2601,6 +2606,10 @@ namespace umbriel {
       if (match == nullptr && m_tabletDevices.size() == 1) {
         match = m_tabletDevices.front().get();
       }
+      if (pad->tablet != match && pad->enteredSurface != nullptr) {
+        wlr_tablet_v2_tablet_pad_notify_leave(pad->v2, pad->enteredSurface);
+        pad->enteredSurface = nullptr;
+      }
       pad->tablet = match;
     }
   }
@@ -2771,14 +2780,6 @@ namespace umbriel {
     if (m_insertHint != nullptr && m_insertHint->output() == output) {
       m_insertHint->hideImmediate();
     }
-    // Dropping the snapshot unregisters it and destroys its scene tree.
-    std::erase_if(m_closeSnapshots, [this, output](const std::unique_ptr<CloseSnapshot>& snap) {
-      if (!snap->animatesOn(output)) {
-        return false;
-      }
-      unregisterAnimatable(snap.get());
-      return true;
-    });
     // wlroots 0.20 does not track output lifetime for layer surfaces, so their wlr_output pointer would dangle once the
     // output is freed. Destroy them now while the wlr_output is still valid.
     {
@@ -2793,6 +2794,14 @@ namespace umbriel {
         wlr_layer_surface_v1_destroy(ls);
       }
     }
+    // Dropping the snapshot unregisters it and destroys its scene tree.
+    std::erase_if(m_closeSnapshots, [this, output](const std::unique_ptr<CloseSnapshot>& snap) {
+      if (!snap->animatesOn(output)) {
+        return false;
+      }
+      unregisterAnimatable(snap.get());
+      return true;
+    });
 
     Output* fallback = nullptr;
     for (const auto& entry : m_outputs) {
@@ -3798,7 +3807,8 @@ namespace umbriel {
     }
     if (hadKeyboardFocus) {
       notifyKeyboardClearFocus();
-      if (replacement != nullptr) {
+      // A scratchpad's replacement can be a window its single-window mode is not showing.
+      if (replacement != nullptr && replacement->onActiveWorkspace()) {
         focusView(replacement);
       } else {
         refocus(output);

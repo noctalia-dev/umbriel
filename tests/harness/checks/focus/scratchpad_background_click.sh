@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Clicking the exposed workspace background is an explicit focus action and must
-# steal keyboard focus back from a visible scratchpad. This is the counterpart
-# to the workspace-switch retention check: refocusExplicit(Output*) always
-# selects the workspace fallback, so an empty-background click reaches the
-# workspace window instead of being retained on the scratchpad.
+# Clicking the backdrop of a visible scratchpad dismisses it and hands keyboard
+# focus to the workspace window behind it. A shown scratchpad owns its output's
+# input, so the windows behind it are only reached this way.
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -98,5 +96,6 @@ fi
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$EMPTY_X" "$EMPTY_Y" click "$BTN_LEFT"
 wait_for_field "$WS" active true
 wait_for_field "$SCRATCH" active false
+wait_for_field "$SCRATCH" visible false
 
-echo "background click moves focus from the visible scratchpad to the workspace window"
+echo "background click dismissed the scratchpad and focused the workspace window"
