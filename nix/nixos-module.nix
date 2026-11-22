@@ -1,8 +1,8 @@
 { xdg-desktop-portal-umbriel }:
 {
   config,
-  pkgs,
   lib,
+  pkgs,
   ...
 }:
 let
@@ -34,10 +34,9 @@ in
   config = lib.mkIf cfg.enable (
     lib.mkMerge [
       {
-        hardware.graphics.enable = lib.mkDefault true;
-
-        security.polkit.enable = lib.mkDefault true;
         programs.dconf.enable = lib.mkDefault true;
+        services.graphical-desktop.enable = lib.mkDefault true;
+        security.polkit.enable = lib.mkDefault true;
 
         assertions = [
           {
@@ -58,21 +57,22 @@ in
         # Required for greetd / noctalia-greeter to discover the session (Name=Umbriel).
         # Plain systemPackages .desktop files are not enough; NixOS aggregates via this.
         services.displayManager.sessionPackages = [ cfg.package ];
-        systemd.packages = [ cfg.package ];
 
+        systemd.packages = [ cfg.package ];
         systemd.user.services.umbriel = {
           restartIfChanged = false;
           enableDefaultPath = false;
         };
       })
 
-      (lib.mkIf (cfg.portalPackage != null) {
+      {
         xdg.portal = {
-          enable = lib.mkDefault true;
-          configPackages = [ cfg.portalPackage ];
-          extraPortals = [ cfg.portalPackage ];
+          enable = cfg.portalPackage != null;
+          configPackages = lib.mkIf (cfg.portalPackage != null) [ cfg.portalPackage ];
+          extraPortals =
+            if cfg.portalPackage != null then [ cfg.portalPackage ] else [ pkgs.xdg-desktop-portal-gtk ];
         };
-      })
+      }
     ]
   );
 }
