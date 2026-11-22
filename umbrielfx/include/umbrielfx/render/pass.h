@@ -129,6 +129,8 @@ struct fx_render_texture_options {
   // with the regular shader and no sampling clamp at all; only pass a box when
   // the source box actually reaches texels outside it.
   struct wlr_fbox sample_box;
+  // Use Mitchell filtering when the source is larger than the destination.
+  bool mitchell_downscale;
   // Optional primary luminances, used by transfer functions whose shape
   // depends on the display black and white levels (BT.1886).
   const struct wlr_color_luminances* luminances;
