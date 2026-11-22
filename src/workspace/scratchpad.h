@@ -65,8 +65,9 @@ namespace umbriel {
     // Launch context survives an empty pad. Explicit workspace focus relinquishes it on that output.
     std::string_view activeOn(const Output* output) const;
     void deactivateOn(const Output* output);
-    // A shown scratchpad owns its output's input: windows behind it get neither pointer nor focus.
-    bool visibleOn(Output* output) const;
+    // Whether the scratchpad shown on `output` is modal: it owns the output's input, so windows behind it get neither
+    // pointer nor focus, and it draws the backdrop.
+    bool modalOn(const Output* output) const;
     // Hide the scratchpad shown on `output`, for a press on its backdrop. False when none is shown there.
     bool dismissOn(Output* output);
     // Give the keyboard to the scratchpad shown on `output`, making it the launch destination again. False when none is

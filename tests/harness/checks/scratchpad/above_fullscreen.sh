@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # A scratchpad shown over a fullscreen window draws above it, backdrop included, instead of taking focus while hidden
-# beneath it. Otherwise it stays below panels, and pinned windows stay above it either way.
+# beneath it, and fades out above it, with or without a backdrop. Otherwise it stays below panels, and pinned windows
+# stay above it either way.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -34,6 +35,26 @@ assert_pixel() {
     echo "$context: expected RGB $expected at $x,$y, got $actual"
     return 1
   fi
+}
+
+# Hide the shown pad with animations on: it fades out above the fullscreen window instead of dropping beneath at once.
+assert_fades_above_fullscreen() {
+  "$UMBRIEL" clock-freeze
+  "$UMBRIEL" msg scratchpad-toggle test > /dev/null
+  "$UMBRIEL" clock-advance 500
+  grim -o HEADLESS-1 "$SHOT"
+  read -r red _ _ < <(pixel 640 360)
+  if ((red < 50)); then
+    echo "the hiding $1 pad dropped beneath the fullscreen window mid-fade: red=$red"
+    exit 1
+  fi
+  "$UMBRIEL" clock-advance 1000
+  "$UMBRIEL" clock-resume
+}
+
+set_animations() {
+  sed -i "s/^enabled = .* # ANIMATION$/enabled = $1 # ANIMATION/" "$UMBRIEL_CONFIG"
+  "$UMBRIEL" msg config-reload > /dev/null
 }
 
 assert_active() {
@@ -125,22 +146,16 @@ capture
 assert_active pad
 assert_pixel 880 580 "255 0 0" "the dropped pad window is beneath its backdrop"
 
-# Hiding the pad fades it out above the fullscreen window instead of dropping it beneath at once, then shows that window.
-sed -i 's/^enabled = false # ANIMATION$/enabled = true # ANIMATION/' "$UMBRIEL_CONFIG"
+set_animations true
+assert_fades_above_fullscreen modal
+# A non-modal pad has no backdrop to fade with it.
+set_animations false
+sed -i '/^name = "test"$/a modal = false' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
-"$UMBRIEL" clock-freeze
 "$UMBRIEL" msg scratchpad-toggle test > /dev/null
-"$UMBRIEL" clock-advance 500
-grim -o HEADLESS-1 "$SHOT"
-read -r red _ _ < <(pixel 640 360)
-if ((red < 50)); then
-  echo "the hiding pad dropped beneath the fullscreen window mid-fade: red=$red"
-  exit 1
-fi
-"$UMBRIEL" clock-advance 1000
-"$UMBRIEL" clock-resume
-sed -i 's/^enabled = true # ANIMATION$/enabled = false # ANIMATION/' "$UMBRIEL_CONFIG"
-"$UMBRIEL" msg config-reload > /dev/null
+set_animations true
+assert_fades_above_fullscreen non-modal
+set_animations false
 capture
 assert_active fullscreen
 assert_pixel 640 360 "0 0 255" "the hidden pad left content over the fullscreen window"

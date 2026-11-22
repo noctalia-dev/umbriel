@@ -148,9 +148,13 @@ namespace umbriel {
     return std::ranges::any_of(m_entries, [name](const Entry& entry) { return entry.scratchpad == name; });
   }
 
-  bool ScratchpadManager::visibleOn(Output* output) const {
-    return std::ranges::any_of(m_scratchpads, [output](const auto& entry) {
-      return entry.second.visible && entry.second.output == output;
+  bool ScratchpadManager::modalOn(const Output* output) const {
+    const bool modal = config().general.scratchpadModal;
+    return std::ranges::any_of(m_scratchpads, [output, modal](const auto& entry) {
+      const ScratchpadConfig* definition = definitionFor(entry.first);
+      return entry.second.visible
+          && entry.second.output == output
+          && (definition != nullptr ? definition->modal.value_or(modal) : modal);
     });
   }
 
@@ -510,7 +514,7 @@ namespace umbriel {
     const auto& animation = config().animation;
     const auto& scratchpad = animation.scratchpad;
     const bool animate = animateTransition && output != nullptr && animation.enabled && scratchpad.enabled;
-    retargetBackdrop(output, visibleOn(output), animateTransition);
+    retargetBackdrop(output, modalOn(output), animateTransition);
 
     for (const Entry& entry : m_entries) {
       if (entry.scratchpad != name || entry.view == nullptr) {
@@ -661,11 +665,11 @@ namespace umbriel {
     }
 
     if (previous != nullptr) {
-      retargetBackdrop(previous, visibleOn(previous));
+      retargetBackdrop(previous, modalOn(previous));
       updateDimAndBlur(previous);
     }
     if (output != nullptr) {
-      retargetBackdrop(output, visibleOn(output));
+      retargetBackdrop(output, modalOn(output));
       updateDimAndBlur(output);
     }
     if (previous != nullptr) {
@@ -827,7 +831,6 @@ namespace umbriel {
     if (output == nullptr) {
       return;
     }
-    const bool visible = visibleOn(output);
     const double dim = config().animation.scratchpad.dim;
     const bool blurEnabled = config().animation.scratchpad.blur && config().appearance.blur.enabled;
     const auto fade = m_backdropFades.find(output);
@@ -837,7 +840,7 @@ namespace umbriel {
     wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &box);
 
     if (wlr_scene_rect* rect = dimRectFor(output)) {
-      if ((!visible && currentAlpha <= 0.001F) || dim <= 0.0 || currentAlpha <= 0.001F) {
+      if (dim <= 0.0 || currentAlpha <= 0.001F) {
         wlr_scene_node_set_enabled(&rect->node, false);
       } else {
         wlr_scene_node_set_position(&rect->node, box.x, box.y);
@@ -854,7 +857,7 @@ namespace umbriel {
     }
 
     if (wlr_scene_blur* blur = blurNodeFor(output)) {
-      if ((!visible && currentAlpha <= 0.001F) || !blurEnabled || currentAlpha <= 0.001F) {
+      if (!blurEnabled || currentAlpha <= 0.001F) {
         wlr_scene_node_set_enabled(&blur->node, false);
       } else {
         wlr_scene_node_set_position(&blur->node, box.x, box.y);
@@ -872,10 +875,8 @@ namespace umbriel {
       if (scratchpad.output == nullptr) {
         return false;
       }
-      // A pad fading out stays lifted until its backdrop is gone, so it does not drop under the fullscreen window.
-      const auto fade = m_backdropFades.find(scratchpad.output);
-      const bool shown = scratchpad.visible || (fade != m_backdropFades.end() && fade->second.current() > 0.0);
-      return shown
+      // A pad fading out stays lifted until it is gone, so it does not drop under the fullscreen window.
+      return (scratchpad.visible || animatesOn(scratchpad.output))
           && (scratchpad.output->fullscreenAboveTopLayer() || std::ranges::any_of(m_entries, [&](const Entry& entry) {
                 return entry.scratchpad == name
                     && entry.view != nullptr
@@ -915,7 +916,7 @@ namespace umbriel {
     const bool animate = animation.enabled && animation.scratchpad.enabled;
     if (!animate) {
       for (auto& [output, fade] : m_backdropFades) {
-        fade.snap(visibleOn(output) ? 1.0 : 0.0);
+        fade.snap(modalOn(output) ? 1.0 : 0.0);
         updateDimAndBlur(output);
       }
       for (const Entry& entry : m_entries) {
@@ -1124,8 +1125,8 @@ namespace umbriel {
     Entry* entry = findEntry(view);
     if (entry == nullptr) {
       if (view != nullptr) {
-        // Focus that leaves for a window behind a shown scratchpad takes the scratchpad away with it.
-        if (!view->pinned()) {
+        // Focus that leaves for a window behind a modal scratchpad takes the scratchpad away with it.
+        if (!view->pinned() && modalOn(view->currentOutput())) {
           dismissOn(view->currentOutput());
         }
         deactivateOn(view->currentOutput());
@@ -1499,6 +1500,15 @@ namespace umbriel {
       m_scratchpads.try_emplace(name);
     }
     refreshLayouts();
+    // A shown pad keeps its backdrop only while it is still modal.
+    for (const auto& [output, fade] : m_backdropFades) {
+      retargetBackdrop(output, modalOn(output));
+    }
+    // A pad that turned modal does not stay up over the window behind it that has focus.
+    if (View* focused = View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface);
+        focused != nullptr && !contains(focused)) {
+      noteFocus(focused);
+    }
     if (refocusNeeded) {
       m_server->refocus();
     }
