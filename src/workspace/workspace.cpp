@@ -3680,7 +3680,8 @@ namespace umbriel {
       return false;
     }
     // A workspace swipe on a scratchpad's output takes the scratchpad away, as a workspace switch does.
-    if (ScratchpadManager* scratchpads = m_server->scratchpadManager()) {
+    if (ScratchpadManager* scratchpads = m_server->scratchpadManager();
+        scratchpads != nullptr && !scratchpads->stickyOn(m_output)) {
       scratchpads->dismissOn(m_output);
     }
     // A settle still running between neighbours is heading for a whole step, so where it is on screen minus that step
@@ -3887,9 +3888,9 @@ namespace umbriel {
     if (m_active == workspace && config().workspaces.backAndForth && m_previous != nullptr && m_previous != m_active) {
       selected = m_previous;
     }
-    // A scratchpad covers the workspace it was shown over, so switching away from it closes the scratchpad.
+    // A scratchpad covers the workspace it was shown over, so switching away from it closes it unless it is sticky.
     if (ScratchpadManager* scratchpads = m_server->scratchpadManager();
-        scratchpads != nullptr && selected != m_active) {
+        scratchpads != nullptr && selected != m_active && !scratchpads->stickyOn(m_output)) {
       scratchpads->dismissOn(m_output);
     }
     activate(selected);

@@ -185,15 +185,20 @@ Fullscreen and maximized windows continue to fit their monitor, and their saved 
 
 Showing a populated scratchpad focuses its most recently focused member. Hiding it returns focus to a workspace window. Opening the workspace overview hides every visible scratchpad without removing its stored windows. While the overview is open, including its closing animation, scratchpad actions and window rules do not show a scratchpad.
 
-A visible scratchpad owns its output's input. The pointer reaches only its windows, pinned windows, and layer surfaces such as panels; the workspace windows behind it get neither clicks, hover, nor Mod-drags. Clicking the backdrop hides the scratchpad and focuses the workspace. Switching or swiping to another workspace on that output also hides it, as does any other focus change to a workspace window there, such as `window-focus` or an application activating. With focus following the mouse, moving the pointer onto the scratchpad's output focuses the scratchpad.
+A visible scratchpad owns its output's input. The pointer reaches only its windows, pinned windows, and layer surfaces such as panels; the workspace windows behind it get neither clicks, hover, nor Mod-drags. Clicking the backdrop hides the scratchpad and focuses the workspace. Any other focus change to a workspace window there also hides it, such as `window-focus` or an application activating, and so does switching or swiping to another workspace on that output unless the scratchpad is sticky. With focus following the mouse, moving the pointer onto the scratchpad's output focuses the scratchpad.
 
-Set `[general] scratchpad_modal = false` to keep a shown scratchpad up while you use the windows behind it. Clicks and focus reach those windows, the scratchpad stays shown and draws no backdrop, and switching workspace still hides it. `modal` on a named scratchpad overrides that setting for one pad:
+Set `modal = false` on a named scratchpad to keep it up while you use the windows behind it. Clicks and focus reach those windows, the scratchpad stays shown and draws no backdrop, and switching workspace still hides it unless it is sticky.
+
+Set `sticky = true` on a named scratchpad to keep it up when you switch or swipe to another workspace on its output. It keeps focus and stays over the new workspace until you hide it.
 
 ```toml
 [[scratchpad]]
 name = "terminal"
 modal = false
+sticky = true
 ```
+
+The implicit `default` scratchpad is always modal and never sticky.
 
 A dialog parented to a visible scratchpad window joins that scratchpad unless a window rule explicitly chooses another destination.
 

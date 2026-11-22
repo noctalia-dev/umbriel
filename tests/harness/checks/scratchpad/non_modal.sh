@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# With [general] scratchpad_modal = false a shown scratchpad leaves the windows behind it usable: a click reaches them
-# and takes focus while the pad stays shown, a click on empty space leaves it shown, and a workspace switch still closes
-# it, however it happens. Closing the window behind gives the keyboard back to the pad. A [[scratchpad]] with
-# modal = true stays modal, and a reload that turns the setting off or on frees a pad already shown or closes it.
+# A [[scratchpad]] with modal = false leaves the windows behind it usable when shown: a click reaches them and takes
+# focus while the pad stays shown, a click on empty space leaves it shown, and a workspace switch still closes it,
+# however it happens. Closing the window behind gives the keyboard back to the pad. A pad without it stays modal, and a
+# reload that turns the setting off or on frees a pad already shown or closes it.
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -16,7 +16,6 @@ readonly STRICT=non-modal-strict
 readonly OTHER=non-modal-other
 readonly BEHIND_LOG="$UMBRIEL_RUNTIME_DIR/$BEHIND.log"
 
-sed -i '/^\[general\]$/a scratchpad_modal = false' "$UMBRIEL_CONFIG"
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
@@ -27,10 +26,10 @@ follows_mouse = "off"
 
 [[scratchpad]]
 name = "free"
+modal = false
 
 [[scratchpad]]
 name = "strict"
-modal = true
 
 [[window_rule]]
 match.title = "^non-modal-behind$"
@@ -112,16 +111,16 @@ wait_for_field "$OTHER" active true
 wait_for_field "$FREE" visible false
 "$UMBRIEL" msg workspace-switch 1 > /dev/null
 
-# modal = true on the pad wins over the global setting: a click behind it closes it.
+# A pad without modal = false stays modal: a click behind it closes it.
 show strict "$STRICT"
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 150 150 click "$BTN_LEFT"
 wait_for_field "$STRICT" visible false
 
 # A pad shown while modal drops its backdrop when a reload turns the setting off, so the click reaches the window behind.
-sed -i 's/^scratchpad_modal = false$/scratchpad_modal = true/' "$UMBRIEL_CONFIG"
+sed -i 's/^modal = false$/modal = true/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 show free "$FREE"
-sed -i 's/^scratchpad_modal = true$/scratchpad_modal = false/' "$UMBRIEL_CONFIG"
+sed -i 's/^modal = true$/modal = false/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 150 150 click "$BTN_LEFT"
 wait_for_field "$BEHIND" active true
@@ -132,10 +131,10 @@ presses=$(grep -c "pointer-button code=$BTN_LEFT state=pressed" "$BEHIND_LOG")
 }
 
 # A reload that makes the pad modal while the window behind it has focus closes it, as that focus would.
-sed -i 's/^scratchpad_modal = false$/scratchpad_modal = true/' "$UMBRIEL_CONFIG"
+sed -i 's/^modal = false$/modal = true/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 wait_for_field "$FREE" visible false
-sed -i 's/^scratchpad_modal = true$/scratchpad_modal = false/' "$UMBRIEL_CONFIG"
+sed -i 's/^modal = true$/modal = false/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null
 
 # Closing the window behind leaves the pad as the only thing to focus there.

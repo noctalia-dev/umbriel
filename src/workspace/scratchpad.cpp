@@ -149,12 +149,16 @@ namespace umbriel {
   }
 
   bool ScratchpadManager::modalOn(const Output* output) const {
-    const bool modal = config().general.scratchpadModal;
-    return std::ranges::any_of(m_scratchpads, [output, modal](const auto& entry) {
+    return std::ranges::any_of(m_scratchpads, [output](const auto& entry) {
       const ScratchpadConfig* definition = definitionFor(entry.first);
-      return entry.second.visible
-          && entry.second.output == output
-          && (definition != nullptr ? definition->modal.value_or(modal) : modal);
+      return entry.second.visible && entry.second.output == output && (definition == nullptr || definition->modal);
+    });
+  }
+
+  bool ScratchpadManager::stickyOn(const Output* output) const {
+    return std::ranges::any_of(m_scratchpads, [output](const auto& entry) {
+      const ScratchpadConfig* definition = definitionFor(entry.first);
+      return entry.second.visible && entry.second.output == output && definition != nullptr && definition->sticky;
     });
   }
 

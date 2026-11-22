@@ -38,8 +38,6 @@ files = []
 # nvidia_sync_workaround = false
 # Modal dialogs hang on their parent window and follow it. Turn this off to keep them ordinary windows.
 # attach_modal_dialogs = false
-# A shown scratchpad hides when you click or focus a window behind it. Turn this off to keep it up instead.
-# scratchpad_modal = false
 
 # ==============================================================================
 # Lid events
@@ -413,8 +411,10 @@ default_pinned = true
 # hide_when_empty = true
 # Preserve each window's current size proportions when moving between monitors.
 # proportional_size = true
-# Override [general] scratchpad_modal for this scratchpad.
+# A shown scratchpad hides when you click or focus a window behind it. Turn this off to keep it up instead.
 # modal = false
+# A shown scratchpad hides when you switch workspace. Turn this on to keep it up across workspaces.
+# sticky = true
 # Tile the scratchpad's windows instead of floating them; takes the [[workspace]] layout keys.
 # layout.mode = "dwindle"
 

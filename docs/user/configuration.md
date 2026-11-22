@@ -112,7 +112,6 @@ nvidia_sync_workaround = true
 show_cheatsheet = true
 focus_on_activate = false
 attach_modal_dialogs = true
-scratchpad_modal = true
 honor_restored_maximize = false
 ```
 
@@ -128,7 +127,6 @@ honor_restored_maximize = false
 | `show_cheatsheet`            | bool         | `true`                    | Show the keybind cheatsheet when Umbriel starts.                                                                                                                                     |
 | `focus_on_activate`          | bool         | `false`                   | Let application activation requests focus and reveal their target.                                                                                                                   |
 | `attach_modal_dialogs`       | bool         | `true`                    | Attach a modal dialog to its parent, so it follows the parent and holds its input. See [Dialogs](layout.md#dialogs).                                                                 |
-| `scratchpad_modal`           | bool         | `true`                    | A shown scratchpad holds its output's input, and clicking or focusing a window behind it hides it. See [Visibility and focus](scratchpad.md#visibility-and-focus).                   |
 | `honor_restored_maximize`    | bool         | `false`                   | Honor maximize requests an application makes while its window opens, until it acknowledges its opening layout.                                                                       |
 
 `Xwayland` must be installed and available on `PATH` when X11 support is enabled. It starts when the first X11 application connects.
