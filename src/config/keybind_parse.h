@@ -215,6 +215,7 @@ namespace umbriel {
     OutputSdrWhite,
     WindowSetRegion,
     WindowClearRegion,
+    SpawnFloating,
     Count,
   };
 

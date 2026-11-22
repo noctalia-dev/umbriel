@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # harness: outputs=2
-# A focused scratchpad is the target for direct window state actions and blocks
-# layout-relative actions from reaching the workspace focus retained behind it.
+# A focused scratchpad is the target for direct window state and layout-relative
+# actions; none of them reaches the workspace focus retained behind it.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_FRACTIONAL_CLIENT:-./build-debug/tests/fractional-client}"
@@ -142,13 +142,12 @@ scratch_signature() {
 }
 
 assert_isolated() {
-  local action=$1 current_background current_scratch
+  local action=$1 current_background
   accepts "$action"
   # Every compared field except size is compositor state, final once the action is handled and the layout settled.
   "$UMBRIEL" settle
   current_background=$(background_signature)
-  current_scratch=$(scratch_signature)
-  if [[ $current_background != "$baseline_background" || $current_scratch != "$baseline_scratch" ]]; then
+  if [[ $current_background != "$baseline_background" ]]; then
     echo "'$action' escaped the focused scratchpad: $(windows)"
     return 1
   fi
@@ -302,14 +301,16 @@ baseline_scratch=$(scratch_signature)
 rejects_without_focus_escape window-focus-or-output-left "no output"
 
 # Focus, column order, row order, column transfer, and membership are
-# separate handler families. None may use the workspace focus behind the
-# scratchpad. The floating toggle is an explicitly inert scratchpad action.
+# separate handler families. Each acts on the scratchpad's own layout and none
+# may use the workspace focus behind it.
 assert_isolated window-focus-left
 assert_isolated column-move-left
 assert_isolated window-move-down
 assert_isolated window-swap-next
 assert_isolated column-move-to-workspace-next
-assert_isolated window-toggle-floating
+# The scratchpad is a stacking layout, which has no tiling to toggle into.
+baseline_scratch=$(scratch_signature)
+rejects_without_focus_escape window-toggle-floating "window-toggle-floating needs a tiling layout"
 
 # window-move-to-scratchpad and the move branch of window-toggle-scratchpad are
 # intentionally excluded. Their documented source is the pointer-selected

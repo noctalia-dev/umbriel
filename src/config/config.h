@@ -145,6 +145,8 @@ namespace umbriel {
     std::string spawnWhenEmpty;
     bool hideWhenEmpty = false;
     bool proportionalSize = false;
+    // Layout overrides as in [[workspace]]. Without `mode` the pad uses stacking, not the global [layout] mode.
+    WorkspaceLayoutOverrides layout{};
     bool operator==(const ScratchpadConfig&) const = default;
   };
 
@@ -1251,6 +1253,8 @@ namespace umbriel {
         bool hideWhenTyping = false;
         // Milliseconds without pointer activity before hiding the cursor. Zero disables it.
         int hideTimeoutMs = 0;
+        // Hide the cursor while the touchscreen is used; pointer activity restores it.
+        bool hideOnTouch = true;
         bool operator==(const Cursor&) const = default;
       } cursor;
 

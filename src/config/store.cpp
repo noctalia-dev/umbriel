@@ -316,6 +316,7 @@ namespace umbriel {
   }
 
   ConfigReloadResult ConfigStore::reload() {
+    const bool missingIncludes = m_missingIncludes;
     ConfigSelection selection;
     if (m_explicitPath) {
       selection.root = m_rootPath;
@@ -342,6 +343,7 @@ namespace umbriel {
         return commit(std::move(loaded), std::move(effective), selection.root, true);
       }
       logDiagnostics(m_diagnostics);
+      m_missingIncludes = missingIncludes;
       kLog.warn("config reload failed; keeping previous configuration");
       return {};
     }

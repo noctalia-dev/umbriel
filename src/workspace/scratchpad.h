@@ -43,6 +43,12 @@ namespace umbriel {
     Output* outputFor(const View* view) const;
     std::string_view nameFor(const View* view) const;
     bool hasScratchpad(std::string_view name) const;
+    // The workspace that arranges scratchpad `name`'s windows, or null while the pad has no output.
+    Workspace* workspaceOf(std::string_view name) const;
+    // Every scratchpad workspace that exists. None is in an output's inventory, so passes over those add these.
+    std::vector<Workspace*> workspaces() const;
+    // Re-resolve each scratchpad workspace's layout from [layout] and its [[scratchpad]] `layout` keys.
+    void refreshLayouts();
     struct AutomaticAdmission {
       Output* restoreOutput = nullptr;
       Workspace* restoreWorkspace = nullptr;
@@ -59,6 +65,13 @@ namespace umbriel {
     // Launch context survives an empty pad. Explicit workspace focus relinquishes it on that output.
     std::string_view activeOn(const Output* output) const;
     void deactivateOn(const Output* output);
+    // A shown scratchpad owns its output's input: windows behind it get neither pointer nor focus.
+    bool visibleOn(Output* output) const;
+    // Hide the scratchpad shown on `output`, for a press on its backdrop. False when none is shown there.
+    bool dismissOn(Output* output);
+    // Give the keyboard to the scratchpad shown on `output`, making it the launch destination again. False when none is
+    // shown there.
+    bool focusOn(Output* output);
     bool refocusActive(Output* output);
     // Show a scratchpad on the invoking output without changing keyboard focus. Naming `member` while the pad shows a
     // single window shows that member instead.
@@ -78,20 +91,17 @@ namespace umbriel {
     View* focusedOn(const Output* output) const;
     void noteFocus(View* view);
     void finishMove(View* view, Output* output);
-    // Apply the manager-owned floating presentation after a commit or while a
-    // detached view animation advances.
-    void syncViewPresentation(View* view, bool refreshMaximized = false);
-    // Restore the manager-owned scene parents after a temporary global drag.
-    void restorePresentation(View* view);
     void remove(View* view);
     void moveOutput(Output* from, Output* to);
     void releaseOutput(Output* output);
     // Keep assigned scratchpads in output-local coordinates after the output
     // layout or usable area changes.
     void refreshOutputGeometry(Output* output);
+    // Lift every scratchpad above fullscreen windows, below pinned ones, while a pad shown or fading on an output
+    // shares it with a fullscreen window or holds one; otherwise keep them below panels. Pads share one tree, so the
+    // lift is global.
+    void updateStacking();
     void applyConfig();
-    // Refit the maximized windows of visible scratchpads to the margin their settings give them now.
-    void refitMaximized();
     // Reconcile runtime scratchpads after a successful [[scratchpad]] reload.
     // Windows belonging to removed definitions return to their saved workspaces.
     void reconcileConfig();
@@ -117,6 +127,8 @@ namespace umbriel {
       // scratchpad elsewhere.
       std::string displacedOutput;
       std::optional<wlr_box> usableArea;
+      // Exists exactly while `output` is set; the windows of a pad without an output have no workspace.
+      std::unique_ptr<Workspace> workspace;
     };
 
     struct Entry {
@@ -139,7 +151,6 @@ namespace umbriel {
     Entry* findEntry(const View* view);
     const Entry* findEntry(const View* view) const;
     bool hasEntries(std::string_view name) const;
-    bool visibleOn(Output* output) const;
     // Whether `view`, a member of `scratchpad`, is on screen.
     static bool presents(const Scratchpad& scratchpad, const View* view);
     // Whether `view` is a dialog of another member of scratchpad `name`, shown along with that member.
@@ -155,6 +166,8 @@ namespace umbriel {
         View* view, std::string_view name, Output* invokingOutput, Admission admission,
         const AutomaticAdmission& options
     );
+    // Create, move, or drop the scratchpad's workspace so it follows the pad's output.
+    void syncWorkspace(std::string_view name, Scratchpad& scratchpad);
     void setVisible(std::string_view name, bool visible, bool animateTransition = true);
     void moveScratchpad(
         std::string_view name, Output* output, View* alreadyPositioned = nullptr, bool clearDisplacement = true

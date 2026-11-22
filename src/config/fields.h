@@ -68,6 +68,8 @@ namespace umbriel {
   const registry::Choices<HdrMode>& hdrModes();
   const registry::Choices<ContentType>& contentTypes();
   const registry::Choices<LayoutMode>& layoutModes();
+  // The `layout` keys of a [[workspace]] rule, shared by [[scratchpad]].
+  const registry::Fields<WorkspaceLayoutOverrides>& workspaceLayoutFields();
   // Shared by [layout.tabs] and window rules.
   const registry::Choices<ColumnDisplay>& columnDisplays();
   // Shared by [appearance.title_bar] buttons and the title_bar_buttons window rule: an array of distinct buttons, read
