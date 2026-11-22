@@ -90,7 +90,7 @@ namespace umbriel {
             focusReasonName(reason), appId, outputName, current, workspace->name()
         );
         // Switching away takes a scratchpad shown over the workspace with it, as a workspace switch does.
-        if (ScratchpadManager* pad = m_server.scratchpadManager()) {
+        if (ScratchpadManager* pad = m_server.scratchpadManager(); pad != nullptr && !pad->stickyOn(group->output())) {
           pad->dismissOn(group->output());
         }
         group->activate(workspace);

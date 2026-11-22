@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # With [general] scratchpad_sticky = true a shown scratchpad stays up and keeps focus when its output switches or swipes
-# to another workspace. A [[scratchpad]] with sticky = false still closes on a switch.
+# to another workspace, and a non-modal one also stays up when focusing a window on another workspace switches there.
+# A [[scratchpad]] with sticky = false still closes on a switch.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly ROAM=sticky-roam
 readonly ANCHORED=sticky-anchored
 readonly PLAIN=sticky-plain
+readonly OTHER=sticky-other
 
 sed -i '/^\[general\]$/a scratchpad_sticky = true' "$UMBRIEL_CONFIG"
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
@@ -55,6 +57,11 @@ expect_shown() {
 
 "$CLIENT" "$PLAIN" 300 200 > "$UMBRIEL_RUNTIME_DIR/$PLAIN.log" 2>&1 &
 wait_for_field "$PLAIN" active true
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
+"$CLIENT" "$OTHER" 300 200 > "$UMBRIEL_RUNTIME_DIR/$OTHER.log" 2>&1 &
+wait_for_field "$OTHER" active true
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
+wait_for_field "$PLAIN" active true
 for pad in roam anchored; do
   title=sticky-$pad
   "$CLIENT" "$title" 300 200 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
@@ -74,6 +81,17 @@ expect_shown "a workspace switch" false
 "$UMBRIEL" swipe-test update 1100 0 240 > /dev/null
 "$UMBRIEL" swipe-test end 1600 0 > /dev/null
 expect_shown "a workspace swipe" true
+
+sed -i '/^name = "roam"$/a modal = false' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg window-focus "$(field_of "$OTHER" id)" > /dev/null
+wait_for_field "$OTHER" active true
+"$UMBRIEL" settle
+[[ $(field_of "$PLAIN" visible) == false && $(field_of "$ROAM" visible) == true ]] || {
+  echo "focusing a window on another workspace did not switch there or closed a sticky scratchpad: $(windows)"
+  exit 1
+}
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
 
 # sticky = false on the pad wins over the global setting.
 "$UMBRIEL" msg scratchpad-toggle roam > /dev/null
