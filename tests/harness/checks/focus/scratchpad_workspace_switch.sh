@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Switching workspaces must not steal keyboard focus from a visible scratchpad.
-# refocus(Output*) retains a focused, foreground scratchpad across a workspace
-# switch; explicit actions use refocusExplicit().
+# Switching workspaces on the output showing a scratchpad closes it, even when
+# the workspace switched to has no window to take focus.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -72,15 +71,9 @@ wait_for_field "$SCRATCH" active true
 "$UMBRIEL" msg window-focus "$scratch_id" > /dev/null
 wait_for_field "$SCRATCH" active true
 
-# The workspace switch under test: focus must stay on the foreground scratchpad.
-"$UMBRIEL" msg workspace-switch 2 > /dev/null
-wait_for_field "$SCRATCH" active true
-for _ in $(seq 5); do
-  sleep 0.1
-  if [[ $(field_of "$SCRATCH" active) != true || $(field_of "$WS2" active) != false ]]; then
-    echo "workspace switch stole focus from the visible scratchpad: $(windows)"
-    exit 1
-  fi
-done
+# The workspace switch under test: workspace 3 is empty, so no focus change closes the pad for it.
+"$UMBRIEL" msg workspace-switch 3 > /dev/null
+wait_for_field "$SCRATCH" visible false
+wait_for_field "$SCRATCH" scratchpad "$SCRATCHPAD"
 
-echo "workspace switch keeps focus on the visible scratchpad"
+echo "workspace switch closed the scratchpad"

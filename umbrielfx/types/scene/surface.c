@@ -659,3 +659,7 @@ void wlr_scene_surface_get_size(const struct wlr_scene_surface* surface, int* wi
   *width = (int)round(state->width / surface->scale);
   *height = (int)round(state->height / surface->scale);
 }
+
+void wlr_scene_surface_get_clip(const struct wlr_scene_surface* surface, struct wlr_box* clip) {
+  *clip = surface->clip;
+}

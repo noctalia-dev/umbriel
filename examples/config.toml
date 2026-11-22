@@ -408,6 +408,8 @@ default_pinned = true
 # hide_when_empty = true
 # Preserve each window's current size proportions when moving between monitors.
 # proportional_size = true
+# Tile the scratchpad's windows instead of floating them; takes the [[workspace]] layout keys.
+# layout.mode = "dwindle"
 
 # [[window_rule]]
 # match.app_id = "^spotify$"

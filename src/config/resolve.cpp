@@ -527,6 +527,16 @@ namespace umbriel {
     return resolved;
   }
 
+  ResolvedLayoutConfig resolveScratchpadLayout(const Config& config, std::string_view name) {
+    ResolvedLayoutConfig resolved = resolveGlobalLayout(config);
+    resolved.mode = LayoutMode::Stacking;
+    if (const auto definition = std::ranges::find(config.scratchpads, name, &ScratchpadConfig::name);
+        definition != config.scratchpads.end()) {
+      applyWorkspaceLayoutOverrides(config, resolved, definition->layout);
+    }
+    return resolved;
+  }
+
   namespace {
     ResolvedLayoutConfig resolveWorkspaceLayoutImpl(
         const Config& config, const OutputIdentity& identity, std::optional<std::string_view> name, size_t index

@@ -337,6 +337,9 @@ namespace umbriel {
           return false;
         }
         if (connection.input.size() > kMaxRequestSize) {
+          // Close after the error even when subscribed, or input would keep growing.
+          connection.input.clear();
+          connection.subscribedEvents = 0;
           prepareResponse(connection, R"({"err":"request too long"})");
           return true;
         }
@@ -361,7 +364,13 @@ namespace umbriel {
   }
 
   void Ipc::prepareResponse(Connection& connection, std::string response) {
-    connection.output = std::move(response);
+    // A command may have broadcast an event into output already; keep it ahead of the reply.
+    if (connection.responding) {
+      connection.output += response;
+    } else {
+      connection.output = std::move(response);
+      connection.writeOffset = 0;
+    }
     connection.output += '\n';
     connection.responding = true;
   }
@@ -733,6 +742,12 @@ namespace umbriel {
 
   EventPacer Ipc::snapshotPacer(uint16_t event, nlohmann::json (*buildEvent)(Server&)) {
     return {wl_display_get_event_loop(m_server->display()), kSnapshotEventIntervalMs, [this, event, buildEvent] {
+              // A later subscriber still gets a fresh snapshot: subscribe clears lastBroadcast when it differs.
+              if (std::ranges::none_of(m_connections, [event](const auto& c) {
+                    return (c->subscribedEvents & event) != 0;
+                  })) {
+                return;
+              }
               broadcastEvent(event, buildEvent(*m_server));
             }};
   }

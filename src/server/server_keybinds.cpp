@@ -129,6 +129,13 @@ namespace umbriel {
         }
       }
     }
+    if (m_scratchpadManager != nullptr) {
+      for (Workspace* workspace : m_scratchpadManager->workspaces()) {
+        if (workspace->arrangePending()) {
+          workspace->refreshAloneRuleStates();
+        }
+      }
+    }
   }
 
   bool Server::executeAction(const Keybind& bind, std::string* error, bool* cooldownBlocked) {

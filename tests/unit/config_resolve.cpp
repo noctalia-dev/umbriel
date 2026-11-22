@@ -1555,4 +1555,23 @@ UMBRIEL_TEST(maximizedToEdgesSelectsCurrentState) {
   CHECK(edges.titleBar == umbriel::TitleBarMode::Off);
 }
 
+UMBRIEL_TEST(scratchpadLayoutDefaultsToStackingAndTakesItsOwnOverrides) {
+  Config config;
+  config.layout.mode = LayoutMode::Dwindle;
+  config.layout.gap = 7;
+  const umbriel::ResolvedLayoutConfig implicit = umbriel::resolveScratchpadLayout(config, "default");
+  CHECK(implicit.mode == LayoutMode::Stacking);
+  CHECK_EQ(implicit.gap, 7);
+
+  umbriel::ScratchpadConfig tiles;
+  tiles.name = "tiles";
+  tiles.layout.mode = LayoutMode::Master;
+  tiles.layout.gap = 3;
+  config.scratchpads.push_back(std::move(tiles));
+  const umbriel::ResolvedLayoutConfig resolved = umbriel::resolveScratchpadLayout(config, "tiles");
+  CHECK(resolved.mode == LayoutMode::Master);
+  CHECK_EQ(resolved.gap, 3);
+  CHECK_EQ(resolved.totalGap, 3 + 2 * config.appearance.totalBorderWidth());
+}
+
 int main() { return RUN_TESTS(); }

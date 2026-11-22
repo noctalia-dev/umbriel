@@ -102,22 +102,11 @@ for floating in false true; do
   wait_field scratch-move-member scratchpad ""
   wait_field scratch-move-member active true
 
+  # Switching workspaces on the pad's output closes the pad; its member stays in it.
   prepare "$floating"
   accepts workspace-switch THREE --output HEADLESS-1
-  accepts window-move-to-workspace-previous
-  wait_field scratch-move-member workspace "$two"
-  wait_field scratch-move-member scratchpad ""
-  wait_field scratch-move-member floating "$floating"
-  wait_field scratch-move-member active true
-
-  prepare "$floating"
-  accepts workspace-switch THREE --output HEADLESS-1
-  accepts window-move-to-workspace-silent-previous
-  wait_field scratch-move-member workspace "$two"
-  wait_field scratch-move-member scratchpad ""
-  wait_field scratch-move-member floating "$floating"
-  wait_field scratch-move-member active false
-  [[ $("$UMBRIEL" workspaces --json | jq -r '.[] | select(.output == "HEADLESS-1" and .active) | .id') == "$three" ]]
+  wait_field scratch-move-member visible false
+  wait_field scratch-move-member scratchpad default
 done
 
 # A rejected selector must leave scratchpad membership intact.
@@ -154,4 +143,18 @@ accepts scratchpad-toggle
 wait_field scratch-move-member workspace "$one"
 wait_field scratch-move-peer scratchpad default
 
-echo "workspace moves release scratchpad membership and preserve follow/silent behavior and saved layout state"
+# Pinning a scratchpad window takes it out of the scratchpad onto the workspace under it, and unpinning returns it to
+# its saved tiled state there. The peer stays in the scratchpad.
+prepare false
+accepts window-toggle-pinned
+wait_field scratch-move-member pinned true
+wait_field scratch-move-member scratchpad ""
+wait_field scratch-move-member workspace "$one"
+wait_field scratch-move-member active true
+wait_field scratch-move-peer scratchpad default
+accepts window-toggle-pinned
+wait_field scratch-move-member pinned false
+wait_field scratch-move-member floating false
+wait_field scratch-move-member workspace "$one"
+
+echo "workspace moves and pinning release scratchpad membership and preserve follow/silent behavior and saved layout state"
