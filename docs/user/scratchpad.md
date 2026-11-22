@@ -193,6 +193,8 @@ Backdrop dim and blur affect only the output showing the scratchpad.
 
 A shown scratchpad sits above workspace windows and below panels. When a fullscreen window is on its output, or one of its own windows is fullscreen, the scratchpad and its backdrop draw above fullscreen windows instead, until it has faded out. This applies to every shown scratchpad at once, so a scratchpad shown on another output at the same time also draws above that output's panels. Pinned windows, overlay-layer surfaces such as notifications, and the lock screen stay above it.
 
+Showing a scratchpad never moves a floating window it holds: the window stays where it was left, even hanging off an output edge as far as a floating window may. A pad that moves to another output carries its floating windows' positions proportionally, and a window moved into a pad that shows on another output joins that output.
+
 ## Restoring windows
 
 Each member remembers its source output, workspace, and tiled or floating state. If that output or workspace no longer exists, Umbriel restores the window to the scratchpad's current output and active workspace.
