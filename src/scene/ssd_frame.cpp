@@ -89,10 +89,8 @@ namespace umbriel {
       wlr_buffer_unlock(m_averageBuffer);
       m_averageBuffer = nullptr;
     }
-    for (wlr_buffer* buffer : {m_labelBuffer, m_shadowBuffer}) {
-      if (buffer != nullptr) {
-        wlr_buffer_unlock(buffer);
-      }
+    if (m_labelBuffer != nullptr) {
+      wlr_buffer_unlock(m_labelBuffer);
     }
     for (auto* buffer : m_iconBuffers) {
       if (buffer != nullptr) {
@@ -884,8 +882,9 @@ namespace umbriel {
   }
 
   // The title for this bar, with the layout re-measured against the line's height (the text reaches into the corners).
-  const TabLabel*
-  SsdFrame::measureTitle(const std::array<float, 4>& color, float alpha, TitleBarLayout& parts, int radius) const {
+  const TabLabel* SsdFrame::measureTitle(
+      const std::array<float, 4>& color, float alpha, TitleBarLayout& parts, int radius, bool shadowed
+  ) const {
     const auto& style = config().appearance.titleBar;
     TabLabelRequest request{
         .text = m_title,
@@ -895,6 +894,11 @@ namespace umbriel {
         .scale = std::max(1.0, std::ceil(static_cast<double>(m_geometry.scale))),
     };
     request.color[3] *= alpha;
+    if (shadowed) {
+      // The edge fades with the title it sits under, so a translucent one leaves no ghost behind it.
+      request.shadow = kTitleShadowColor;
+      request.shadow[3] *= request.color[3];
+    }
     const TabLabel* label = m_labels->label(request);
     if (label != nullptr) {
       // The line's measured height determines how far the arc reaches into its horizontal space.
@@ -1036,9 +1040,6 @@ namespace umbriel {
     if (m_label != nullptr) {
       wlr_scene_buffer_set_opacity(m_label, m_alpha);
     }
-    if (m_labelShadow != nullptr) {
-      wlr_scene_buffer_set_opacity(m_labelShadow, m_alpha);
-    }
     updateBlur();
   }
 
@@ -1114,25 +1115,19 @@ namespace umbriel {
     drawButton(m_minimize, parts.button(TitleBarButton::Minimize));
     // The configured color, or black or white when the bar behind it is too close to read.
     const std::array<float, 4> textColor = resolvedTitleColor();
-    const TabLabel* label = measureTitle(textColor, 1.0F, parts, radius);
-    // Held before the shadow lookup, which can evict the label. The frame keeps this lock for its snapshots.
+    // Any bar can be any color, so the title carries a dark edge unless it is turned off. It is painted into the same
+    // buffer, one pixel down and right, so the bar holds one node and the shared cache one entry per title.
+    const bool shadowed = style.titleShadow && textColor[3] > 0.0F;
+    const TabLabel* label = measureTitle(textColor, 1.0F, parts, radius, shadowed);
+    // Held before anything else can ask the cache for a label and evict this one. The frame keeps the lock for
+    // snapshots.
     holdLabelBuffer(m_labelBuffer, label != nullptr ? label->buffer : nullptr);
     const int labelWidth = label != nullptr ? label->width : 0;
     const int labelHeight = label != nullptr ? label->height : 0;
-    // Fixed here for the same reason: the shadow follows the title where it sits.
     const int labelX = titleBarLabelX(parts, g.contentWidth, labelWidth, style.titleAlign);
     // Only records the spans: `refreshFill` below reads them, sees what moved, and repaints this redraw when the
     // title's or a symbol's contrast decision changes.
     cacheSampleSpans(parts, labelX, labelWidth);
-    // Any bar can be any color, so the title keeps a dark edge unless it is turned off.
-    const bool shadowed = style.titleShadow;
-    const TabLabel* shadow = nullptr;
-    if (shadowed && m_labelBuffer != nullptr && textColor[3] > 0.0F) {
-      // Re-measures the same layout without disturbing the title's copy.
-      TitleBarLayout shadowParts = parts;
-      shadow = measureTitle(kTitleShadowColor, textColor[3], shadowParts, radius);
-    }
-    holdLabelBuffer(m_shadowBuffer, shadow != nullptr ? shadow->buffer : nullptr);
     if (m_labelBuffer == nullptr) {
       if (m_label != nullptr) {
         wlr_scene_node_destroy(&m_label->node);
@@ -1146,35 +1141,13 @@ namespace umbriel {
       } else {
         wlr_scene_buffer_set_buffer(m_label, m_labelBuffer);
       }
-      wlr_scene_buffer_set_dest_size(m_label, std::max(1, zoomed(labelWidth)), std::max(1, zoomed(labelHeight)));
+      // Sized to the buffer, which the edge extends past the text, so the edge is neither scaled away nor clipped here;
+      // the text is still centred on its own box.
+      wlr_scene_buffer_set_dest_size(
+          m_label, std::max(1, zoomed(label->bufferWidth)), std::max(1, zoomed(label->bufferHeight))
+      );
       wlr_scene_node_set_position(&m_label->node, zoomed(labelX), zoomed(-h + (h - labelHeight) / 2));
       clipBuffer(m_label);
-    }
-    if (shadow == nullptr) {
-      if (m_labelShadow != nullptr) {
-        wlr_scene_node_destroy(&m_labelShadow->node);
-        m_labelShadow = nullptr;
-      }
-    } else {
-      const int offset = std::max(1, zoomed(1));
-      if (m_labelShadow == nullptr) {
-        m_labelShadow = wlr_scene_buffer_create(m_tree, shadow->buffer);
-        m_labelShadow->point_accepts_input = rejectInput;
-        if (m_label != nullptr) {
-          wlr_scene_node_place_below(&m_labelShadow->node, &m_label->node);
-        } else {
-          wlr_scene_node_lower_to_bottom(&m_labelShadow->node);
-        }
-      } else {
-        wlr_scene_buffer_set_buffer(m_labelShadow, shadow->buffer);
-      }
-      wlr_scene_buffer_set_dest_size(
-          m_labelShadow, std::max(1, zoomed(shadow->width)), std::max(1, zoomed(shadow->height))
-      );
-      wlr_scene_node_set_position(
-          &m_labelShadow->node, zoomed(labelX) + offset, zoomed(-h + (h - shadow->height) / 2) + offset
-      );
-      clipBuffer(m_labelShadow);
     }
     updateColors();
   }
@@ -1272,7 +1245,6 @@ namespace umbriel {
     copyRect(m_close);
     copyRect(m_maximize);
     copyRect(m_minimize);
-    copyBuffer(m_labelShadow, m_shadowBuffer);
     copyBuffer(m_label, m_labelBuffer);
     for (size_t index = 0; index < m_icons.size(); ++index) {
       // `m_iconBuffers` holds a lock for exactly this copy.

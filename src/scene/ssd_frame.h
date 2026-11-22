@@ -121,9 +121,11 @@ namespace umbriel {
         const std::optional<std::array<float, 4>>& outline
     );
     std::span<const TitleBarButton> visibleButtons() const;
-    // The title with `color`'s alpha scaled by `alpha`, re-measuring `parts` against the line's height.
-    const TabLabel*
-    measureTitle(const std::array<float, 4>& color, float alpha, TitleBarLayout& parts, int radius) const;
+    // The title with `color`'s alpha scaled by `alpha`, re-measuring `parts` against the line's height. `shadowed`
+    // paints the dark edge into the same buffer, so the bar carries one node and one texture per title.
+    const TabLabel* measureTitle(
+        const std::array<float, 4>& color, float alpha, TitleBarLayout& parts, int radius, bool shadowed
+    ) const;
     void updateBlur();
     clipped_region frameClip(int x, int y, int outset = 0) const;
     void clipBuffer(wlr_scene_buffer* buffer) const;
@@ -137,11 +139,8 @@ namespace umbriel {
     SurfaceBlurOptions m_blurOptions;
     bool m_blurLive = false;
     wlr_scene_buffer* m_label = nullptr;
-    // The same title in the shadow color, one pixel down and right, so it stays readable on any bar color.
-    wlr_scene_buffer* m_labelShadow = nullptr;
-    // Consumer locks on the title and shadow: the scene drops its own after uploading, and snapshots copy these.
+    // Consumer locks on the title: the scene drops its own after uploading, and snapshots copy this.
     wlr_buffer* m_labelBuffer = nullptr;
-    wlr_buffer* m_shadowBuffer = nullptr;
     // Paints the bar with the top strip of the window content; kept below the label and above the palette color.
     wlr_scene_buffer* m_adaptive = nullptr;
     wlr_surface* m_content = nullptr;

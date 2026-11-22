@@ -22,6 +22,53 @@ namespace {
 
 namespace umbriel {
 
+  namespace {
+    struct TextExtent {
+      int width = 0;
+      int height = 0;
+    };
+
+    // Shapes the text on a throwaway surface: its own box, without padding or the shadow's overhang.
+    TextExtent measureText(const TextBufferParams& params) {
+      const double scale = std::max(1.0, params.scale);
+
+      cairo_surface_t* measureSurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+      cairo_t* measureCr = cairo_create(measureSurface);
+      cairo_scale(measureCr, scale, scale);
+      useGrayscaleAntialias(measureCr);
+      PangoLayout* measureLayout = pango_cairo_create_layout(measureCr);
+      PangoFontDescription* fontDesc = pango_font_description_from_string(params.font.c_str());
+      pango_layout_set_font_description(measureLayout, fontDesc);
+      pango_layout_set_width(measureLayout, params.maxWidth * PANGO_SCALE);
+      if (params.ellipsize) {
+        pango_layout_set_ellipsize(measureLayout, PANGO_ELLIPSIZE_END);
+        pango_layout_set_single_paragraph_mode(measureLayout, TRUE);
+      } else {
+        pango_layout_set_wrap(measureLayout, PANGO_WRAP_WORD_CHAR);
+        pango_layout_set_indent(measureLayout, -params.hangingIndent * PANGO_SCALE);
+      }
+      pango_layout_set_markup(measureLayout, params.markup.c_str(), -1);
+
+      int textW = 0;
+      int textH = 0;
+      pango_layout_get_pixel_size(measureLayout, &textW, &textH);
+      g_object_unref(measureLayout);
+      pango_font_description_free(fontDesc);
+      cairo_destroy(measureCr);
+      cairo_surface_destroy(measureSurface);
+      return {.width = textW, .height = textH};
+    }
+
+    // The surface the text is painted on: its padding, plus the shadow's offset so the edge is not clipped.
+    TextBufferSize surfaceSize(const TextBufferParams& params, const TextExtent& text, const TextShadow& shadow) {
+      const int textW = params.fixedWidth ? std::max(params.maxWidth, text.width) : text.width;
+      return {
+          .logicalWidth = textW + params.padding * 2 + std::max(0, shadow.dx),
+          .logicalHeight = text.height + params.padding * 2 + std::max(0, shadow.dy),
+      };
+    }
+  } // namespace
+
   std::string escapeMarkup(std::string_view text) {
     gchar* escaped = g_markup_escape_text(text.data(), static_cast<gssize>(text.size()));
     std::string result(escaped);
@@ -29,51 +76,17 @@ namespace umbriel {
     return result;
   }
 
-  TextBufferSize measureTextBuffer(const TextBufferParams& params) {
-    const double scale = std::max(1.0, params.scale);
-
-    // Measure text with a throwaway 1×1 surface, scaled for HiDPI.
-    cairo_surface_t* measureSurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
-    cairo_t* measureCr = cairo_create(measureSurface);
-    cairo_scale(measureCr, scale, scale);
-    useGrayscaleAntialias(measureCr);
-    PangoLayout* measureLayout = pango_cairo_create_layout(measureCr);
-    PangoFontDescription* fontDesc = pango_font_description_from_string(params.font.c_str());
-    pango_layout_set_font_description(measureLayout, fontDesc);
-    const auto shapeLayout = [&params](PangoLayout* layout, int width) {
-      pango_layout_set_width(layout, width * PANGO_SCALE);
-      if (params.ellipsize) {
-        pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-        pango_layout_set_single_paragraph_mode(layout, TRUE);
-      } else {
-        pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
-        pango_layout_set_indent(layout, -params.hangingIndent * PANGO_SCALE);
-      }
-    };
-    shapeLayout(measureLayout, params.maxWidth);
-    pango_layout_set_markup(measureLayout, params.markup.c_str(), -1);
-
-    // pango_layout_get_pixel_size returns logical (pre-transform) dimensions.
-    int textW = 0;
-    int textH = 0;
-    pango_layout_get_pixel_size(measureLayout, &textW, &textH);
-    g_object_unref(measureLayout);
-    pango_font_description_free(fontDesc);
-    cairo_destroy(measureCr);
-    cairo_surface_destroy(measureSurface);
-
-    return {
-        .logicalWidth = (params.fixedWidth ? std::max(params.maxWidth, textW) : textW) + params.padding * 2,
-        .logicalHeight = textH + params.padding * 2,
-    };
+  TextBufferSize measureTextBuffer(const TextBufferParams& params, const TextShadow& shadow) {
+    return surfaceSize(params, measureText(params), shadow);
   }
 
-  TextBufferResult renderTextBuffer(const TextBufferParams& params) {
+  TextBufferResult renderTextBuffer(const TextBufferParams& params, const TextShadow& shadow) {
     const double scale = std::max(1.0, params.scale);
-    const auto measured = measureTextBuffer(params);
-    const int textW = measured.logicalWidth - params.padding * 2;
-    const int logicalW = measured.logicalWidth;
-    const int logicalH = measured.logicalHeight;
+    const TextExtent text = measureText(params);
+    const TextBufferSize extent = surfaceSize(params, text, shadow);
+    const int textW = extent.logicalWidth - params.padding * 2 - std::max(0, shadow.dx);
+    const int logicalW = extent.logicalWidth;
+    const int logicalH = extent.logicalHeight;
 
     // Compute logical and device-pixel dimensions.
     int pixelW = static_cast<int>(std::ceil(logicalW * scale));
@@ -82,8 +95,8 @@ namespace umbriel {
     pixelH = std::max(pixelH, 1);
 
     // Render to a CairoBuffer at device-pixel resolution.
-    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pixelW, pixelH);
-    cairo_t* cr = cairo_create(surface);
+    cairo_surface_t* pixelSurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pixelW, pixelH);
+    cairo_t* cr = cairo_create(pixelSurface);
     cairo_scale(cr, scale, scale);
     useGrayscaleAntialias(cr);
 
@@ -104,6 +117,12 @@ namespace umbriel {
       pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
       pango_layout_set_indent(layout, -params.hangingIndent * PANGO_SCALE);
     }
+    // The shadow first, so the text lands on top of it and the two composite into one surface.
+    if (!shadow.markup.empty() && (shadow.dx != 0 || shadow.dy != 0)) {
+      pango_layout_set_markup(layout, shadow.markup.c_str(), -1);
+      cairo_move_to(cr, params.padding + shadow.dx, params.padding + shadow.dy);
+      pango_cairo_show_layout(cr, layout);
+    }
     pango_layout_set_markup(layout, params.markup.c_str(), -1);
     cairo_move_to(cr, params.padding, params.padding);
     pango_cairo_show_layout(cr, layout);
@@ -113,9 +132,11 @@ namespace umbriel {
     cairo_destroy(cr);
 
     return {
-        .buffer = createCairoBuffer(surface),
+        .buffer = createCairoBuffer(pixelSurface),
         .logicalWidth = logicalW,
         .logicalHeight = logicalH,
+        .textWidth = logicalW - std::max(0, shadow.dx),
+        .textHeight = logicalH - std::max(0, shadow.dy),
     };
   }
 

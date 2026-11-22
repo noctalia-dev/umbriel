@@ -150,6 +150,11 @@ title_shadow = false'
 shot
 expect_none "$dark" "title_shadow = false still shaded the title"
 
+# The edge is painted into the title's own buffer, so a title with no alpha takes its edge with it.
+configure fixed '#FFFFFFFF' '#FFFFFF00' 'title_contrast = false'
+shot
+expect_none "$dark" "a transparent title left its edge behind"
+
 # The same edge on an adaptive bar, and the same key turns it off there. The palette is dark, so only the mirrored band
 # can hide the white title.
 configure window '#101010FF' '#FFFFFFFF' 'title_contrast = false'
