@@ -1373,6 +1373,14 @@ void wlr_scene_subsurface_tree_set_scale(struct wlr_scene_node* node, double sca
 void wlr_scene_surface_get_size(const struct wlr_scene_surface* surface, int* width, int* height);
 
 /**
+ * Gets the clip box of a scene surface, in scene units (see
+ * wlr_scene_subsurface_tree_set_clip()). An empty box means the surface is not
+ * clipped. A clipped surface's buffer is placed at the clip origin, so this is
+ * the offset from the buffer's position back to the surface origin.
+ */
+void wlr_scene_surface_get_clip(const struct wlr_scene_surface* surface, struct wlr_box* clip);
+
+/**
  * Add a node displaying an xdg_surface and all of its sub-surfaces to the
  * scene-graph.
  *

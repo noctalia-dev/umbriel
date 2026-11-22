@@ -59,6 +59,9 @@ namespace umbriel {
         WorkspaceGroup& group, wlr_ext_workspace_handle_v1* handle, std::string id, std::string name, size_t index,
         bool named, ResolvedLayoutConfig layoutConfig
     );
+    // A scratchpad's workspace: outside every output's inventory and the ext-workspace protocol, drawn in the server's
+    // scratchpad tree. It stays active; ScratchpadManager shows and hides its windows one by one.
+    Workspace(WorkspaceGroup& group, std::string_view scratchpadName, ResolvedLayoutConfig layoutConfig);
     ~Workspace();
 
     Workspace(const Workspace&) = delete;
@@ -76,6 +79,7 @@ namespace umbriel {
     bool transferred() const { return m_transferred; }
     size_t index() const { return m_index; }
     bool active() const { return m_active; }
+    bool scratchpad() const { return m_scratchpad; }
     const std::shared_ptr<const DisplacedWorkspace>& displacedWorkspace() const { return m_displacedWorkspace; }
     std::shared_ptr<WorkspaceLaunchAnchor> reserveForLaunch() const { return m_launchAnchor; }
     bool launchReserved() const { return m_launchAnchor.use_count() > 1; }
@@ -306,6 +310,7 @@ namespace umbriel {
     void transferTo(WorkspaceGroup& group);
     void syncFloatingLayer();
     friend class WorkspaceGroup;
+    friend class ScratchpadManager;
 
     void applyPositions(bool animate);
     wlr_box tiledTargetBox(const View* view, const wlr_box& usable, const Layout* layout = nullptr) const;
@@ -349,6 +354,7 @@ namespace umbriel {
     bool m_named = false;
     bool m_transferred = false;
     bool m_active = false;
+    bool m_scratchpad = false;
     std::shared_ptr<const DisplacedWorkspace> m_displacedWorkspace;
     std::shared_ptr<WorkspaceLaunchAnchor> m_launchAnchor = std::make_shared<WorkspaceLaunchAnchor>();
     std::vector<View*> m_views;
@@ -514,6 +520,8 @@ namespace umbriel {
     void refreshWorkspaceMetadata();
     bool pruneDisplacedWorkspaces();
     size_t storedWorkspaceCount() const { return m_workspaces.size() + m_reservedWorkspaces.size(); }
+    // The scratchpad workspaces presented on this output. They are in no inventory, so the passes over it add these.
+    std::vector<Workspace*> scratchpadWorkspaces() const;
 
     void beginReveal();
     // The workspace a reveal at `progress` shows coming in; the previous one when progress is held at the base.

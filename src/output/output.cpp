@@ -60,7 +60,6 @@ namespace umbriel {
 
   namespace {
     constexpr Logger kLog("output");
-    constexpr int kFrameRetryDelayMs = 16;
 
     std::string_view directScanoutReason(wlr_scene_direct_scanout_status status) {
       switch (status) {
@@ -1957,7 +1956,8 @@ namespace umbriel {
 
   void Output::armFrameRetry() {
     if (m_frameRetryTimer != nullptr && outputFrameAllowed(m_server->stopping(), m_server->session())) {
-      wl_event_source_timer_update(m_frameRetryTimer, kFrameRetryDelayMs);
+      wl_event_source_timer_update(m_frameRetryTimer, frameRetryDelayMs(m_failedFrameCommits));
+      ++m_failedFrameCommits;
     }
   }
 
@@ -2084,6 +2084,9 @@ namespace umbriel {
       m_fullscreenAboveTopLayer = above;
       m_server->refreshLayerFocus(this);
     }
+    if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
+      scratchpad->updateStacking();
+    }
   }
 
   void Output::handleFrame() {
@@ -2154,12 +2157,17 @@ namespace umbriel {
     const auto dimsBehind = [](const auto& rule) { return rule.dimBehind.value_or(0.0) > 0.0; };
     if (std::ranges::any_of(config().windowRules, dimsBehind)) {
       for (const auto& view : m_server->views()) {
-        view->updateDimBehind();
+        // Each output's frame refreshes only its own views; outputless views have no owner, so every frame takes them.
+        if (Output* owner = view->currentOutput(); owner == nullptr || owner == this) {
+          view->updateDimBehind();
+        }
       }
     }
     if (std::ranges::any_of(config().layerRules, dimsBehind)) {
       for (const auto& layer : m_server->layerSurfaces()) {
-        layer->updateDimBehind();
+        if (Output* owner = layer->output(); owner == nullptr || owner == this) {
+          layer->updateDimBehind();
+        }
       }
     }
 
@@ -2418,6 +2426,10 @@ namespace umbriel {
       m_output->idle_frame = nullptr;
     }
 
+    if (!commitFailed) {
+      m_failedFrameCommits = 0;
+    }
+
     // A failed commit has no vblank to pace an immediate retry. Defer it so event-loop signal and session sources get
     // dispatched first. This also replaces animation scheduling for the failed frame, otherwise the animation path
     // would recreate the same immediate retry loop.
@@ -2473,6 +2485,9 @@ namespace umbriel {
       m_server->updateColorPreferences();
       if (SessionLock* lock = m_server->sessionLock()) {
         lock->handleOutputStateChanged(*this);
+      }
+      if (m_server->sessionLocked()) {
+        m_server->updateLockBlank();
       }
     }
     wlr_output_schedule_frame(m_output);

@@ -84,6 +84,29 @@ if ((after_x >= before_x)); then
   exit 1
 fi
 
+# A drag that settles on another column focuses it as a focus move would, so center_focused decides where it rests.
+sed -i '/^default_extent_fraction = 0.5$/a center_focused = "always"' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" msg column-focus-first > /dev/null
+wait_for_a_visible x > /dev/null
+pointer move 900 360 mod logo press "$BTN_MIDDLE" move 850 360 move 500 360 release "$BTN_MIDDLE" mod none
+settled_title=A
+offset=$OUTPUT_W
+for _ in $(seq 40); do
+  read -r settled_title settled_x settled_w < <(
+    "$UMBRIEL" windows --json | jq -r '.[] | select(.active) | "\(.title) \(.x) \(.w)"'
+  )
+  offset=$((2 * settled_x + settled_w - OUTPUT_W))
+  [[ $settled_title != A ]] && ((offset <= 2 && offset >= -2)) && break
+  sleep 0.1
+done
+if [[ $settled_title == A ]] || ((offset > 2 || offset < -2)); then
+  echo "layout-scroll-drag did not center the column it settled on: $settled_title x $settled_x w $settled_w"
+  exit 1
+fi
+sed -i '/^center_focused = "always"$/d' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+
 # Arrange the workspaces horizontally: the strip turns vertical, and the drag must follow it.
 sed -i 's/^workspace_axis = "vertical"$/workspace_axis = "horizontal"/' "$UMBRIEL_CONFIG"
 "$UMBRIEL" msg config-reload > /dev/null

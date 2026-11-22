@@ -25,7 +25,7 @@ namespace umbriel {
     // finite delta cannot overflow to inf before `constrain()` gets a chance to bound the result.
     constexpr float kMaxDelta = 1.0e6F;
 
-    // Cubic Bernstein weights at t, the same weights the shader uses.
+    // Cubic Bernstein weights for the CPU displacement model.
     std::array<float, 4> bernstein(float t) {
       const float s = 1 - t;
       return {s * s * s, 3 * t * s * s, 3 * t * t * s, t * t * t};
@@ -88,8 +88,8 @@ namespace umbriel {
   }
 
   void DragPhysics::setGrab(float grabX, float grabY) {
-    // One bicubic Bernstein surface couples the whole window; the shader
-    // interpolates with the same weights, so the pin lands exactly on the pointer.
+    // Bernstein weights pin the grab point on the bicubic surface; the shader
+    // evaluates the same surface in the power basis, preserving the pin.
     const float u = std::clamp(grabX, 0.0F, 1.0F);
     const float v = std::clamp(grabY, 0.0F, 1.0F);
     const std::array<float, 4> horizontal = bernstein(u);
@@ -265,6 +265,29 @@ namespace umbriel {
     for (int i = 0; i < kPoints; ++i) {
       sheet[i][0] = m_displacement[i][0] / m_width;
       sheet[i][1] = m_displacement[i][1] / m_height;
+    }
+    return sheet;
+  }
+
+  DragPhysics::Sheet DragPhysics::normalizedPolynomial() const {
+    Sheet sheet = normalizedDisplacement();
+    // Bernstein to power coefficients along x for each row, then along y for each column.
+    const auto convert = [](Sheet& values, int start, int stride) {
+      for (int axis = 0; axis < 2; ++axis) {
+        const float a = values[start][axis];
+        const float b = values[start + stride][axis];
+        const float c = values[start + 2 * stride][axis];
+        const float d = values[start + 3 * stride][axis];
+        values[start + stride][axis] = 3.0F * (b - a);
+        values[start + 2 * stride][axis] = 3.0F * (c - 2.0F * b + a);
+        values[start + 3 * stride][axis] = d - 3.0F * c + 3.0F * b - a;
+      }
+    };
+    for (int row = 0; row < 4; ++row) {
+      convert(sheet, row * 4, 1);
+    }
+    for (int column = 0; column < 4; ++column) {
+      convert(sheet, column, 4);
     }
     return sheet;
   }

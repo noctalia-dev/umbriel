@@ -16,7 +16,7 @@ mod_right_double_click = "none"
 
 Edge and corner drag placement is configured with [`layout.stacking.drop_zones`](layout.md#drop-zones-and-region-placement). It is enabled by default in stacking workspaces. Individual floating windows above tiling layouts use free placement instead.
 
-Dragging a window out of a region placement or maximize restores its normal size under the pointer, keeping the title bar and content aligned while the application redraws. Placing it on another monitor maps the normal restore position to that monitor. Shared monitor edges require a 150 ms dwell before offering a drop zone, so dragging straight across monitors remains possible. Tiled, pinned, scratchpad, overview, data-device, and toplevel-transfer drags do not use these zones. The explicit `window-set-region <region>` and `window-clear-region` actions work independently of the pointer setting within stacking. See [Actions](actions.md).
+Dragging a window out of a region placement or maximize restores its normal size under the pointer, keeping the title bar and content aligned while the application redraws. Placing it on another monitor maps the normal restore position to that monitor. Shared monitor edges require a 150 ms dwell before offering a drop zone, so dragging straight across monitors remains possible. Tiled, pinned, overview, data-device, and toplevel-transfer drags do not use these zones; a scratchpad window uses its own scratchpad's layout settings. The explicit `window-set-region <region>` and `window-clear-region` actions work independently of the pointer setting within stacking. See [Actions](actions.md).
 
 `client_window_drag = false` ignores move requests from applications, such as dragging a client-side title bar or the empty tab strip of Chromium, Firefox, or Electron apps. Ordinary window moves then use Mod+drag, keybinds, or an enabled [Umbriel title bar](appearance.md#title-bar). Resizing from client-side borders and tab tear-off operations using `xdg-toplevel-drag-v1` are unaffected.
 
@@ -281,6 +281,7 @@ hardware_cursor = true
 follows_focus = false
 hide_when_typing = false
 hide_timeout_ms = 0
+hide_on_touch = true
 ```
 
 | Key                | Range or values | Description                                        |
@@ -291,10 +292,11 @@ hide_timeout_ms = 0
 | `follows_focus`    | bool            | Follow keyboard-driven window focus.               |
 | `hide_when_typing` | bool            | Hide after a non-modifier key press.               |
 | `hide_timeout_ms`  | 0 to 3600000    | Hide after inactivity; `0` disables the timeout.   |
+| `hide_on_touch`    | bool            | Hide on touchscreen input.                         |
 
-Set `hardware_cursor = false` to work around hardware cursor flicker or disappearance. Set `hide_timeout_ms` to a value from 1 to 3600000 to hide an inactive cursor; `0` disables the timeout.
+Set `hardware_cursor = false` to work around hardware cursor flicker or disappearance. Set `hide_timeout_ms` to a value from 1 to 3600000 to hide an inactive cursor; `0` disables the timeout. With `hide_on_touch = true` (the default), touching the screen hides the cursor until the next pointer or tablet activity.
 
-`follows_focus = true` moves the cursor to a newly focused window after keyboard-driven focus and transfer actions. Moving the focused window with a keybind, such as a move, swap, consume, or `window-move-by`, moves the cursor to the window's center. New windows, activation requests, and the replacement focus after a close do not move the cursor, so it stays on a dock, bar, or tray icon. Pointer-driven focus and gestures do not move it either. `window-focus-warp <id>` always moves the cursor regardless of this setting. A cursor hidden by `hide_when_typing` or `hide_timeout_ms` stays hidden through these moves and reappears at its new position on the next pointer activity. Active-workspace output swaps keep the cursor and seat focus on the invoking output when this setting is false; when it is true, both follow the previously focused window to its new output.
+`follows_focus = true` moves the cursor to a newly focused window after keyboard-driven focus and transfer actions. Moving the focused window with a keybind, such as a move, swap, consume, or `window-move-by`, moves the cursor to the window's center. New windows, activation requests, and the replacement focus after a close do not move the cursor, so it stays on a dock, bar, or tray icon. Pointer-driven focus and gestures do not move it either. `window-focus-warp <id>` always moves the cursor regardless of this setting. A cursor hidden by `hide_when_typing`, `hide_timeout_ms`, or `hide_on_touch` stays hidden through these moves and reappears at its new position on the next pointer activity. Active-workspace output swaps keep the cursor and seat focus on the invoking output when this setting is false; when it is true, both follow the previously focused window to its new output.
 
 ### Drag edge scroll
 

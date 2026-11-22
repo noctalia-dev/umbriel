@@ -476,6 +476,8 @@ namespace umbriel {
          KeybindAction::ShortcutsInhibitToggle},
         {"spawn", "<cmd...>", "Run a command with a launch activation token", KeybindAction::Spawn,
          ActionArgKind::Command},
+        {"spawn-floating", "<cmd...>", "Run a command whose first window opens floating", KeybindAction::SpawnFloating,
+         ActionArgKind::Command},
         {"submap", "<name>", "Enter a submap layer, or leave one with 'reset'", KeybindAction::Submap,
          ActionArgKind::Submap},
         {"window-center", "", "Center the focused floating window on its output", KeybindAction::WindowCenter},

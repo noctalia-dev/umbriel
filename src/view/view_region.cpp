@@ -4,19 +4,11 @@
 #include "view/size_hints.h"
 #include "view/view.h"
 #include "view/view_internal.h"
-#include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
 
 namespace umbriel {
   bool View::canUseRegionGeometry() const {
-    const ScratchpadManager* scratchpad = m_server->scratchpadManager();
-    return m_mapped
-        && !m_tiled
-        && !attached()
-        && !m_pinned
-        && !scheduledFullscreen()
-        && !currentFullscreen()
-        && (scratchpad == nullptr || !scratchpad->contains(this));
+    return m_mapped && !m_tiled && !attached() && !m_pinned && !scheduledFullscreen() && !currentFullscreen();
   }
 
   bool View::canSetRegion(const Workspace* destination) const {
