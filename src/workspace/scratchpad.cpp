@@ -567,6 +567,7 @@ namespace umbriel {
       state->workspace->markArrange(false);
     }
     updateDimAndBlur(output);
+    updateStacking();
   }
 
   void ScratchpadManager::moveScratchpad(
@@ -867,6 +868,28 @@ namespace umbriel {
         wlr_scene_node_set_enabled(&blur->node, true);
       }
     }
+  }
+
+  void ScratchpadManager::updateStacking() {
+    const auto overFullscreen = [this](const auto& item) {
+      const auto& [name, scratchpad] = item;
+      if (scratchpad.output == nullptr) {
+        return false;
+      }
+      // A pad fading out stays lifted until its backdrop is gone, so it does not drop under the fullscreen window.
+      const auto fade = m_backdropFades.find(scratchpad.output);
+      const bool shown = scratchpad.visible || (fade != m_backdropFades.end() && fade->second.current() > 0.0);
+      return shown
+          && (scratchpad.output->fullscreenAboveTopLayer() || std::ranges::any_of(m_entries, [&](const Entry& entry) {
+                return entry.scratchpad == name
+                    && entry.view != nullptr
+                    && (entry.view->scheduledFullscreen() || entry.view->currentFullscreen());
+              }));
+    };
+    // Anchor to the tree below, so a drag tree that View::enterDragPresentation stacks above the pad stays there.
+    wlr_scene_tree* below =
+        std::ranges::any_of(m_scratchpads, overFullscreen) ? m_server->fullscreenTree() : m_server->xdgTree();
+    wlr_scene_node_place_above(&m_root->node, &below->node);
   }
 
   void ScratchpadManager::releaseOutput(Output* output) {

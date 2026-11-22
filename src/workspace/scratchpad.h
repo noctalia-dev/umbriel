@@ -97,6 +97,10 @@ namespace umbriel {
     // Keep assigned scratchpads in output-local coordinates after the output
     // layout or usable area changes.
     void refreshOutputGeometry(Output* output);
+    // Lift every scratchpad above fullscreen windows, below pinned ones, while a pad shown or fading on an output
+    // shares it with a fullscreen window or holds one; otherwise keep them below panels. Pads share one tree, so the
+    // lift is global.
+    void updateStacking();
     void applyConfig();
     // Reconcile runtime scratchpads after a successful [[scratchpad]] reload.
     // Windows belonging to removed definitions return to their saved workspaces.

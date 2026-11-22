@@ -223,9 +223,9 @@ namespace umbriel {
     m_scratchpad = true;
     m_active = true;
     wlr_scene_node_reparent(&m_tree->node, m_group->server()->scratchpadTree());
-    // The output's own fullscreen root only rises for its inventory, so a scratchpad's fullscreen windows go above
-    // everything directly, over the pad's backdrop.
-    wlr_scene_node_reparent(&m_fullscreenTree->node, m_group->server()->fullscreenTree());
+    // Fullscreen windows stay with their pad, above its backdrop; ScratchpadManager::updateStacking() lifts the pad
+    // over fullscreen windows for them.
+    wlr_scene_node_reparent(&m_fullscreenTree->node, m_group->server()->scratchpadTree());
   }
 
   Workspace::~Workspace() {
