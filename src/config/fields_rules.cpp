@@ -268,6 +268,7 @@ namespace umbriel {
           integer("corner_radius", 0, 100, &W::cornerRadius),
           boolean("shadow", &W::shadow),
           optionalEffectField("border_effect", &W::borderEffect),
+          boolean("border_effect_unfocused", &W::borderUnfocused),
           optionalEffectField("window_effect", &W::windowEffect),
           registry::table<W>("default_floating_size", self, floatingSize),
           registry::table<W>("default_floating_size_px", self, floatingSizePx),
