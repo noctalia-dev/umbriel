@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# With [general] scratchpad_sticky = true a shown scratchpad stays up and keeps focus when its output switches or swipes
-# to another workspace, and a non-modal one also stays up when focusing a window on another workspace switches there.
-# A [[scratchpad]] with sticky = false still closes on a switch.
+# A [[scratchpad]] with sticky = true stays up and keeps focus when its output switches or swipes to another workspace,
+# and a non-modal one also stays up when focusing a window on another workspace switches there. A pad without it still
+# closes on a switch.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -10,7 +10,6 @@ readonly ANCHORED=sticky-anchored
 readonly PLAIN=sticky-plain
 readonly OTHER=sticky-other
 
-sed -i '/^\[general\]$/a scratchpad_sticky = true' "$UMBRIEL_CONFIG"
 cat >> "$UMBRIEL_CONFIG" <<'EOF'
 
 [animation]
@@ -18,10 +17,10 @@ enabled = false
 
 [[scratchpad]]
 name = "roam"
+sticky = true
 
 [[scratchpad]]
 name = "anchored"
-sticky = false
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -93,7 +92,7 @@ wait_for_field "$OTHER" active true
 }
 "$UMBRIEL" msg workspace-switch 1 > /dev/null
 
-# sticky = false on the pad wins over the global setting.
+# A pad without sticky still closes on a switch.
 "$UMBRIEL" msg scratchpad-toggle roam > /dev/null
 wait_for_field "$ROAM" visible false
 "$UMBRIEL" msg scratchpad-toggle anchored > /dev/null
