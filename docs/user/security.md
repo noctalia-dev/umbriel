@@ -99,7 +99,7 @@ New protocols remain hidden from restricted clients until they receive a securit
 
 ### Per-application grants
 
-Use `[[security_context_rule]]` when a sandboxed application genuinely needs a protocol without a portal equivalent:
+Use `[[security_context_rule]]` when a sandboxed application needs a protocol without a portal equivalent:
 
 ```toml
 [[security_context_rule]]

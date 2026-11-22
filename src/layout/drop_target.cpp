@@ -518,7 +518,10 @@ namespace umbriel {
       Server& server, View& view, Workspace& target, const DropTarget& drop, const DropColumnWidth* columnWidth,
       bool animate
   ) {
-    if (server.scratchpadManager() != nullptr && server.scratchpadManager()->contains(&view)) {
+    // A scratchpad window drops only into its own scratchpad's layout.
+    if (server.scratchpadManager() != nullptr
+        && server.scratchpadManager()->contains(&view)
+        && &target != view.workspace()) {
       return;
     }
     if (target.layoutMode() == LayoutMode::Stacking) {

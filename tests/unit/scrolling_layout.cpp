@@ -116,6 +116,27 @@ UMBRIEL_TEST(consumeLeftStacksIntoThePreviousColumn) {
   CHECK_EQ(fixture.layout.columns()[0].heightWeights.size(), size_t{2});
 }
 
+UMBRIEL_TEST(aWindowMovedIntoAColumnTakesAnEvenShare) {
+  Fixture fixture;
+  fixture.addColumns(4);
+  CHECK(fixture.layout.consume(stub(1), -1));
+  CHECK(fixture.layout.consume(stub(2), -1));
+  CHECK(fixture.layout.setHeightFraction(stub(0), 0.6));
+  CHECK(fixture.layout.setHeightFraction(stub(1), 0.15));
+  fixture.layout.arrange(kUsable);
+
+  CHECK(fixture.layout.consumeFrom(stub(3), -1));
+  View* consumed = fixture.layout.columns()[0].views.front();
+  CHECK(fixture.layout.consume(consumed, 1));
+  fixture.layout.arrange(kUsable);
+
+  const Column& column = fixture.layout.columns()[1];
+  CHECK_EQ(column.views.size(), size_t{3});
+  for (View* view : column.views) {
+    CHECK_NEAR(fixture.layout.targetBox(view).height, fixture.layout.targetBox(stub(3)).height, 1);
+  }
+}
+
 UMBRIEL_TEST(consumeLeftFailsOnTheFirstColumn) {
   Fixture fixture;
   fixture.addColumns(2);
@@ -1057,6 +1078,26 @@ UMBRIEL_TEST(onOverflowMeasuresTheRightHandColumnWhenFocusMovesLeft) {
 
   // 500 + gap + 800 overruns the 1260 viewport, so stepping back onto column 1 centers it.
   fixture.layout.activateColumn(2, kViewport);
+  fixture.layout.activateColumn(1, kViewport);
+
+  const int centeredX = fixture.layout.columnX(1, kViewport)
+      + fixture.layout.columnWidth(1, kViewport) / 2
+      - static_cast<int>(std::lround(fixture.layout.scroll()));
+  CHECK_EQ(centeredX, kViewport / 2);
+  CHECK(fixture.layout.centeredRest());
+}
+
+// Closing an unfocused column to the left shifts the focused one down an index; the remembered side must follow it.
+UMBRIEL_TEST(onOverflowCentersAfterAnUnfocusedLeftColumnCloses) {
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
+  fixture.addColumns(4);
+  for (int column = 0; column < 4; ++column) {
+    CHECK(fixture.layout.setWidthFromPixels(column, kViewport, 700));
+  }
+
+  fixture.layout.activateColumn(1, kViewport);
+  fixture.layout.removeView(stub(0));
   fixture.layout.activateColumn(1, kViewport);
 
   const int centeredX = fixture.layout.columnX(1, kViewport)

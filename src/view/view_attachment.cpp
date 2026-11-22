@@ -213,7 +213,8 @@ namespace umbriel {
     View* root = placementRoot();
     unlinkAttachment();
     ScratchpadManager* scratchpad = m_server->scratchpadManager();
-    if (root->m_workspace != nullptr) {
+    // A scratchpad's window brings its dialog in through the manager, which records the membership first.
+    if (root->m_workspace != nullptr && (scratchpad == nullptr || !scratchpad->contains(root))) {
       setWorkspace(root->m_workspace, false);
     } else if (
         scratchpad == nullptr

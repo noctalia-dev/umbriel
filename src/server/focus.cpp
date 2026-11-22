@@ -366,8 +366,13 @@ namespace umbriel {
     if (m_server.sessionLocked()) {
       return;
     }
+    Output* output = preferred != nullptr ? preferred : m_server.outputFromWlr(m_server.preferredOutput());
     if (ScratchpadManager* pad = m_server.scratchpadManager()) {
-      pad->deactivateOn(preferred != nullptr ? preferred : m_server.outputFromWlr(m_server.preferredOutput()));
+      // A scratchpad shown on the output owns its input, so explicit focus lands in it rather than behind it.
+      if (exclusiveKeyboardLayer() == nullptr && pad->focusOn(output)) {
+        return;
+      }
+      pad->deactivateOn(output);
     }
     if (LayerSurface* layer = exclusiveKeyboardLayer()) {
       layer->focus();
@@ -542,6 +547,14 @@ namespace umbriel {
     // Workspace transitions and scratchpad fade-outs keep an inactive view's scene enabled until the animation
     // finishes. They are visual snapshots, not interactive windows.
     if (!view->pinned() && !view->onActiveWorkspace()) {
+      *surface = nullptr;
+      return nullptr;
+    }
+    // A shown scratchpad owns its output's pointer: the windows behind it are reached by dismissing it.
+    if (ScratchpadManager* pad = m_server.scratchpadManager(); pad != nullptr
+        && !view->pinned()
+        && !pad->contains(view)
+        && pad->visibleOn(m_server.outputFromWlr(wlr_output_layout_output_at(m_server.outputLayout(), lx, ly)))) {
       *surface = nullptr;
       return nullptr;
     }
