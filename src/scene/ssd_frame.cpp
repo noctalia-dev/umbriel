@@ -207,6 +207,11 @@ namespace umbriel {
   void SsdFrame::syncContent(const wlr_box& geometry) {
     m_contentGeometry = geometry;
     ++m_commitGeneration;
+    // A palette bar reads nothing back and judges nothing against the edge, so a client commit cannot move what it
+    // shows: the fill is the palette and the contrast rule already knows it. Skip the per-commit bookkeeping entirely.
+    if (colorSource() == TitleBarColorSource::Fixed) {
+      return;
+    }
     refreshFill(true);
   }
 
