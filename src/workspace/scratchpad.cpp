@@ -541,7 +541,9 @@ namespace umbriel {
       return;
     }
     state->visible = visible;
-    if (!visible) {
+    if (visible) {
+      state->hiddenByCycle = false;
+    } else {
       state->solo = nullptr;
       state->active = false;
     }
@@ -1255,6 +1257,7 @@ namespace umbriel {
       // from, so a pad shown here hides as toggle does.
       if (focus != nullptr ? nameFor(focus) == name : scratchpad->output == invokingOutput) {
         setVisible(name, false);
+        scratchpad->hiddenByCycle = true;
         m_server->refocus(scratchpad->output);
         return true;
       }
@@ -1273,7 +1276,8 @@ namespace umbriel {
     const auto isStep = [&](const View* view) { return std::ranges::find(steps, view) != steps.end(); };
     View* target = nullptr;
     if (View* last = memberFor(scratchpad->lastFocused, name); isStep(last)) {
-      target = stepFrom(steps, last, direction);
+      // A pad dismissed some other way, such as by focusing a window behind it, comes back as it was.
+      target = scratchpad->hiddenByCycle ? stepFrom(steps, last, direction) : last;
     } else if (isStep(scratchpad->resumeAt)) {
       // resumeAt is the window after the one that left, so one step back from it is the window before that one.
       target = direction > 0 ? scratchpad->resumeAt : stepFrom(steps, scratchpad->resumeAt, -1);

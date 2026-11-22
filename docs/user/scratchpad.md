@@ -57,8 +57,8 @@ Both styles work on the same scratchpad, so each binding can pick the one it wan
 ```
 
 - If a scratchpad window has focus, it hides the scratchpad.
-- If the scratchpad is shown but another window has focus, it focuses the scratchpad again, moving it to this output if needed.
-- Otherwise it shows the window after the one you used last, or before it with `scratchpad-window-cycle-previous`.
+- If the scratchpad is shown but another window has focus, such as a pinned window or one on another output, it focuses the scratchpad, moving it to this output if needed.
+- Otherwise it shows the window after the one you used last, or before it with `scratchpad-window-cycle-previous`. If the scratchpad was dismissed some other way, such as by focusing a window behind it, it shows the same window again.
 
 With windows A, B and C, repeated presses show A, hide, show B, hide, show C, hide, and start again at A. The order is the same as `scratchpad-window-show-next`, so both can be bound together.
 

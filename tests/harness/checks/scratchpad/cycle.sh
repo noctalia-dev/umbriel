@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# scratchpad-window-cycle shows and hides on one key: it shows only the window after the one focused last, hides the pad
-# while one of its windows has focus, and focuses the window on show when focus is elsewhere. It shares its order with
-# scratchpad-window-show-next, and after the window focused last closes it resumes at the window after it. The
-# -previous variant steps the other way.
+# harness: outputs=2
+# scratchpad-window-cycle shows and hides on one key: it shows only the window after the one focused last and hides the
+# pad while one of its windows has focus. A pad dismissed by focusing a window behind it comes back as it was, and a pad
+# shown on another output moves here and takes focus. It shares its order with scratchpad-window-show-next, and after
+# the window focused last closes it resumes at the window after it. The -previous variant steps the other way.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
+readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly FRAME="$UMBRIEL_RUNTIME_DIR/cycle.png"
 
 if [[ ! -x $CLIENT ]]; then
@@ -29,6 +31,18 @@ corner_radius = 0
 
 [appearance.shadow]
 enabled = false
+
+[output.HEADLESS-1]
+mode = "1280x720"
+position = [0, 0]
+
+[output.HEADLESS-2]
+mode = "1280x720"
+position = [1280, 0]
+
+[[window_rule]]
+match.title = "^other$"
+default_output = "HEADLESS-2"
 
 [[window_rule]]
 match.title = "^pad-"
@@ -83,7 +97,9 @@ expect_active() {
   fi
 }
 
+"$POINTER" 2560 720 move 640 360
 spawn plain 0xFFFFFFFF
+spawn other 0xFFFFFFFF
 spawn pad-red 0xFFFF0000
 spawn pad-green 0xFF00FF00
 green_pid=$!
@@ -110,11 +126,32 @@ expect scratchpad-window-show-next green
 expect scratchpad-window-cycle ""
 expect scratchpad-window-cycle blue
 
-# With focus on another window, it focuses the window on show instead of hiding it.
+# Focusing a window behind the pad dismisses it, and the next press brings back the same window.
 "$UMBRIEL" msg window-focus "$(window_of plain | jq -r .id)" > /dev/null
-expect_active plain "focusing a window outside the pad"
+[[ $(shown) == "" ]] || {
+  echo "focusing a window behind the pad left [$(shown)] on screen"
+  exit 1
+}
+"$UMBRIEL" msg window-toggle-pinned > /dev/null
 expect scratchpad-window-cycle blue
-expect_active pad-blue "cycle with the pad shown but not focused"
+expect_active pad-blue "cycle after focusing a window behind the pad"
+
+# A pinned window takes focus without dismissing the pad, so the next press focuses the pad instead of hiding it.
+"$UMBRIEL" msg window-focus "$(window_of plain | jq -r .id)" > /dev/null
+expect_active plain "focusing a pinned window"
+expect scratchpad-window-cycle blue
+expect_active pad-blue "cycle with the pad shown behind a focused pinned window"
+
+# With the pad shown on one output and focus on the other, it moves the pad there and focuses it instead of hiding it.
+"$POINTER" 2560 720 move 1920 360
+"$UMBRIEL" msg window-focus "$(window_of other | jq -r .id)" > /dev/null
+expect_active other "focusing a window on the other output"
+expect scratchpad-window-cycle blue
+expect_active pad-blue "cycle with the pad shown on the other output"
+[[ $(window_of pad-blue | jq -r .output) == HEADLESS-2 ]] || {
+  echo "cycle left the pad on [$(window_of pad-blue | jq -r .output)] instead of bringing it to HEADLESS-2"
+  exit 1
+}
 
 # Closing the window on show hides the pad; the next show is the window after it, not the first one.
 expect scratchpad-window-show-previous green
@@ -130,7 +167,7 @@ done
 expect scratchpad-window-cycle blue
 
 # With a layer surface holding the keyboard there is no window to focus, so it hides the pad as toggle does.
-"$UMBRIEL_LAYER_CLIENT" HEADLESS-1 40 keyboard=exclusive > "$UMBRIEL_RUNTIME_DIR/layer.log" 2>&1 &
+"$UMBRIEL_LAYER_CLIENT" HEADLESS-2 40 keyboard=exclusive > "$UMBRIEL_RUNTIME_DIR/layer.log" 2>&1 &
 for _ in $(seq 80); do
   "$UMBRIEL" layers --json | jq -e 'any(.[]; .mapped and .keyboard_interactivity == "exclusive")' > /dev/null && break
   sleep 0.025

@@ -85,8 +85,8 @@ namespace umbriel {
     // wrapping at the ends. A hidden pad shows its most recently focused window.
     bool showStep(std::string_view name, int direction, Output* invokingOutput);
     // Show and hide on one key: hide the pad while `focus`, the seat's focused window, is one of its windows, bring it
-    // here and focus it while another window has focus, and otherwise show only the window after (`direction` > 0) or
-    // before the one focused last.
+    // here and focus it while another window has focus, and otherwise show only one window. That is the window after
+    // (`direction` > 0) or before the one focused last when cycle() hid the pad, else the one focused last.
     bool cycle(std::string_view name, int direction, Output* invokingOutput, const View* focus);
     View* focused(std::string_view name) const;
     bool hasFocus(std::string_view name) const;
@@ -122,6 +122,8 @@ namespace umbriel {
       View* lastFocused = nullptr;
       // Where cycle() resumes once the window focused last has left the pad.
       View* resumeAt = nullptr;
+      // Set while cycle() hid the pad, so its next show moves on from the window focused last.
+      bool hiddenByCycle = false;
       // While visible, the one member shown in place of all of them; null when every member shows.
       View* solo = nullptr;
       std::optional<PendingSpawn> pendingSpawn;
