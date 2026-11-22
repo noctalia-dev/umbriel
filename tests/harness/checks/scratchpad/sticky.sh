@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# With [general] scratchpad_sticky = true a shown scratchpad stays up and keeps focus when its output switches or swipes
+# to another workspace. A [[scratchpad]] with sticky = false still closes on a switch.
+set -euo pipefail
+
+readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
+readonly ROAM=sticky-roam
+readonly ANCHORED=sticky-anchored
+readonly PLAIN=sticky-plain
+
+sed -i '/^\[general\]$/a scratchpad_sticky = true' "$UMBRIEL_CONFIG"
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[animation]
+enabled = false
+
+[[scratchpad]]
+name = "roam"
+
+[[scratchpad]]
+name = "anchored"
+sticky = false
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+
+windows() { "$UMBRIEL" windows --json; }
+
+field_of() {
+  windows | jq -r --arg title "$1" --arg field "$2" '.[] | select(.title == $title) | .[$field]'
+}
+
+wait_for_field() {
+  local title=$1 field=$2 expected=$3 actual=
+  for _ in $(seq 80); do
+    actual=$(field_of "$title" "$field")
+    [[ $actual == "$expected" ]] && return 0
+    sleep 0.05
+  done
+  echo "expected '$title' field '$field' to be '$expected', got '$actual': $(windows)"
+  exit 1
+}
+
+# `$1` describes the change; `$2` is whether the workspace window should now be visible, proving the switch happened.
+expect_shown() {
+  "$UMBRIEL" settle
+  [[ $(field_of "$PLAIN" visible) == "$2" ]] || {
+    echo "$1 did not switch workspace: $(windows)"
+    exit 1
+  }
+  [[ $(field_of "$ROAM" visible) == true && $(field_of "$ROAM" active) == true ]] || {
+    echo "$1 closed a sticky scratchpad or took its focus: $(windows)"
+    exit 1
+  }
+}
+
+"$CLIENT" "$PLAIN" 300 200 > "$UMBRIEL_RUNTIME_DIR/$PLAIN.log" 2>&1 &
+wait_for_field "$PLAIN" active true
+for pad in roam anchored; do
+  title=sticky-$pad
+  "$CLIENT" "$title" 300 200 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
+  wait_for_field "$title" active true
+  "$UMBRIEL" msg window-move-to-scratchpad "$pad" > /dev/null
+  wait_for_field "$title" scratchpad "$pad"
+done
+
+"$UMBRIEL" msg scratchpad-toggle roam > /dev/null
+wait_for_field "$ROAM" visible true
+wait_for_field "$ROAM" active true
+
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
+expect_shown "a workspace switch" false
+
+"$UMBRIEL" swipe-test begin 1000 > /dev/null
+"$UMBRIEL" swipe-test update 1100 0 240 > /dev/null
+"$UMBRIEL" swipe-test end 1600 0 > /dev/null
+expect_shown "a workspace swipe" true
+
+# sticky = false on the pad wins over the global setting.
+"$UMBRIEL" msg scratchpad-toggle roam > /dev/null
+wait_for_field "$ROAM" visible false
+"$UMBRIEL" msg scratchpad-toggle anchored > /dev/null
+wait_for_field "$ANCHORED" visible true
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
+wait_for_field "$PLAIN" visible false
+wait_for_field "$ANCHORED" visible false
+
+echo "a sticky scratchpad stayed up through workspace switches and swipes, and sticky = false kept its pad closing"

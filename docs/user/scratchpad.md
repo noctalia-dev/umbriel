@@ -195,6 +195,8 @@ name = "terminal"
 modal = false
 ```
 
+Set `[general] scratchpad_sticky = true` to keep a shown scratchpad up when you switch or swipe to another workspace on its output. It keeps focus and stays over the new workspace until you hide it. `sticky` on a named scratchpad overrides that setting for one pad.
+
 A dialog parented to a visible scratchpad window joins that scratchpad unless a window rule explicitly chooses another destination.
 
 Backdrop dim and blur affect only the output showing the scratchpad.

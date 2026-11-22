@@ -68,6 +68,8 @@ namespace umbriel {
     // Whether the scratchpad shown on `output` is modal: it owns the output's input, so windows behind it get neither
     // pointer nor focus, and it draws the backdrop.
     bool modalOn(const Output* output) const;
+    // Whether the scratchpad shown on `output` stays up when the output switches workspace.
+    bool stickyOn(const Output* output) const;
     // Hide the scratchpad shown on `output`, for a press on its backdrop. False when none is shown there.
     bool dismissOn(Output* output);
     // Give the keyboard to the scratchpad shown on `output`, making it the launch destination again. False when none is

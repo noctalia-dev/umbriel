@@ -57,6 +57,12 @@ namespace umbriel {
       const auto definition = std::ranges::find(config().scratchpads, name, &ScratchpadConfig::name);
       return definition != config().scratchpads.end() ? &*definition : nullptr;
     }
+
+    // A pad's own `setting`, or `fallback`, its [general] counterpart, when the pad leaves it unset.
+    bool padSetting(std::string_view name, std::optional<bool> ScratchpadConfig::* setting, bool fallback) {
+      const ScratchpadConfig* definition = definitionFor(name);
+      return definition != nullptr ? (definition->*setting).value_or(fallback) : fallback;
+    }
   } // namespace
 
   ScratchpadManager::ScratchpadManager(Server& server, wlr_scene_tree* root) : m_server(&server), m_root(root) {
@@ -149,12 +155,18 @@ namespace umbriel {
   }
 
   bool ScratchpadManager::modalOn(const Output* output) const {
-    const bool modal = config().general.scratchpadModal;
-    return std::ranges::any_of(m_scratchpads, [output, modal](const auto& entry) {
-      const ScratchpadConfig* definition = definitionFor(entry.first);
+    return std::ranges::any_of(m_scratchpads, [output](const auto& entry) {
       return entry.second.visible
           && entry.second.output == output
-          && (definition != nullptr ? definition->modal.value_or(modal) : modal);
+          && padSetting(entry.first, &ScratchpadConfig::modal, config().general.scratchpadModal);
+    });
+  }
+
+  bool ScratchpadManager::stickyOn(const Output* output) const {
+    return std::ranges::any_of(m_scratchpads, [output](const auto& entry) {
+      return entry.second.visible
+          && entry.second.output == output
+          && padSetting(entry.first, &ScratchpadConfig::sticky, config().general.scratchpadSticky);
     });
   }
 

@@ -41,6 +41,7 @@ namespace umbriel {
           registry::boolean("hide_when_empty", &ScratchpadConfig::hideWhenEmpty),
           registry::boolean("proportional_size", &ScratchpadConfig::proportionalSize),
           registry::boolean("modal", &ScratchpadConfig::modal),
+          registry::boolean("sticky", &ScratchpadConfig::sticky),
           registry::table("layout", &ScratchpadConfig::layout, workspaceLayoutFields()),
       };
       return fields;

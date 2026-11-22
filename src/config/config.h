@@ -147,6 +147,8 @@ namespace umbriel {
     bool proportionalSize = false;
     // Unset follows [general] scratchpad_modal.
     std::optional<bool> modal = std::nullopt;
+    // Unset follows [general] scratchpad_sticky.
+    std::optional<bool> sticky = std::nullopt;
     // Layout overrides as in [[workspace]]. Without `mode` the pad uses stacking, not the global [layout] mode.
     WorkspaceLayoutOverrides layout{};
     bool operator==(const ScratchpadConfig&) const = default;
@@ -1148,6 +1150,8 @@ namespace umbriel {
       bool attachModalDialogs = true;
       // A shown scratchpad holds its output's pointer and keyboard, and leaves when a window behind it would get them.
       bool scratchpadModal = true;
+      // A shown scratchpad stays up when its output switches workspace.
+      bool scratchpadSticky = false;
       // Honor maximized state restored by a client while its window opens.
       bool honorRestoredMaximize = false;
       bool operator==(const General&) const = default;
