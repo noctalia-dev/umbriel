@@ -48,7 +48,7 @@ Both styles work on the same scratchpad, so each binding can pick the one it wan
 
 ## One key to show and hide
 
-`scratchpad-window-cycle` shows and hides one window at a time on a single key, like `scratchpad show` in Sway:
+`scratchpad-window-cycle` shows and hides one window at a time on a single key:
 
 ```toml
 [keybinds]
