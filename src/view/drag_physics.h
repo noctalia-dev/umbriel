@@ -7,8 +7,8 @@ namespace umbriel {
 
   // A dragged window deforms as an elastic sheet pinned at the grab point and
   // relaxes back to rest after release. A 4x4 grid of point masses (kPoints,
-  // row-major) carries the deformation; the shader samples it with the same
-  // bicubic Bernstein weights used to pin the grab point here.
+  // row-major) carries the deformation. Bernstein weights pin the grab point;
+  // the shader evaluates the same bicubic surface in the power basis.
   class DragPhysics {
   public:
     static constexpr int kPoints = 16;
@@ -57,8 +57,11 @@ namespace umbriel {
     bool active() const { return m_active; }
     bool grabbed() const { return m_grabbed; }
     uint64_t transitionId() const { return m_transitionId; }
-    // Displacements divided by the window size, as the shader expects.
+    // Bernstein control-point displacements divided by the window size.
     Sheet normalizedDisplacement() const;
+    // The same normalized bicubic surface in the power basis, row-major in y then x.
+    // Evaluate each row with Horner's method in x, then the four results in y.
+    Sheet normalizedPolynomial() const;
     // Largest displacement in logical pixels.
     float maxDisplacement() const;
     // Largest speed of any mass on either axis, in logical pixels per second.

@@ -811,6 +811,8 @@ namespace umbriel {
     wlr_scene_set_background_color(m_scene, config().colors.backdrop.data());
 
     // Global stacking keeps scratchpads above normal windows and below drag, panels, fullscreen, overlays, and lock.
+    // ScratchpadManager::updateStacking() lifts them above fullscreen windows, still below pinned ones, while a shown
+    // pad would otherwise be hidden behind fullscreen.
     // Per-output layer trees keep normal windows below panels.
     m_backdrop = wlr_scene_rect_create(&m_scene->tree, 0, 0, config().colors.backdrop.data());
     wlr_scene_rect_set_corner_radius(m_backdrop, 0);
@@ -1115,6 +1117,12 @@ namespace umbriel {
     wl_list_remove(&m_toplevelCaptureRequest.link);
     wl_list_remove(&m_padKeyboardFocusChange.link);
     wl_list_remove(&m_layerKeyboardFocusChange.link);
+    // Scratchpad workspaces reference their output's group and their windows; park them while both still exist.
+    if (m_scratchpadManager != nullptr) {
+      for (const auto& output : m_outputs) {
+        m_scratchpadManager->releaseOutput(output.get());
+      }
+    }
     m_configWatcher.reset();
     m_ipc.reset();
     m_insertHint.reset();
@@ -1648,9 +1656,9 @@ namespace umbriel {
     return m_shellLayerTrees[layer];
   }
 
-  void Server::spawn(const char* command, const char* description, bool withActivationToken) {
+  void Server::spawn(const char* command, const char* description, bool withActivationToken, bool floating) {
     if (m_socketName.empty()) {
-      wlr_log(WLR_ERROR, "cannot spawn before the Wayland socket exists");
+      kLog.error("cannot spawn before the Wayland socket exists");
       return;
     }
 
@@ -1663,9 +1671,10 @@ namespace umbriel {
       kLog.error("cannot launch application because systemd scope isolation is unavailable");
       return;
     }
-    const std::string scopeUnitArgument = scopeRequired
-        ? "--unit=app-umbriel-" + std::to_string(getpid()) + "-" + std::to_string(m_nextApplicationScopeId++) + ".scope"
+    const std::string scopeUnitName = scopeRequired
+        ? "app-umbriel-" + std::to_string(getpid()) + "-" + std::to_string(m_nextApplicationScopeId++) + ".scope"
         : "";
+    const std::string scopeUnitArgument = scopeRequired ? "--unit=" + scopeUnitName : "";
 
     wlr_xdg_activation_token_v1* launchToken = nullptr;
     std::string launchTokenName;
@@ -1684,7 +1693,7 @@ namespace umbriel {
       if (launchToken != nullptr) {
         wlr_xdg_activation_token_v1_destroy(launchToken);
       }
-      wlr_log(WLR_ERROR, "fork failed");
+      kLog.error("cannot launch application: fork failed");
       return;
     }
     if (pid == 0) {
@@ -1724,19 +1733,32 @@ namespace umbriel {
     }
 
     if (launchToken != nullptr) {
-      trackActivationToken(launchToken, true, pid);
+      trackActivationToken(launchToken, true, pid, floating);
     }
-    if (scopeRequired) {
-      wlr_log(
-          WLR_INFO, "launch requested for '%s' on WAYLAND_DISPLAY=%s", description == nullptr ? command : description,
-          m_socketName.c_str()
-      );
-    } else {
-      wlr_log(
-          WLR_INFO, "spawned '%s' on WAYLAND_DISPLAY=%s", description == nullptr ? command : description,
-          m_socketName.c_str()
-      );
-    }
+    // Bound the label and the command so a long one cannot push the pid and unit past the log line cap; those two
+    // are the only trace a program that starts nothing leaves. Bytes, not display width: a run of zero-width
+    // characters has no width to count but still fills the line.
+    constexpr std::size_t kMaxLabelBytes = 1024;
+    const auto bounded = [](const char* text) {
+      std::string_view view = text;
+      if (view.size() <= kMaxLabelBytes) {
+        return std::string(view);
+      }
+      std::size_t end = kMaxLabelBytes;
+      while (end > 0 && (static_cast<unsigned char>(view[end]) & 0xC0U) == 0x80U) {
+        --end;
+      }
+      return std::string(view.substr(0, end)) + "…";
+    };
+    const char* label = description == nullptr ? command : description;
+    const std::string boundedLabel = bounded(label);
+    const std::string commandField =
+        description == nullptr ? std::string() : std::format(", command '{}'", bounded(command));
+    const std::string ownerUnit = scopeRequired ? std::format(", unit {}", scopeUnitName) : std::string();
+    kLog.info(
+        "launch requested for '{}' (pid {}{}{}) on WAYLAND_DISPLAY={}", boundedLabel, pid, ownerUnit, commandField,
+        m_socketName
+    );
   }
 
   void Server::updateSeatCapabilities() { m_seat->updateCapabilities(!m_keyboards.empty(), !m_touchDevices.empty()); }
@@ -2249,7 +2271,10 @@ namespace umbriel {
         }
       }
     }
-    return true;
+    return m_scratchpadManager == nullptr
+        || std::ranges::none_of(m_scratchpadManager->workspaces(), [](const Workspace* workspace) {
+             return workspace->arrangePending();
+           });
   }
 
   CloseSnapshotId Server::animateCloseSnapshot(

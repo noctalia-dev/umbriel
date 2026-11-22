@@ -380,11 +380,18 @@ namespace umbriel {
 
   void View::setWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin) {
     assert(!attached());
-    if (workspace != nullptr
-        && m_server->scratchpadManager() != nullptr
-        && m_server->scratchpadManager()->contains(this)) {
+    if (ScratchpadManager* scratchpad = m_server->scratchpadManager(); workspace != nullptr
+        && scratchpad != nullptr
+        && scratchpad->contains(this)
+        && workspace != scratchpad->workspaceOf(scratchpad->nameFor(this))) {
       return;
     }
+    // Only ScratchpadManager puts a window into a scratchpad's workspace, after recording its membership.
+    assert(
+        workspace == nullptr
+        || !workspace->scratchpad()
+        || (m_server->scratchpadManager() != nullptr && m_server->scratchpadManager()->contains(this))
+    );
     // A pinned window belongs to its output and always joins that output's active workspace. Reconciliation may still
     // name a workspace it is deactivating as the group's active one; only a workspace that is really active qualifies.
     if (m_pinned && workspace != nullptr && !workspace->active() && workspace->group() != nullptr) {
@@ -523,7 +530,7 @@ namespace umbriel {
 
   bool View::assignLaunchOrigin(
       std::string_view token, std::shared_ptr<WorkspaceLaunchAnchor> workspace, uint32_t timeoutMsec,
-      std::string_view scratchpad
+      std::string_view scratchpad, bool floating
   ) {
     Workspace* target = workspace != nullptr ? workspace->workspace : nullptr;
     if (token.empty()
@@ -547,6 +554,7 @@ namespace umbriel {
     m_launchWorkspace = std::move(workspace);
     ++m_launchWorkspace->pendingViews;
     m_launchScratchpad = scratchpad;
+    m_launchFloating = floating;
     m_launchToken = token;
     m_launchWorkspaceId = target->id();
     m_launchPlacementPending = true;
@@ -587,6 +595,7 @@ namespace umbriel {
     }
     m_launchWorkspace.reset();
     m_launchScratchpad.clear();
+    m_launchFloating = false;
     m_launchPlacementPending = false;
     m_launchWorkspaceId.clear();
     if (clearToken) {
@@ -1087,9 +1096,6 @@ namespace umbriel {
     if (m_workspace != nullptr) {
       return fs || m_workspace->liftedAboveFullscreen(this) ? m_workspace->fullscreenTree()
                                                             : m_workspace->viewLayer(m_tiled);
-    }
-    if (m_inScratchpad) {
-      return fs ? m_server->fullscreenTree() : m_server->scratchpadTree();
     }
     return fs ? m_server->fullscreenTree() : m_server->xdgTree();
   }
