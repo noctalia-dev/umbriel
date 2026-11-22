@@ -329,7 +329,8 @@ namespace umbriel {
         .windowRules = before.windowRules != after.windowRules,
         .layerRules = before.layerRules != after.layerRules,
         .securityContextRules = before.securityContextRules != after.securityContextRules,
-        .scratchpads = before.scratchpads != after.scratchpads,
+        .scratchpads =
+            before.scratchpads != after.scratchpads || before.general.scratchpadModal != after.general.scratchpadModal,
         .workspaceRules = before.workspaceRules != after.workspaceRules,
         .effects = before.effects != after.effects,
     };

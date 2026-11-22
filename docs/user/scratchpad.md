@@ -187,6 +187,14 @@ Showing a populated scratchpad focuses its most recently focused member. Hiding 
 
 A visible scratchpad owns its output's input. The pointer reaches only its windows, pinned windows, and layer surfaces such as panels; the workspace windows behind it get neither clicks, hover, nor Mod-drags. Clicking the backdrop hides the scratchpad and focuses the workspace. Switching or swiping to another workspace on that output also hides it, as does any other focus change to a workspace window there, such as `window-focus` or an application activating. With focus following the mouse, moving the pointer onto the scratchpad's output focuses the scratchpad.
 
+Set `[general] scratchpad_modal = false` to keep a shown scratchpad up while you use the windows behind it. Clicks and focus reach those windows, the scratchpad stays shown and draws no backdrop, and switching workspace still hides it. `modal` on a named scratchpad overrides that setting for one pad:
+
+```toml
+[[scratchpad]]
+name = "terminal"
+modal = false
+```
+
 A dialog parented to a visible scratchpad window joins that scratchpad unless a window rule explicitly chooses another destination.
 
 Backdrop dim and blur affect only the output showing the scratchpad.

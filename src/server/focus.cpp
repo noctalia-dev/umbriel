@@ -550,11 +550,11 @@ namespace umbriel {
       *surface = nullptr;
       return nullptr;
     }
-    // A shown scratchpad owns its output's pointer: the windows behind it are reached by dismissing it.
+    // A modal scratchpad owns its output's pointer: the windows behind it are reached by dismissing it.
     if (ScratchpadManager* pad = m_server.scratchpadManager(); pad != nullptr
         && !view->pinned()
         && !pad->contains(view)
-        && pad->visibleOn(m_server.outputFromWlr(wlr_output_layout_output_at(m_server.outputLayout(), lx, ly)))) {
+        && pad->modalOn(m_server.outputFromWlr(wlr_output_layout_output_at(m_server.outputLayout(), lx, ly)))) {
       *surface = nullptr;
       return nullptr;
     }
