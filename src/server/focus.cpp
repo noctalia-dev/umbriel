@@ -89,6 +89,10 @@ namespace umbriel {
             "workspace switch trigger=focus reason={} app_id='{}' output='{}' from='{}' to='{}'",
             focusReasonName(reason), appId, outputName, current, workspace->name()
         );
+        // Switching away takes a scratchpad shown over the workspace with it, as a workspace switch does.
+        if (ScratchpadManager* pad = m_server.scratchpadManager()) {
+          pad->dismissOn(group->output());
+        }
         group->activate(workspace);
       }
     }
@@ -368,8 +372,8 @@ namespace umbriel {
     }
     Output* output = preferred != nullptr ? preferred : m_server.outputFromWlr(m_server.preferredOutput());
     if (ScratchpadManager* pad = m_server.scratchpadManager()) {
-      // A scratchpad shown on the output owns its input, so explicit focus lands in it rather than behind it.
-      if (exclusiveKeyboardLayer() == nullptr && pad->focusOn(output)) {
+      // A modal scratchpad owns its output's input, so explicit focus lands in it rather than behind it.
+      if (exclusiveKeyboardLayer() == nullptr && pad->modalOn(output) && pad->focusOn(output)) {
         return;
       }
       pad->deactivateOn(output);
@@ -408,7 +412,9 @@ namespace umbriel {
           return true;
         }
       }
-      return false;
+      // A scratchpad shown over an empty workspace is all that is left to focus there.
+      ScratchpadManager* pad = m_server.scratchpadManager();
+      return pad != nullptr && pad->focusOn(output);
     };
 
     if (preferred != nullptr) {

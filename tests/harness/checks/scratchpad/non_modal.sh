@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # With [general] scratchpad_modal = false a shown scratchpad leaves the windows behind it usable: a click reaches them
 # and takes focus while the pad stays shown, a click on empty space leaves it shown, and a workspace switch still closes
-# it. A [[scratchpad]] with modal = true stays modal, and turning the setting off by reload frees a pad already shown.
+# it, however it happens. Closing the window behind gives the keyboard back to the pad. A [[scratchpad]] with
+# modal = true stays modal, and a reload that turns the setting off or on frees a pad already shown or closes it.
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -12,6 +13,7 @@ readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly BEHIND=non-modal-behind
 readonly FREE=non-modal-free
 readonly STRICT=non-modal-strict
+readonly OTHER=non-modal-other
 readonly BEHIND_LOG="$UMBRIEL_RUNTIME_DIR/$BEHIND.log"
 
 sed -i '/^\[general\]$/a scratchpad_modal = false' "$UMBRIEL_CONFIG"
@@ -98,8 +100,15 @@ grep -q "pointer-button code=$BTN_LEFT state=pressed" "$BEHIND_LOG" || {
   exit 1
 }
 
-# A workspace switch still closes it.
+# A workspace switch still closes it, including one that focusing a window on another workspace makes.
 "$UMBRIEL" msg workspace-switch 2 > /dev/null
+wait_for_field "$FREE" visible false
+"$CLIENT" "$OTHER" 300 200 > "$UMBRIEL_RUNTIME_DIR/$OTHER.log" 2>&1 &
+wait_for_field "$OTHER" active true
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
+show free "$FREE"
+"$UMBRIEL" msg window-focus "$(field_of "$OTHER" id)" > /dev/null
+wait_for_field "$OTHER" active true
 wait_for_field "$FREE" visible false
 "$UMBRIEL" msg workspace-switch 1 > /dev/null
 
@@ -121,5 +130,19 @@ presses=$(grep -c "pointer-button code=$BTN_LEFT state=pressed" "$BEHIND_LOG")
   echo "after the reload the click did not reach the window behind ($presses presses): $(windows)"
   exit 1
 }
+
+# A reload that makes the pad modal while the window behind it has focus closes it, as that focus would.
+sed -i 's/^scratchpad_modal = false$/scratchpad_modal = true/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+wait_for_field "$FREE" visible false
+sed -i 's/^scratchpad_modal = true$/scratchpad_modal = false/' "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+
+# Closing the window behind leaves the pad as the only thing to focus there.
+show free "$FREE"
+"$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 150 150 click "$BTN_LEFT"
+wait_for_field "$BEHIND" active true
+kill "$(field_of "$BEHIND" pid)"
+wait_for_field "$FREE" active true
 
 echo "a non-modal scratchpad left the windows behind it usable, and modal = true kept its pad modal"

@@ -876,10 +876,8 @@ namespace umbriel {
       if (scratchpad.output == nullptr) {
         return false;
       }
-      // A pad fading out stays lifted until its backdrop is gone, so it does not drop under the fullscreen window.
-      const auto fade = m_backdropFades.find(scratchpad.output);
-      const bool shown = scratchpad.visible || (fade != m_backdropFades.end() && fade->second.current() > 0.0);
-      return shown
+      // A pad fading out stays lifted until it is gone, so it does not drop under the fullscreen window.
+      return (scratchpad.visible || animatesOn(scratchpad.output))
           && (scratchpad.output->fullscreenAboveTopLayer() || std::ranges::any_of(m_entries, [&](const Entry& entry) {
                 return entry.scratchpad == name
                     && entry.view != nullptr
@@ -1037,9 +1035,6 @@ namespace umbriel {
   }
 
   bool ScratchpadManager::focusOn(Output* output) {
-    if (!modalOn(output)) {
-      return false;
-    }
     for (auto& [name, scratchpad] : m_scratchpads) {
       if (output != nullptr && scratchpad.visible && scratchpad.output == output) {
         scratchpad.active = true;
@@ -1510,6 +1505,11 @@ namespace umbriel {
     for (const auto& [output, fade] : m_backdropFades) {
       retargetBackdrop(output, modalOn(output));
       updateDimAndBlur(output);
+    }
+    // A pad that turned modal does not stay up over the window behind it that has focus.
+    if (View* focused = View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface);
+        focused != nullptr && !contains(focused)) {
+      noteFocus(focused);
     }
     if (refocusNeeded) {
       m_server->refocus();

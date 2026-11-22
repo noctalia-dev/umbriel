@@ -70,8 +70,8 @@ namespace umbriel {
     bool modalOn(const Output* output) const;
     // Hide the scratchpad shown on `output`, for a press on its backdrop. False when none is shown there.
     bool dismissOn(Output* output);
-    // Give the keyboard to the modal scratchpad shown on `output`, making it the launch destination again. False when
-    // none is shown there.
+    // Give the keyboard to the scratchpad shown on `output`, making it the launch destination again. False when none is
+    // shown there.
     bool focusOn(Output* output);
     bool refocusActive(Output* output);
     // Show a scratchpad on the invoking output without changing keyboard focus. Naming `member` while the pad shows a
