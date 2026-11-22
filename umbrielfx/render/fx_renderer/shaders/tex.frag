@@ -81,9 +81,9 @@ uniform vec4 sample_bounds;
 
 vec4 sample_texture_at(vec2 uv) {
 #if SOURCE == SOURCE_TEXTURE_RGBA || SOURCE == SOURCE_TEXTURE_EXTERNAL
-  return texture2D(tex, SAMPLE_UV(uv));
+  return texture2D(tex, uv);
 #elif SOURCE == SOURCE_TEXTURE_RGBX
-  return vec4(texture2D(tex, SAMPLE_UV(uv)).rgb, 1.0);
+  return vec4(texture2D(tex, uv).rgb, 1.0);
 #endif
 }
 
@@ -101,31 +101,77 @@ float mitchell(float x) {
   return 0.0;
 }
 
+// Mitchell draws use GL_LINEAR, so two adjacent same-sign taps can share one
+// lookup. Opposite-sign taps must stay separate to keep the negative lobes.
+vec2 mitchell_tap(inout float p, float end, float center, float footprint, float texel, vec2 bounds) {
+  float w = mitchell((p - center) / footprint);
+  float uv = (p + 0.5) * texel;
+  p += 1.0;
+#if SAMPLE_CLAMP
+  uv = clamp(uv, bounds.x, bounds.y);
+#endif
+
+  // External images can filter in a different color space or at a different
+  // chroma resolution. Keep the original tap positions for those samplers.
+#if SOURCE != SOURCE_TEXTURE_EXTERNAL
+  if (w != 0.0 && p <= end) {
+    float next_w = mitchell((p - center) / footprint);
+    if (w * next_w > 0.0) {
+      float next_uv = (p + 0.5) * texel;
+#if SAMPLE_CLAMP
+      // Clamp both endpoints before interpolation to duplicate crop-edge taps.
+      next_uv = clamp(next_uv, bounds.x, bounds.y);
+#endif
+      w += next_w;
+      uv += (next_uv - uv) * (next_w / w);
+      p += 1.0;
+    }
+  }
+#endif
+  return vec2(uv, w);
+}
+
 vec4 sample_texture() {
-  if (max(sample_footprint.x, sample_footprint.y) <= 1.0) {
-    return sample_texture_at(v_texcoord);
+  float scale = max(sample_footprint.x, sample_footprint.y);
+  if (scale <= 1.0) {
+    return sample_texture_at(SAMPLE_UV(v_texcoord));
   }
 
   // Widen the kernel to suppress aliasing.
   vec2 footprint = clamp(sample_footprint, vec2(1.0), vec2(15.0));
   vec2 center = v_texcoord / texel_size - 0.5;
   vec2 start = ceil(center - 2.0 * footprint);
+  vec2 end = center + 2.0 * footprint;
+#if SAMPLE_CLAMP
+  vec4 bounds = sample_bounds;
+#else
+  const vec4 bounds = vec4(0.0);
+#endif
   vec4 color = vec4(0.0);
   float weight = 0.0;
+  float py = start.y;
   for (int y = 0; y < 64; ++y) {
-    float py = start.y + float(y);
-    if (py > center.y + 2.0 * footprint.y) {
+    if (py > end.y) {
       break;
     }
 
-    float wy = mitchell((py - center.y) / footprint.y);
+    vec2 ty = mitchell_tap(py, end.y, center.y, footprint.y, texel_size.y, bounds.yw);
+    if (ty.y == 0.0) {
+      continue;
+    }
+
+    float px = start.x;
     for (int x = 0; x < 64; ++x) {
-      float px = start.x + float(x);
-      if (px > center.x + 2.0 * footprint.x) {
+      if (px > end.x) {
         break;
       }
-      float w = wy * mitchell((px - center.x) / footprint.x);
-      color += sample_texture_at((vec2(px, py) + 0.5) * texel_size) * w;
+
+      vec2 tx = mitchell_tap(px, end.x, center.x, footprint.x, texel_size.x, bounds.xz);
+      if (tx.y == 0.0) {
+        continue;
+      }
+      float w = tx.y * ty.y;
+      color += sample_texture_at(vec2(tx.x, ty.x)) * w;
       weight += w;
     }
   }
@@ -141,8 +187,11 @@ vec4 sample_texture() {
     color.rgb = vec3(0.0);
   }
 
-  // Fade to avoid a sharpness jump.
-  return mix(sample_texture_at(v_texcoord), color, clamp(max(footprint.x, footprint.y) - 1.0, 0.0, 1.0));
+  // Fade to avoid a sharpness jump, but skip the extra fetch at full strength.
+  if (scale >= 2.0) {
+    return color;
+  }
+  return mix(sample_texture_at(SAMPLE_UV(v_texcoord)), color, scale - 1.0);
 }
 
 float srgb_channel_to_linear(float x) { return x > 0.04045 ? pow((x + 0.055) / 1.055, 2.4) : x / 12.92; }
