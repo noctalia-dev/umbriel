@@ -30,6 +30,7 @@ pkgs.mkShell {
     jq
     foot
     python3
+	nodejs
     imagemagick
     procps
     xwayland
