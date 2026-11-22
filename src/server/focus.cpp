@@ -366,8 +366,13 @@ namespace umbriel {
     if (m_server.sessionLocked()) {
       return;
     }
+    Output* output = preferred != nullptr ? preferred : m_server.outputFromWlr(m_server.preferredOutput());
     if (ScratchpadManager* pad = m_server.scratchpadManager()) {
-      pad->deactivateOn(preferred != nullptr ? preferred : m_server.outputFromWlr(m_server.preferredOutput()));
+      // A scratchpad shown on the output owns its input, so explicit focus lands in it rather than behind it.
+      if (exclusiveKeyboardLayer() == nullptr && pad->focusOn(output)) {
+        return;
+      }
+      pad->deactivateOn(output);
     }
     if (LayerSurface* layer = exclusiveKeyboardLayer()) {
       layer->focus();

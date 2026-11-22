@@ -2584,10 +2584,7 @@ namespace umbriel {
           && !wlr_seat_keyboard_has_grab(seat)
           && !m_server->sessionLocked()
           && m_server->exclusiveKeyboardLayer() == nullptr) {
-        Output* output = m_server->outputFromWlr(pointerOutput);
-        if (ScratchpadManager* pad = m_server->scratchpadManager(); pad == nullptr || !pad->focusOn(output)) {
-          m_server->refocusExplicit(output);
-        }
+        m_server->refocusExplicit(m_server->outputFromWlr(pointerOutput));
       }
     }
   }
