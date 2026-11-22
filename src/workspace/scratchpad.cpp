@@ -843,7 +843,6 @@ namespace umbriel {
     if (output == nullptr) {
       return;
     }
-    const bool visible = modalOn(output);
     const double dim = config().animation.scratchpad.dim;
     const bool blurEnabled = config().animation.scratchpad.blur && config().appearance.blur.enabled;
     const auto fade = m_backdropFades.find(output);
@@ -853,7 +852,7 @@ namespace umbriel {
     wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &box);
 
     if (wlr_scene_rect* rect = dimRectFor(output)) {
-      if ((!visible && currentAlpha <= 0.001F) || dim <= 0.0 || currentAlpha <= 0.001F) {
+      if (dim <= 0.0 || currentAlpha <= 0.001F) {
         wlr_scene_node_set_enabled(&rect->node, false);
       } else {
         wlr_scene_node_set_position(&rect->node, box.x, box.y);
@@ -870,7 +869,7 @@ namespace umbriel {
     }
 
     if (wlr_scene_blur* blur = blurNodeFor(output)) {
-      if ((!visible && currentAlpha <= 0.001F) || !blurEnabled || currentAlpha <= 0.001F) {
+      if (!blurEnabled || currentAlpha <= 0.001F) {
         wlr_scene_node_set_enabled(&blur->node, false);
       } else {
         wlr_scene_node_set_position(&blur->node, box.x, box.y);
@@ -1516,7 +1515,6 @@ namespace umbriel {
     // A shown pad keeps its backdrop only while it is still modal.
     for (const auto& [output, fade] : m_backdropFades) {
       retargetBackdrop(output, modalOn(output));
-      updateDimAndBlur(output);
     }
     // A pad that turned modal does not stay up over the window behind it that has focus.
     if (View* focused = View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface);

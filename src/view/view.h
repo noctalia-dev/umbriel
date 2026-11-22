@@ -231,6 +231,7 @@ namespace umbriel {
     int decorationCornerRadius() const { return m_decoration.cornerRadius(); }
     // Padding of this window's border preset, 0 without one.
     int borderEffectPadding() const { return m_effects.borderPadding(); }
+    bool borderUnfocused();
     // Opacity multiplier the overview applies to windows it leaves on screen (pinned ones) while it opens and closes.
     void setOverviewOpacity(float opacity);
     wlr_scene_tree* homeTree() const;

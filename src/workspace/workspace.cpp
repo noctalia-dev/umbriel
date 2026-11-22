@@ -2036,8 +2036,10 @@ namespace umbriel {
         ring.push_back(unitEntry(column, row));
       }
     }
-    std::ranges::copy_if(m_floatingStack, std::back_inserter(ring), [](const View* view) {
-      return !view->minimized();
+    // Stacking navigation follows workspace membership order, which stays stable when focus raises a window.
+    const auto& floatingOrder = m_layoutMode == LayoutMode::Stacking ? m_views : m_floatingStack;
+    std::ranges::copy_if(floatingOrder, std::back_inserter(ring), [](const View* view) {
+      return view->floating() && !view->minimized();
     });
     if (ring.size() < 2) {
       return nullptr;

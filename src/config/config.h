@@ -525,6 +525,7 @@ namespace umbriel {
     std::optional<bool> shadow;
     // Override [effects] border and window for windows this rule matches; "off" disables the default.
     std::optional<std::string> borderEffect;
+    std::optional<bool> borderUnfocused;
     std::optional<std::string> windowEffect;
 
     // See RegexPatterns: the regexes are derived from the patterns, so equality compares the patterns alone.
@@ -589,6 +590,7 @@ namespace umbriel {
           && cornerRadius == other.cornerRadius
           && shadow == other.shadow
           && borderEffect == other.borderEffect
+          && borderUnfocused == other.borderUnfocused
           && windowEffect == other.windowEffect;
     }
   };
@@ -640,6 +642,7 @@ namespace umbriel {
     std::optional<int> cornerRadius;
     std::optional<bool> shadow;
     std::optional<std::string> borderEffect;
+    std::optional<bool> borderUnfocused;
     std::optional<std::string> windowEffect;
     bool operator==(const ResolvedWindowRule&) const = default;
   };
