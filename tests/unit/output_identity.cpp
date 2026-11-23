@@ -5,6 +5,7 @@
 
 using umbriel::outputDescriptor;
 using umbriel::OutputIdentity;
+using umbriel::outputIdentityMatches;
 using umbriel::OutputNameMatch;
 using umbriel::outputNameMatch;
 using umbriel::outputNamesEqual;
@@ -95,6 +96,17 @@ UMBRIEL_TEST(sameConnectorDifferentPanelsAreDistinguishable) {
   // cannot tell them apart.
   CHECK(matches(home, "HDMI-A-1"));
   CHECK(matches(office, "HDMI-A-1"));
+}
+
+UMBRIEL_TEST(savedPhysicalIdentityFollowsTheMonitorAcrossConnectors) {
+  constexpr OutputIdentity original{.connector = "DP-9", .make = "HP Inc.", .model = "HP E27q G5", .serial = "A"};
+  constexpr OutputIdentity returning{.connector = "DP-11", .make = "HP Inc.", .model = "HP E27q G5", .serial = "A"};
+  constexpr OutputIdentity otherPanel{.connector = "DP-9", .make = "HP Inc.", .model = "HP E27q G5", .serial = "B"};
+  CHECK(outputIdentityMatches(original, returning));
+  CHECK(!outputIdentityMatches(original, otherPanel));
+  CHECK(!outputIdentityMatches(original, kBare));
+  CHECK(outputIdentityMatches(kBare, kBare));
+  CHECK(!outputIdentityMatches(kBare, returning));
 }
 
 UMBRIEL_TEST(partialDescriptorsDoNotMatch) {

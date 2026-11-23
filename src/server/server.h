@@ -11,6 +11,7 @@
 #include "input/surface_layouts.h"
 #include "output/connector_hdr_state.h"
 #include "output/enable_overrides.h"
+#include "output/identity.h"
 #include "scene/border_rect.h"
 #include "scene/effect_registry.h"
 #include "scene/effect_selection.h"
@@ -465,6 +466,7 @@ namespace umbriel {
     wlr_output* preferredOutput() const;
     Output* outputFromWlr(wlr_output* output) const;
     Output* outputFromName(const std::string& name) const;
+    Output* outputFromIdentity(const OutputIdentity& identity) const;
     // Named workspaces on enabled outputs, with native local names taking precedence over displaced ones. A qualifier
     // for an unavailable output identifies a displaced workspace's original output; positions remain output-local.
     [[nodiscard]] std::expected<Workspace*, std::string> resolveNamedWorkspace(
@@ -996,9 +998,13 @@ namespace umbriel {
     wl_event_source* m_rendererRecoveryIdle = nullptr;
     struct DisplacedWorkspaceSelection {
       std::string outputName;
+      std::string outputMake;
+      std::string outputModel;
+      std::string outputSerial;
       std::string workspaceName;
       size_t workspaceIndex = 0;
       bool workspaceNamed = false;
+      OutputIdentity identity() const { return {outputName, outputMake, outputModel, outputSerial}; }
     };
     // Output objects do not survive physical hotplug, so selected workspaces
     // wait here until the output with the same stable name returns.

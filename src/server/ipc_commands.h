@@ -61,6 +61,7 @@ namespace umbriel {
     static nlohmann::json planeCursor(Server& server, IpcArgs args);
     static nlohmann::json effectFrames(Server& server, IpcArgs args);
     static nlohmann::json cursorState(Server& server, IpcArgs args);
+    static nlohmann::json outputIdentityForTest(Server& server, IpcArgs args);
 #endif
   };
 

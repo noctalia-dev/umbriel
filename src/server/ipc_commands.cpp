@@ -1624,6 +1624,19 @@ namespace umbriel {
     return nlohmann::json{{"ok", {{"outputs", std::move(outputs)}}}};
   }
 
+  nlohmann::json IpcCommands::outputIdentityForTest(Server& server, IpcArgs args) {
+    if (args.size() != 4) {
+      return nlohmann::json{{"err", "usage: output-identity-test <output> <make> <model> <serial>"}};
+    }
+    Output* output = server.outputFromName(args[0]);
+    if (output == nullptr || !wlr_output_is_headless(output->wlr())) {
+      return nlohmann::json{{"err", "output-identity-test requires an enabled headless output"}};
+    }
+    output->setIdentityForTest(args[1], args[2], args[3]);
+    server.scheduleDisplacedViewRestore();
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
   nlohmann::json IpcCommands::cursorState(Server& server, IpcArgs /*args*/) {
     const Cursor* cursor = server.cursor();
     nlohmann::json image = nullptr;
@@ -1704,6 +1717,8 @@ namespace umbriel {
       {"keyboard-layouts", "", "list keyboard layouts", IpcCommandGroup::Inspect, false, &IpcCommands::keyboardLayouts,
        &printKeyboardLayouts},
 #ifdef UMBRIEL_HARNESS
+      {"output-identity-test", "<output> <make> <model> <serial>", "set a virtual output identity",
+       IpcCommandGroup::Harness, true, &IpcCommands::outputIdentityForTest, nullptr},
       {"settle", "", "wait until no layout or animation is pending and every output has drawn a frame",
        IpcCommandGroup::Harness, false, &IpcCommands::settle, nullptr, 35},
       {"clock-freeze", "", "stop animation time", IpcCommandGroup::Harness, false, &IpcCommands::clockFreeze, nullptr},

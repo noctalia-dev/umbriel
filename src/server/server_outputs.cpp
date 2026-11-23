@@ -155,6 +155,22 @@ namespace umbriel {
     return nullptr;
   }
 
+  Output* Server::outputFromIdentity(const OutputIdentity& identity) const {
+    Output* match = nullptr;
+    for (const auto& output : m_outputs) {
+      if (!output->wlr()->enabled || !outputIdentityMatches(identity, output->identity())) {
+        continue;
+      }
+      // Identical or missing serials can make a physical identity ambiguous.
+      // Keep the displaced windows in place rather than picking a random monitor.
+      if (match != nullptr) {
+        return nullptr;
+      }
+      match = output.get();
+    }
+    return match;
+  }
+
   std::expected<Workspace*, std::string>
   Server::resolveNamedWorkspace(std::string_view name, WorkspaceGroup* preferred, std::string_view outputName) const {
     const auto hasName = [name](const Workspace* workspace) { return workspace->named() && workspace->name() == name; };

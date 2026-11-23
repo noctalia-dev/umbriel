@@ -166,6 +166,11 @@ namespace umbriel {
 
   OutputIdentity Output::identity() const {
     const auto text = [](const char* value) { return value != nullptr ? std::string_view(value) : std::string_view(); };
+#ifdef UMBRIEL_HARNESS
+    if (m_output != nullptr && !m_testIdentity[2].empty()) {
+      return {text(m_output->name), m_testIdentity[0], m_testIdentity[1], m_testIdentity[2]};
+    }
+#endif
     return m_output != nullptr
         ? OutputIdentity{
               .connector = text(m_output->name),

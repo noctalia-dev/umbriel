@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <wayland-server-core.h>
 
 struct wlr_gamma_control_v1;
@@ -196,6 +197,9 @@ namespace umbriel {
     // output.
     bool paceCursorPlaneTransition();
 #ifdef UMBRIEL_HARNESS
+    void setIdentityForTest(std::string make, std::string model, std::string serial) {
+      m_testIdentity = {std::move(make), std::move(model), std::move(serial)};
+    }
     // Harness-only: synthesize the plane sample a headless backend cannot produce.
     void setSyntheticPlaneCursorForTest(
         double x, double y, bool visible, std::uintptr_t image, int width, int height, int hotspotX, int hotspotY
@@ -316,6 +320,7 @@ namespace umbriel {
     bool m_fullscreenAboveTopLayer = false;
     CursorPlaneState m_lastCursorPlane{};
 #ifdef UMBRIEL_HARNESS
+    std::array<std::string, 3> m_testIdentity{};
     std::optional<CursorPlaneState> m_syntheticPlaneCursor;
 #endif
     bool m_desktopEnabled = true;

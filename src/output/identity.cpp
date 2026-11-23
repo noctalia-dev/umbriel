@@ -40,6 +40,15 @@ namespace umbriel {
     return true;
   }
 
+  bool outputIdentityMatches(const OutputIdentity& saved, const OutputIdentity& candidate) {
+    if (!saved.serial.empty() && (!saved.make.empty() || !saved.model.empty())) {
+      return outputNamesEqual(saved.make, candidate.make)
+          && outputNamesEqual(saved.model, candidate.model)
+          && outputNamesEqual(saved.serial, candidate.serial);
+    }
+    return !saved.connector.empty() && outputNamesEqual(saved.connector, candidate.connector);
+  }
+
   bool validVirtualOutputName(std::string_view name) {
     return !name.empty() && std::ranges::all_of(name, [](char value) {
       return (value >= 'a' && value <= 'z')

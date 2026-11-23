@@ -1353,7 +1353,7 @@ namespace umbriel {
     const auto origin = target == nullptr ? entry.returnDisplacedWorkspace : nullptr;
     bool homeAvailable = false;
     if (origin) {
-      Output* homeOutput = m_server->outputFromName(origin->outputName);
+      Output* homeOutput = m_server->outputFromIdentity(origin->identity());
       WorkspaceGroup* homeGroup = homeOutput != nullptr ? homeOutput->workspaceGroup() : nullptr;
       homeAvailable = homeGroup != nullptr;
       if (homeAvailable) {

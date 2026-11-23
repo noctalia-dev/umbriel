@@ -2853,12 +2853,17 @@ namespace umbriel {
         && sourceGroup->active() != nullptr
         && !sourceGroup->active()->displacedWorkspace()
         && sourceName != nullptr) {
-      const auto existing = std::ranges::find_if(m_displacedWorkspaceSelections, [sourceName](const auto& selection) {
-        return selection.outputName == sourceName;
-      });
+      const OutputIdentity sourceIdentity = source->identity();
+      const auto existing =
+          std::ranges::find_if(m_displacedWorkspaceSelections, [sourceIdentity](const auto& selection) {
+            return outputIdentityMatches(selection.identity(), sourceIdentity);
+          });
       if (existing == m_displacedWorkspaceSelections.end()) {
         m_displacedWorkspaceSelections.push_back({
             .outputName = sourceName,
+            .outputMake = std::string(sourceIdentity.make),
+            .outputModel = std::string(sourceIdentity.model),
+            .outputSerial = std::string(sourceIdentity.serial),
             .workspaceName = sourceGroup->active()->name(),
             .workspaceIndex = sourceGroup->active()->index(),
             .workspaceNamed = sourceGroup->active()->named(),
@@ -3168,7 +3173,8 @@ namespace umbriel {
     }
     const auto homeIsAvailable = [this](const View* view) {
       const View::DisplacedHome& home = *view->displacedHome();
-      Output* output = outputFromName(home.outputName);
+      Output* output =
+          home.workspaceOrigin ? outputFromIdentity(home.workspaceOrigin->identity()) : outputFromName(home.outputName);
       return output != nullptr && output->workspaceGroup() != nullptr;
     };
     // Available homes go first, before refugees can occupy their layouts.
@@ -3215,7 +3221,8 @@ namespace umbriel {
         ++last;
       }
 
-      Output* target = outputFromName(groupHome.outputName);
+      Output* target = groupHome.workspaceOrigin ? outputFromIdentity(groupHome.workspaceOrigin->identity())
+                                                 : outputFromName(groupHome.outputName);
       WorkspaceGroup* targetGroup = target != nullptr ? target->workspaceGroup() : nullptr;
       const bool homeAvailable = targetGroup != nullptr;
       Workspace* workspace = nullptr;
@@ -3534,7 +3541,7 @@ namespace umbriel {
 
     bool workspaceSelectionRestored = false;
     for (auto selection = m_displacedWorkspaceSelections.begin(); selection != m_displacedWorkspaceSelections.end();) {
-      Output* output = outputFromName(selection->outputName);
+      Output* output = outputFromIdentity(selection->identity());
       WorkspaceGroup* group = output != nullptr ? output->workspaceGroup() : nullptr;
       if (group == nullptr) {
         ++selection;

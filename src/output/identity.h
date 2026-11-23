@@ -27,6 +27,11 @@ namespace umbriel {
 
   bool outputNamesEqual(std::string_view left, std::string_view right);
 
+  // Match a saved output to a returning output. A serial-bearing physical
+  // identity follows the monitor across connector changes; otherwise the
+  // connector is the only stable identity available.
+  bool outputIdentityMatches(const OutputIdentity& saved, const OutputIdentity& candidate);
+
   // Virtual output names use ASCII letters, digits, '-', '_' and '.', so they fit the "<output>:<n>" workspace IDs
   // and "<workspace>/<output>" action targets.
   bool validVirtualOutputName(std::string_view name);
