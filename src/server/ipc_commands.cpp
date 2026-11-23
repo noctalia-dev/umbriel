@@ -783,7 +783,10 @@ namespace umbriel {
     nlohmann::json windowEntry(Server& server, View& view, PendingLayouts& pendingLayouts) {
       nlohmann::json entry;
       entry["id"] = view.extForeignIdentifier() != nullptr ? view.extForeignIdentifier() : "";
-      entry["workspace"] = view.workspace() != nullptr ? view.workspace()->id() : "";
+      // A scratchpad's workspace is no workspace clients can name.
+      const Workspace* listed =
+          view.workspace() != nullptr && !view.workspace()->scratchpad() ? view.workspace() : nullptr;
+      entry["workspace"] = listed != nullptr ? listed->id() : "";
       const ScratchpadManager* scratchpads = server.scratchpadManager();
       entry["scratchpad"] = scratchpads != nullptr ? std::string(scratchpads->nameFor(&view)) : std::string{};
       entry["active"] = view.activated();
@@ -834,7 +837,7 @@ namespace umbriel {
       entry["window_effect"] = effectSlotJson(view.effectSlot(EffectKind::Window));
       // Workspace-local remembered focus. Seat-global activation is reported
       // separately by `active`; scratchpad windows have no workspace focus.
-      entry["focused"] = view.workspace() != nullptr && view.workspace()->focusedView() == &view;
+      entry["focused"] = listed != nullptr && listed->focusedView() == &view;
       entry["urgent"] = view.urgent();
       entry["xwayland"] = view.xwayland();
       // -1 whenever the owning process is unknown: an X11 client that publishes no _NET_WM_PID.
@@ -1494,12 +1497,11 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+#ifdef UMBRIEL_HARNESS
   nlohmann::json IpcCommands::settle(Server& /*server*/, IpcArgs /*args*/) { return nlohmann::json{{"ok", nullptr}}; }
 
-  nlohmann::json IpcCommands::clockFreeze([[maybe_unused]] Server& server, IpcArgs /*args*/) {
-#ifdef UMBRIEL_HARNESS
+  nlohmann::json IpcCommands::clockFreeze(Server& server, IpcArgs /*args*/) {
     server.freezeAnimationClock();
-#endif
     return nlohmann::json{{"ok", nullptr}};
   }
 
@@ -1507,14 +1509,11 @@ namespace umbriel {
     return nlohmann::json{{"ok", nullptr}};
   }
 
-  nlohmann::json IpcCommands::clockResume([[maybe_unused]] Server& server, IpcArgs /*args*/) {
-#ifdef UMBRIEL_HARNESS
+  nlohmann::json IpcCommands::clockResume(Server& server, IpcArgs /*args*/) {
     server.resumeAnimationClock();
-#endif
     return nlohmann::json{{"ok", nullptr}};
   }
 
-#ifdef UMBRIEL_HARNESS
   namespace {
     // The harness commands below parse their words as one whitespace-separated stream.
     std::string joinArgs(IpcArgs args) {

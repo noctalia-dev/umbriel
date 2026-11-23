@@ -1087,6 +1087,26 @@ UMBRIEL_TEST(onOverflowMeasuresTheRightHandColumnWhenFocusMovesLeft) {
   CHECK(fixture.layout.centeredRest());
 }
 
+// Closing an unfocused column to the left shifts the focused one down an index; the remembered side must follow it.
+UMBRIEL_TEST(onOverflowCentersAfterAnUnfocusedLeftColumnCloses) {
+  Fixture fixture;
+  fixture.config.scrolling.centerFocused = CenterFocusedColumn::OnOverflow;
+  fixture.addColumns(4);
+  for (int column = 0; column < 4; ++column) {
+    CHECK(fixture.layout.setWidthFromPixels(column, kViewport, 700));
+  }
+
+  fixture.layout.activateColumn(1, kViewport);
+  fixture.layout.removeView(stub(0));
+  fixture.layout.activateColumn(1, kViewport);
+
+  const int centeredX = fixture.layout.columnX(1, kViewport)
+      + fixture.layout.columnWidth(1, kViewport) / 2
+      - static_cast<int>(std::lround(fixture.layout.scroll()));
+  CHECK_EQ(centeredX, kViewport / 2);
+  CHECK(fixture.layout.centeredRest());
+}
+
 // A move keeps focus on the window and only changes its index, so OnOverflow needs the index the column came from.
 // Without it the move falls back to a fit and the moved column stays off center.
 UMBRIEL_TEST(onOverflowCentersAMovedColumn) {

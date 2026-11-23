@@ -22,7 +22,6 @@ extern "C" {
 #include <utility>
 #include "wlr.h"
 // clang-format on
-#include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
 #include "xwayland/xwayland.h"
 
@@ -325,11 +324,6 @@ namespace umbriel {
     }
     if (m_workspace != nullptr) {
       m_workspace->syncViewPresentation(this);
-      return;
-    }
-    if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
-        scratchpad != nullptr && scratchpad->contains(this)) {
-      scratchpad->syncViewPresentation(this);
     }
   }
 
@@ -407,7 +401,10 @@ namespace umbriel {
       m_ssdFrame->setBlurLive(true);
     }
     setFadeAlpha(m_fadeAlpha);
-    if (m_pinned) {
+    if (m_inScratchpad) {
+      // A scratchpad lifted over fullscreen sits above the drag tree's usual place; keep the member above its backdrop.
+      wlr_scene_node_place_above(&m_server->dragTree()->node, &m_server->scratchpadTree()->node);
+    } else if (m_pinned) {
       wlr_scene_node_place_above(&m_server->dragTree()->node, &m_server->pinnedTree()->node);
     } else if (m_workspace != nullptr && m_workspace->floatingLayerRaised()) {
       wlr_scene_node_place_above(&m_server->dragTree()->node, &m_server->fullscreenTree()->node);
@@ -526,11 +523,6 @@ namespace umbriel {
     }
     setFadeAlpha(m_fadeAlpha);
     wlr_scene_node_place_below(&m_server->dragTree()->node, &m_server->dragIconTree()->node);
-    if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
-        scratchpad != nullptr && scratchpad->contains(this)) {
-      scratchpad->restorePresentation(this);
-      return;
-    }
     if (m_pinned) {
       restorePinnedSceneParent();
       if (m_workspace != nullptr) {
@@ -554,11 +546,9 @@ namespace umbriel {
   void View::beginResizeAnimation(int width, int height, bool allowFullscreen) {
     const Overview* overview = m_server->overview();
     const bool presentedInOverview = overview != nullptr && overview->active() && m_workspace != nullptr;
-    const ScratchpadManager* scratchpad = m_server->scratchpadManager();
-    const bool presentedInScratchpad = scratchpad != nullptr && scratchpad->contains(this);
     if (!m_mapped
         || (!m_onActiveWorkspace && !presentedInOverview)
-        || (m_workspace == nullptr && !presentedInScratchpad && !allowFullscreen)
+        || (m_workspace == nullptr && !allowFullscreen)
         || (!allowFullscreen && (scheduledFullscreen() || currentFullscreen()))
         || width <= 0
         || height <= 0) {
@@ -887,7 +877,7 @@ namespace umbriel {
       }
       const BorderEffectGate ownGate{
           .focused = m_borderFocusedState,
-          .allowUnfocused = config().effects.borderUnfocused,
+          .allowUnfocused = borderUnfocused(),
           .decorated = decorated(),
           .urgent = m_urgent,
           .fullscreen = scheduledFullscreen(),

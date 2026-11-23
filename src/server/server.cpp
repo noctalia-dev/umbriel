@@ -747,7 +747,7 @@ namespace umbriel {
     m_cursorEffectSlot.configuredSelector = config().effects.cursor;
     resolveEffectSlot(m_cursorEffectSlot, EffectKind::Cursor);
     effectRegistry().prepare(m_renderer);
-    m_compositor = wlr_compositor_create(m_display, 5, m_renderer);
+    m_compositor = wlr_compositor_create(m_display, 6, m_renderer);
     if (explicitSync) {
       m_syncobjAcquireBarrier = std::make_unique<SyncobjAcquireBarrier>(m_compositor);
       m_syncobjUnmapRelease = std::make_unique<SyncobjUnmapRelease>(m_compositor);
@@ -811,6 +811,8 @@ namespace umbriel {
     wlr_scene_set_background_color(m_scene, config().colors.backdrop.data());
 
     // Global stacking keeps scratchpads above normal windows and below drag, panels, fullscreen, overlays, and lock.
+    // ScratchpadManager::updateStacking() lifts them above fullscreen windows, still below pinned ones, while a shown
+    // pad would otherwise be hidden behind fullscreen.
     // Per-output layer trees keep normal windows below panels.
     m_backdrop = wlr_scene_rect_create(&m_scene->tree, 0, 0, config().colors.backdrop.data());
     wlr_scene_rect_set_corner_radius(m_backdrop, 0);
@@ -1115,6 +1117,12 @@ namespace umbriel {
     wl_list_remove(&m_toplevelCaptureRequest.link);
     wl_list_remove(&m_padKeyboardFocusChange.link);
     wl_list_remove(&m_layerKeyboardFocusChange.link);
+    // Scratchpad workspaces reference their output's group and their windows; park them while both still exist.
+    if (m_scratchpadManager != nullptr) {
+      for (const auto& output : m_outputs) {
+        m_scratchpadManager->releaseOutput(output.get());
+      }
+    }
     m_configWatcher.reset();
     m_ipc.reset();
     m_insertHint.reset();
@@ -1648,7 +1656,7 @@ namespace umbriel {
     return m_shellLayerTrees[layer];
   }
 
-  void Server::spawn(const char* command, const char* description, bool withActivationToken) {
+  void Server::spawn(const char* command, const char* description, bool withActivationToken, bool floating) {
     if (m_socketName.empty()) {
       kLog.error("cannot spawn before the Wayland socket exists");
       return;
@@ -1725,7 +1733,7 @@ namespace umbriel {
     }
 
     if (launchToken != nullptr) {
-      trackActivationToken(launchToken, true, pid);
+      trackActivationToken(launchToken, true, pid, floating);
     }
     // Bound the label and the command so a long one cannot push the pid and unit past the log line cap; those two
     // are the only trace a program that starts nothing leaves. Bytes, not display width: a run of zero-width
@@ -2263,7 +2271,10 @@ namespace umbriel {
         }
       }
     }
-    return true;
+    return m_scratchpadManager == nullptr
+        || std::ranges::none_of(m_scratchpadManager->workspaces(), [](const Workspace* workspace) {
+             return workspace->arrangePending();
+           });
   }
 
   CloseSnapshotId Server::animateCloseSnapshot(

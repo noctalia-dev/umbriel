@@ -366,6 +366,7 @@ namespace {
     using A = umbriel::KeybindAction;
     switch (action) {
     case A::Spawn:
+    case A::SpawnFloating:
       return Group::Apps;
     case A::ScreenCastClear:
     case A::ScreenCastSetOutput:
@@ -484,6 +485,8 @@ namespace {
     case A::ScratchpadFocusNext:
     case A::ScratchpadWindowShowNext:
     case A::ScratchpadWindowShowPrevious:
+    case A::ScratchpadWindowCycle:
+    case A::ScratchpadWindowCyclePrevious:
       return Group::Scratchpad;
     case A::WorkspaceSwitch:
     case A::WorkspaceToggleShowDesktop:
@@ -707,10 +710,13 @@ namespace umbriel {
       // For spawn actions, decompose into binary + args for sub-grouped display.
       std::string displayAction = raw.actionStr;
       SpawnParts spawn;
-      if (raw.actionType == KeybindAction::Spawn) {
-        constexpr std::string_view kPrefix = "spawn ";
-        if (displayAction.starts_with(kPrefix)) {
-          spawn = splitSpawnCommand(std::string(displayAction.substr(kPrefix.size())));
+      if (raw.actionType == KeybindAction::Spawn || raw.actionType == KeybindAction::SpawnFloating) {
+        // actionStr is "<action name> <command>".
+        if (const size_t space = displayAction.find(' '); space != std::string::npos) {
+          spawn = splitSpawnCommand(displayAction.substr(space + 1));
+          if (raw.actionType == KeybindAction::SpawnFloating) {
+            spawn.args = spawn.args.empty() ? "(floating)" : spawn.args + " (floating)";
+          }
           // Display action is the args (or binary if no args).
           displayAction = spawn.args.empty() ? spawn.binary : spawn.args;
         }

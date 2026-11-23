@@ -445,6 +445,9 @@ namespace umbriel {
       if (rule.borderEffect) {
         resolved.borderEffect = rule.borderEffect;
       }
+      if (rule.borderUnfocused) {
+        resolved.borderUnfocused = rule.borderUnfocused;
+      }
       if (rule.windowEffect) {
         resolved.windowEffect = rule.windowEffect;
       }
@@ -544,6 +547,16 @@ namespace umbriel {
     const int borderWidth = config.appearance.totalBorderWidth();
     resolved.totalGap = resolved.gap + 2 * borderWidth;
     resolved.edgePad = resolved.gap + borderWidth;
+    return resolved;
+  }
+
+  ResolvedLayoutConfig resolveScratchpadLayout(const Config& config, std::string_view name) {
+    ResolvedLayoutConfig resolved = resolveGlobalLayout(config);
+    resolved.mode = LayoutMode::Stacking;
+    if (const auto definition = std::ranges::find(config.scratchpads, name, &ScratchpadConfig::name);
+        definition != config.scratchpads.end()) {
+      applyWorkspaceLayoutOverrides(config, resolved, definition->layout);
+    }
     return resolved;
   }
 

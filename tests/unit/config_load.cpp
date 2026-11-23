@@ -342,6 +342,25 @@ UMBRIEL_TEST(rejectsRemovedWidthPresetKey) {
   CHECK(containsDiagnostic(store, "unknown key layout.width_presets"));
 }
 
+UMBRIEL_TEST(misspelledRuleMatchKeyDropsRule) {
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match = { app_id = "foot", titel = "x" }
+default_floating = true
+
+[[layer_rule]]
+match = { namespace = "bar", layerr = "top" }
+blur = true
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(store.config().layerRules.empty());
+}
+
 UMBRIEL_TEST(backgroundDefaultsOpaque) {
   const umbriel::Config config;
   CHECK_EQ(config.colors.background[3], 1.0F);
@@ -4335,6 +4354,30 @@ UMBRIEL_TEST(effectSelectorsLoadAtEveryLevel) {
   CHECK(!containsDiagnostic(store, "unknown key"));
   const umbriel::EffectPreset* ring = umbriel::findEffectPreset(config.effects, "ring");
   CHECK(ring != nullptr && ring->overlay == "lines");
+}
+
+UMBRIEL_TEST(windowRuleBorderEffectUnfocusedAcceptsOnlyBooleans) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[[window_rule]]\nborder_effect_unfocused = true\n"
+      "[[window_rule]]\nborder_effect_unfocused = false\n"
+      "[[window_rule]]\nopacity = 0.9\n"
+      "[[window_rule]]\nborder_effect_unfocused = \"audio\"\n"
+  );
+  CHECK(store.reload().success);
+  const auto& rules = store.config().windowRules;
+  CHECK_EQ(rules.size(), size_t{4});
+  if (rules.size() != 4) {
+    return;
+  }
+  CHECK(rules[0].borderUnfocused == true);
+  CHECK(rules[1].borderUnfocused == false);
+  CHECK(!rules[2].borderUnfocused.has_value());
+  CHECK(!rules[3].borderUnfocused.has_value());
+  CHECK(containsDiagnostic(store, "border_effect_unfocused"));
+  CHECK(!containsDiagnostic(store, "unknown key"));
 }
 
 UMBRIEL_TEST(windowsDragTuningDefaultsAndBounds) {
