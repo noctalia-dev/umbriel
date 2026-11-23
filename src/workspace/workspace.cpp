@@ -166,8 +166,9 @@ namespace umbriel {
       if (origin.transferredLayout && displacedLayoutCurrent(origin)) {
         return *origin.transferredLayout;
       }
+      const size_t layoutIndex = origin.globalNumber != 0 ? origin.globalNumber - 1 : origin.workspaceIndex;
       ResolvedLayoutConfig layout = origin.workspaceNamed
-          ? resolveWorkspaceLayout(config(), origin.identity(), origin.workspaceName, origin.workspaceIndex)
+          ? resolveWorkspaceLayout(config(), origin.identity(), origin.workspaceName, layoutIndex)
           : resolveUnnamedWorkspaceLayout(config(), origin.identity(), origin.workspaceIndex);
       if (displacedLayoutCurrent(origin) && origin.layoutModeOverride) {
         layout.mode = *origin.layoutModeOverride;
@@ -183,7 +184,8 @@ namespace umbriel {
         return displacedWorkspaceLayout(*origin);
       }
       const OutputIdentity identity = workspace.group()->output()->identity();
-      return workspace.named() ? resolveWorkspaceLayout(config(), identity, workspace.name(), index)
+      const size_t layoutIndex = workspace.globalNumber() != 0 ? workspace.globalNumber() - 1 : index;
+      return workspace.named() ? resolveWorkspaceLayout(config(), identity, workspace.name(), layoutIndex)
                                : resolveUnnamedWorkspaceLayout(config(), identity, index);
     }
   } // namespace
@@ -2869,10 +2871,26 @@ namespace umbriel {
           m_omittedConfiguredNames, identity.connector.empty() ? "output" : identity.connector
       );
     }
+    unsigned initialGlobalNumber = 0;
+    if (config().workspaces.globalNumbers) {
+      resolved.dynamic = true;
+      resolved.workspaces.clear();
+      initialGlobalNumber = firstAvailableGlobalNumber();
+      const std::string name = initialGlobalNumber != 0 ? std::to_string(initialGlobalNumber) : "unassigned";
+      resolved.workspaces.push_back(
+          {name, true,
+           resolveWorkspaceLayout(config(), identity, name, initialGlobalNumber > 0 ? initialGlobalNumber - 1 : 0)}
+      );
+      m_dynamic = true;
+    }
     const size_t count = resolved.workspaces.size();
     m_workspaces.reserve(count);
     for (size_t i = 0; i < count; ++i) {
       m_workspaces.push_back(createConfiguredWorkspace(std::move(resolved.workspaces[i]), i));
+    }
+
+    if (config().workspaces.globalNumbers) {
+      m_workspaces.front()->m_globalNumber = initialGlobalNumber;
     }
 
     activate(m_workspaces.front().get());
@@ -3132,6 +3150,14 @@ namespace umbriel {
     for (const auto& workspace : m_workspaces) {
       workspace->m_transferred = false;
     }
+    if (config().workspaces.globalNumbers) {
+      m_dynamic = true;
+      reconcileGlobal();
+      return;
+    }
+    for (const auto& workspace : m_workspaces) {
+      workspace->m_globalNumber = 0;
+    }
     const OutputIdentity identity = m_output->identity();
     auto resolvedSet = resolveWorkspacesForOutput(config(), identity);
     m_dynamic = resolvedSet.dynamic;
@@ -3320,6 +3346,11 @@ namespace umbriel {
 
   void WorkspaceGroup::reconcileDynamic() {
     if (slideActive()) {
+      return;
+    }
+
+    if (config().workspaces.globalNumbers) {
+      reconcileGlobal();
       return;
     }
 
@@ -3853,7 +3884,114 @@ namespace umbriel {
     m_server->refocus(m_output);
   }
 
+  unsigned WorkspaceGroup::firstAvailableGlobalNumber() const {
+    for (unsigned number = 1; number <= kMaxWorkspaces; ++number) {
+      const auto contains = [number](const WorkspaceGroup* group) {
+        return group != nullptr
+            && (std::ranges::any_of(
+                    group->m_workspaces, [number](const auto& workspace) { return workspace->globalNumber() == number; }
+                )
+                || std::ranges::any_of(group->m_reservedWorkspaces, [number](const auto& workspace) {
+                     return workspace->globalNumber() == number;
+                   }));
+      };
+      if (contains(this)) {
+        continue;
+      }
+      if (std::ranges::none_of(m_server->outputs(), [&](const auto& output) {
+            return output->workspaceGroup() != this && contains(output->workspaceGroup());
+          })) {
+        return number;
+      }
+    }
+    return 0;
+  }
+
+  Workspace* WorkspaceGroup::findGlobalWorkspace(unsigned number) const {
+    for (const auto& output : m_server->outputs()) {
+      if (!output->wlr()->enabled || output->workspaceGroup() == nullptr) {
+        continue;
+      }
+      const WorkspaceGroup* group = output->workspaceGroup();
+      for (const auto& workspace : group->m_workspaces) {
+        if (workspace->globalNumber() == number) {
+          return workspace.get();
+        }
+      }
+    }
+    return nullptr;
+  }
+
+  Workspace* WorkspaceGroup::createGlobalWorkspace(unsigned number) {
+    if (number == 0
+        || number > kMaxWorkspaces
+        || findGlobalWorkspace(number) != nullptr
+        || storedWorkspaceCount() >= kMaxWorkspaces) {
+      return nullptr;
+    }
+    const size_t index = m_workspaces.size();
+    const std::string name = std::to_string(number);
+    auto workspace = createConfiguredWorkspace(
+        {name, true, resolveWorkspaceLayout(config(), m_output->identity(), name, number - 1)}, index
+    );
+    workspace->m_globalNumber = number;
+    Workspace* result = workspace.get();
+    m_workspaces.push_back(std::move(workspace));
+    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+      overview->onWorkspaceInventoryChanged(this);
+    }
+    return result;
+  }
+
+  void WorkspaceGroup::reconcileGlobal() {
+    if (slideActive()) {
+      return;
+    }
+    std::erase_if(m_reservedWorkspaces, [](const auto& workspace) { return !workspace->launchReserved(); });
+    pruneDisplacedWorkspaces();
+    for (size_t index = m_workspaces.size(); index-- > 0;) {
+      Workspace* workspace = m_workspaces[index].get();
+      if (workspace != m_active
+          && std::ranges::none_of(workspace->allViews(), &View::mapped)
+          && !workspace->launchReserved()
+          && !workspace->hasPendingLaunchView()) {
+        if (m_previous == workspace) {
+          m_previous = nullptr;
+        }
+        m_workspaces.erase(m_workspaces.begin() + static_cast<std::ptrdiff_t>(index));
+        m_server->scheduleIpcWorkspacesEvent();
+      }
+    }
+    for (const auto& workspace : m_workspaces) {
+      if (workspace->globalNumber() == 0) {
+        const unsigned number = firstAvailableGlobalNumber();
+        if (number == 0) {
+          kLog.error("cannot assign global workspace number: all numbers are in use");
+          continue;
+        }
+        workspace->m_globalNumber = number;
+        workspace->rename(std::to_string(number), workspace->index(), true);
+      }
+    }
+    if (m_active == nullptr) {
+      if (m_workspaces.empty()) {
+        createGlobalWorkspace(firstAvailableGlobalNumber());
+      }
+      if (!m_workspaces.empty()) {
+        m_active = m_workspaces.front().get();
+        m_active->setActive(true);
+      }
+    }
+    refreshWorkspaceMetadata();
+    if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
+      overview->onWorkspaceInventoryChanged(this);
+    }
+  }
+
   Workspace* WorkspaceGroup::createWorkspace(const char* /*name*/) {
+    if (config().workspaces.globalNumbers) {
+      return createGlobalWorkspace(firstAvailableGlobalNumber());
+    }
     if (!m_dynamic) {
       return nullptr;
     }
@@ -3949,7 +4087,7 @@ namespace umbriel {
   }
 
   Workspace* WorkspaceGroup::restoreTransferredWorkspace(const DisplacedWorkspace& origin) {
-    if (!origin.transferredLayout || m_output == nullptr || m_output->wlr() == nullptr) {
+    if ((!origin.transferredLayout && origin.globalNumber == 0) || m_output == nullptr || m_output->wlr() == nullptr) {
       return nullptr;
     }
     Workspace* existing =
@@ -3969,7 +4107,8 @@ namespace umbriel {
          displacedWorkspaceLayout(origin)},
         index
     );
-    workspace->m_transferred = true;
+    workspace->m_transferred = origin.transferredLayout.has_value();
+    workspace->m_globalNumber = origin.globalNumber;
     if (displacedLayoutCurrent(origin)) {
       workspace->m_layoutModeOverride = origin.layoutModeOverride;
     }
@@ -4007,6 +4146,7 @@ namespace umbriel {
         index
     );
     workspace->m_displacedWorkspace = std::move(origin);
+    workspace->m_globalNumber = workspace->m_displacedWorkspace->globalNumber;
     if (displacedLayoutCurrent(*workspace->m_displacedWorkspace)) {
       workspace->m_layoutModeOverride = workspace->m_displacedWorkspace->layoutModeOverride;
     }

@@ -94,6 +94,21 @@ namespace umbriel {
       if (index == nullptr) {
         return std::unexpected(std::string("action carries an invalid workspace selector"));
       }
+      if (config().workspaces.globalNumbers) {
+        if (group != nullptr) {
+          if (Workspace* workspace = group->findGlobalWorkspace(index->value)) {
+            if (!selector.output.empty() && workspace->group() != group) {
+              return std::unexpected("workspace is on a different output: " + std::to_string(index->value));
+            }
+            return workspace;
+          }
+        }
+        Workspace* workspace = group != nullptr ? group->createGlobalWorkspace(index->value) : nullptr;
+        if (workspace == nullptr) {
+          return std::unexpected("cannot create workspace: " + std::to_string(index->value));
+        }
+        return workspace;
+      }
       Workspace* target = index->value > 0 && group != nullptr ? group->workspaceAtClamped(index->value - 1) : nullptr;
       if (target == nullptr) {
         return std::unexpected(

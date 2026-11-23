@@ -219,6 +219,7 @@ namespace umbriel {
     const bool workspaceInventory = outputNamesChanged
         || outputProjectionChanged(before, after, sameWorkspaceInventory)
         || before.workspaces.emptyAbove != after.workspaces.emptyAbove
+        || before.workspaces.globalNumbers != after.workspaces.globalNumbers
         || !sameDynamicWorkspaceDeclarations(before, after);
     const bool outputLayout = outputNamesChanged || outputProjectionChanged(before, after, sameOutputLayout);
     const bool sceneBlur =

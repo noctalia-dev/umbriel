@@ -20,6 +20,7 @@ namespace umbriel {
     std::string workspaceName;
     size_t workspaceIndex = 0;
     bool workspaceNamed = false;
+    unsigned globalNumber = 0;
     uint64_t configGeneration = 0;
     std::optional<LayoutMode> layoutModeOverride;
     // Runtime inventory and layout survive output loss until relevant configuration changes.

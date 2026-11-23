@@ -77,6 +77,13 @@ namespace umbriel {
 
     WorkspaceGroup* windowRuleWorkspaceGroup(Server& server, const ResolvedWindowRule& rule, WorkspaceGroup* fallback) {
       if (rule.defaultWorkspace) {
+        if (config().workspaces.globalNumbers && fallback != nullptr) {
+          if (const auto* number = std::get_if<WorkspaceIndex>(&*rule.defaultWorkspace)) {
+            if (Workspace* workspace = fallback->findGlobalWorkspace(number->value)) {
+              return workspace->group();
+            }
+          }
+        }
         if (const auto* name = std::get_if<WorkspaceName>(&*rule.defaultWorkspace)) {
           if (const auto target =
                   server.resolveNamedWorkspace(name->value, fallback, rule.defaultOutput.value_or(""))) {
@@ -93,7 +100,7 @@ namespace umbriel {
       Output* targetOutput = nullptr;
       if (rule.defaultOutput) {
         targetOutput = server.outputFromName(*rule.defaultOutput);
-      } else if (rule.defaultWorkspace) {
+      } else if (rule.defaultWorkspace && !config().workspaces.globalNumbers) {
         const OutputRule* owner = nullptr;
         if (const auto* position = std::get_if<WorkspaceIndex>(&*rule.defaultWorkspace)) {
           owner = uniqueFixedWorkspaceOwner(config(), position->value - 1);
@@ -114,7 +121,14 @@ namespace umbriel {
       if (rule.defaultWorkspace) {
         Workspace* ruleTarget = nullptr;
         if (const auto* position = std::get_if<WorkspaceIndex>(&*rule.defaultWorkspace)) {
-          ruleTarget = group->workspaceAtClamped(position->value - 1);
+          if (config().workspaces.globalNumbers) {
+            ruleTarget = group->findGlobalWorkspace(position->value);
+            if (ruleTarget == nullptr) {
+              ruleTarget = group->createGlobalWorkspace(position->value);
+            }
+          } else {
+            ruleTarget = group->workspaceAtClamped(position->value - 1);
+          }
         } else if (const auto* name = std::get_if<WorkspaceName>(&*rule.defaultWorkspace)) {
           if (rule.defaultOutput) {
             if (const auto resolved = group->server()->resolveNamedWorkspace(name->value, group, *rule.defaultOutput);
