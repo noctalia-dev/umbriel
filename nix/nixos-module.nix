@@ -67,10 +67,12 @@ in
 
       {
         xdg.portal = {
-          enable = cfg.portalPackage != null;
+          enable = lib.mkDefault (cfg.portalPackage != null);
           configPackages = lib.mkIf (cfg.portalPackage != null) [ cfg.portalPackage ];
-          extraPortals =
-            if cfg.portalPackage != null then [ cfg.portalPackage ] else [ pkgs.xdg-desktop-portal-gtk ];
+          extraPortals = [
+            pkgs.xdg-desktop-portal-gtk
+          ]
+          ++ lib.optional (cfg.portalPackage != null) cfg.portalPackage;
         };
       }
     ]
