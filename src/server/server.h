@@ -545,6 +545,11 @@ namespace umbriel {
     // Place a snapshot's captured box at a canvas origin in output-root coordinates, or hide it while its workspace
     // is not showing.
     void presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible);
+    // Fold an owner's fade (a scratchpad's backdrop) into a snapshot's opacity. A reaped id is a no-op.
+    void setCloseSnapshotFade(CloseSnapshotId id, float multiplier);
+    // Move a snapshot's trees under `parent`, keeping its canvas coordinates. Used when the owner's tree is about to
+    // be destroyed.
+    void reparentCloseSnapshot(CloseSnapshotId id, wlr_scene_tree* parent);
     // False once the snapshot has been reaped.
     bool closeSnapshotAlive(CloseSnapshotId id) const;
     // End a held snapshot; it is reaped at the end of the current animation tick.
@@ -859,6 +864,10 @@ namespace umbriel {
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
       void present(int canvasX, int canvasY, bool visible);
+      // Fold the owner's fade into this snapshot's opacity, without touching its own timeline.
+      void setFadeMultiplier(float multiplier);
+      // Reparent the snapshot and its shadow under `parent`, keeping their content above the shadow.
+      void reparent(wlr_scene_tree* parent);
 
       AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
       bool tickAnimations(double nowMsec) override;
@@ -868,6 +877,8 @@ namespace umbriel {
     private:
       void applyPresentation();
       void applyShrink(int width, int height);
+      // Push lifecycle alpha times the owner's fade into every captured node.
+      void applyOpacity();
 
       Server* m_server = nullptr;
       CloseSnapshotId m_id = kInvalidCloseSnapshot;
@@ -922,6 +933,8 @@ namespace umbriel {
       int m_shadowWidth = 0;
       int m_shadowHeight = 0;
       wlr_box m_shadowHole{};
+      // An owner's fade (a scratchpad backdrop), independent of the snapshot's own timeline.
+      float m_fadeMultiplier = 1.0F;
     };
     // unique_ptr because the registry holds raw pointers to these: a vector of
     // values would move them out from under it on reallocation.

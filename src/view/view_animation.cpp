@@ -1121,7 +1121,7 @@ namespace umbriel {
     return fullArea;
   }
 
-  CloseSnapshotId View::beginCloseAnimation() {
+  CloseSnapshotId View::beginCloseAnimation(Workspace* padWorkspace) {
     const auto& animation = config().animation;
     const bool held = m_tiled && m_workspace != nullptr && animation.holdsClosedTile();
     if (!m_mapped
@@ -1132,7 +1132,7 @@ namespace umbriel {
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return kInvalidCloseSnapshot;
     }
-    return captureSnapshot(held, true);
+    return captureSnapshot(held, true, padWorkspace);
   }
 
   CloseSnapshotId View::captureHeldSnapshot() {
@@ -1146,9 +1146,11 @@ namespace umbriel {
     return captureSnapshot(true, false);
   }
 
-  CloseSnapshotId View::captureSnapshot(bool held, bool withShadow) {
+  CloseSnapshotId View::captureSnapshot(bool held, bool withShadow, Workspace* padWorkspace) {
+    // A dialog has no workspace of its own, so its pad was resolved before the attachment link was released.
+    Workspace* workspace = padWorkspace != nullptr ? padWorkspace : m_workspace;
     Output* output =
-        m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : currentOutput();
+        workspace != nullptr && workspace->group() != nullptr ? workspace->group()->output() : currentOutput();
     if (output == nullptr) {
       return kInvalidCloseSnapshot;
     }
@@ -1247,6 +1249,16 @@ namespace umbriel {
         output, snap, content, std::move(snapBorders), m_presentedBox,
         held ? std::optional{Server::CloseSnapshotOverrides{.held = true}} : std::nullopt, shadow, titleBarHeight()
     );
+    // A pad draws its members above its dim rect and blur, so a fading member joins the pad's own tree. The pad
+    // workspace then hides and fades it with the pad.
+    if (id != kInvalidCloseSnapshot && workspace != nullptr && workspace->scratchpad()) {
+      if (wlr_scene_tree* padTree = workspace->tree(); padTree != nullptr) {
+        if (shadow.tree != nullptr) {
+          wlr_scene_node_reparent(&shadow.tree->node, padTree);
+        }
+        wlr_scene_node_reparent(&snap->node, padTree);
+      }
+    }
     wlr_output_schedule_frame(output->wlr());
     return id;
   }

@@ -2023,28 +2023,40 @@ namespace umbriel {
     applyPresentation();
   }
 
-  bool Server::CloseSnapshot::tickAnimations(double nowMsec) {
-    if (m_held) {
-      if (!m_heldSinceMsec) {
-        m_heldSinceMsec = nowMsec;
-      }
-      m_held = nowMsec - *m_heldSinceMsec < kMaxCloseHoldMs;
-      return m_held;
+  void Server::CloseSnapshot::setFadeMultiplier(float multiplier) {
+    const float clamped = std::clamp(multiplier, 0.0F, 1.0F);
+    if (clamped == m_fadeMultiplier) {
+      return;
     }
-    const bool movedAlpha = m_alpha.tick(nowMsec);
-    const bool movedSlide = m_slide.tick(nowMsec);
-    bindAnimationEffect(&m_tree->node, m_event, m_alpha, -1.0F);
+    m_fadeMultiplier = clamped;
+    // A held snapshot shows its captured frame unchanged.
+    if (!m_held) {
+      applyOpacity();
+    }
+  }
 
-    if (!movedAlpha && !movedSlide) {
-      return false;
+  void Server::CloseSnapshot::reparent(wlr_scene_tree* parent) {
+    if (parent == nullptr) {
+      return;
     }
+    // Shadow first, so the copies still draw above it.
+    if (m_shadow.tree != nullptr) {
+      wlr_scene_node_reparent(&m_shadow.tree->node, parent);
+    }
+    wlr_scene_node_reparent(&m_tree->node, parent);
+  }
+
+  void Server::CloseSnapshot::applyOpacity() {
     // Overshooting curves can push this out of range; wlr_scene_buffer_set_opacity asserts opacity is in [0, 1].
     const float rawAlpha = std::clamp(static_cast<float>(m_alpha.current()), 0.0F, 1.0F);
     // A lifecycle shader fades the whole snapshot at once, so its buffers and borders stay opaque under it.
     const bool composited = effectRegistry().lifecycleEffect(m_event) != nullptr;
     const bool builtInSlide = !composited && m_slide.target() != m_slide.from();
     // Keep the moving snapshot visible long enough for slide to read as motion. Fade keeps the configured timeline.
-    const float alpha = composited ? 1.0F : (builtInSlide ? std::sqrt(rawAlpha) : rawAlpha);
+    const float lifecycle = composited ? 1.0F : (builtInSlide ? std::sqrt(rawAlpha) : rawAlpha);
+    // An owner's fade attenuates every captured node, even inside a composite: the shader API has no group-opacity
+    // uniform, so it fades each contribution rather than the composed image.
+    const float alpha = lifecycle * m_fadeMultiplier;
     for (const Buffer& buffer : m_buffers) {
       wlr_scene_buffer_set_opacity(buffer.node, std::clamp(buffer.baseOpacity * alpha, 0.0F, 1.0F));
     }
@@ -2065,13 +2077,29 @@ namespace umbriel {
       premultiplied(outerColor, border.outerColor, alpha);
       wlr_scene_border_set_colors(border.node, innerColor, outerColor);
     }
-
     if (m_shadow.node != nullptr) {
       auto color = m_shadow.color;
-      color[3] *= builtInSlide ? alpha : rawAlpha;
+      color[3] *= builtInSlide ? alpha : rawAlpha * m_fadeMultiplier;
       wlr_scene_shadow_set_color(m_shadow.node, color.data());
     }
+  }
 
+  bool Server::CloseSnapshot::tickAnimations(double nowMsec) {
+    if (m_held) {
+      if (!m_heldSinceMsec) {
+        m_heldSinceMsec = nowMsec;
+      }
+      m_held = nowMsec - *m_heldSinceMsec < kMaxCloseHoldMs;
+      return m_held;
+    }
+    const bool movedAlpha = m_alpha.tick(nowMsec);
+    const bool movedSlide = m_slide.tick(nowMsec);
+    bindAnimationEffect(&m_tree->node, m_event, m_alpha, -1.0F);
+
+    if (!movedAlpha && !movedSlide) {
+      return false;
+    }
+    applyOpacity();
     applyPresentation();
     if (m_blurBackground && m_output != nullptr) {
       m_output->markBlurBackgroundDirty();
@@ -2327,6 +2355,27 @@ namespace umbriel {
     for (const auto& snapshot : m_closeSnapshots) {
       if (snapshot->id() == id) {
         snapshot->present(canvasX, canvasY, visible);
+        return;
+      }
+    }
+  }
+
+  void Server::setCloseSnapshotFade(CloseSnapshotId id, float multiplier) {
+    for (const auto& snapshot : m_closeSnapshots) {
+      if (snapshot->id() == id) {
+        snapshot->setFadeMultiplier(multiplier);
+        return;
+      }
+    }
+  }
+
+  void Server::reparentCloseSnapshot(CloseSnapshotId id, wlr_scene_tree* parent) {
+    if (parent == nullptr) {
+      return;
+    }
+    for (const auto& snapshot : m_closeSnapshots) {
+      if (snapshot->id() == id) {
+        snapshot->reparent(parent);
         return;
       }
     }

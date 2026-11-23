@@ -583,6 +583,12 @@ namespace umbriel {
   }
 
   void View::handleUnmap(bool animateClose) {
+    // Resolve the pad before the attachment links below are released: an attached dialog reaches its pad through its
+    // placement root, and `unlinkAttachment()` drops that link.
+    Workspace* snapshotWorkspace = m_workspace;
+    if (snapshotWorkspace == nullptr && m_server->scratchpadManager() != nullptr) {
+      snapshotWorkspace = m_server->scratchpadManager()->workspaceFor(this);
+    }
     m_server->seat()->toplevelDrags().unmapped(this);
     if (m_effectSelectionIdle != nullptr) {
       wl_event_source_remove(m_effectSelectionIdle);
@@ -656,7 +662,7 @@ namespace umbriel {
       overview->onViewUnmapped(this, animateClose);
     }
     // Replacement focus can hide the closing tab. Capture while its current visibility still decides eligibility.
-    const CloseSnapshotId snapshot = animateClose ? beginCloseAnimation() : kInvalidCloseSnapshot;
+    const CloseSnapshotId snapshot = animateClose ? beginCloseAnimation(snapshotWorkspace) : kInvalidCloseSnapshot;
     // After the close capture, so a minimized window closes unseen. The live node is not re-enabled: a remap shows the
     // window normally.
     if (m_minimized) {
@@ -702,8 +708,8 @@ namespace umbriel {
     }
     cancelFadeAnimation();
     // The workspace owns the snapshot's visibility and its slide translation from here.
-    if (snapshot != kInvalidCloseSnapshot && m_workspace != nullptr) {
-      m_workspace->trackCloseSnapshot(snapshot, m_presentedBox);
+    if (snapshot != kInvalidCloseSnapshot && snapshotWorkspace != nullptr) {
+      snapshotWorkspace->trackCloseSnapshot(snapshot, m_presentedBox);
     }
     cancelSizeAnimation();
     m_tiledSizeRequest.reset();

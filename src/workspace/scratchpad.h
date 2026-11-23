@@ -41,6 +41,9 @@ namespace umbriel {
 
     bool contains(const View* view) const;
     Output* outputFor(const View* view) const;
+    // The workspace arranging `view`'s pad, resolving an attached dialog through its placement root; null when `view`
+    // is not in a scratchpad.
+    Workspace* workspaceFor(const View* view) const;
     std::string_view nameFor(const View* view) const;
     bool hasScratchpad(std::string_view name) const;
     // The workspace that arranges scratchpad `name`'s windows, or null while the pad has no output.
@@ -70,6 +73,11 @@ namespace umbriel {
     bool modalOn(const Output* output) const;
     // Whether the scratchpad shown on `output` stays up when the output switches workspace.
     bool stickyOn(const Output* output) const;
+    // Whether any scratchpad is shown on `output`, modal or not.
+    bool visibleOn(const Output* output) const;
+    // The animated pad fade for `output`, 0 when no pad is shown or fading there. A closing member's snapshot follows
+    // it so a pad hidden mid-close takes the snapshot with it.
+    [[nodiscard]] float backdropFade(Output* output) const;
     // Hide the scratchpad shown on `output`, for a press on its backdrop. False when none is shown there.
     bool dismissOn(Output* output);
     // Give the keyboard to the scratchpad shown on `output`, making it the launch destination again. False when none is
@@ -161,6 +169,10 @@ namespace umbriel {
     const Scratchpad* findScratchpad(std::string_view name) const;
     Entry* findEntry(const View* view);
     const Entry* findEntry(const View* view) const;
+    // The entry for `view`, resolving an attached dialog through its placement root.
+    const Entry* entryFor(const View* view) const;
+    // The scratchpad `view` belongs to, resolving an attached dialog through its placement root.
+    const Scratchpad* scratchpadFor(const View* view) const;
     bool hasEntries(std::string_view name) const;
     // Whether `view`, a member of `scratchpad`, is on screen.
     static bool presents(const Scratchpad& scratchpad, const View* view);
