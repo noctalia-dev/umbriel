@@ -828,6 +828,11 @@ namespace umbriel {
     eraseRow(column, static_cast<size_t>(rowOf(view)));
     if (column.views.empty()) {
       m_columns.erase(m_columns.begin() + columnIndex);
+      if (m_lastFocusedColumn > columnIndex) {
+        --m_lastFocusedColumn;
+      } else if (m_lastFocusedColumn == columnIndex) {
+        m_lastFocusedColumn = -1;
+      }
       if (m_removedFocusedColumn == columnIndex) {
         m_pendingRemovalReevaluate = true;
       }

@@ -11,8 +11,8 @@ Umbriel is packaged for several Linux distributions. Prefer a distribution packa
 ```sh
 yay -S umbriel-git
 ```
-For **Artix Linux**, you will need to edit the `PKGBUILD` to pass the `systemd-libs` flag. 
-To do this, you'll need to add `-Dlocaled=disabled` to the meson setup arguments. If using an AUR Helper, use git commit so it builds with your change and git merges it into future upgrades. 
+
+For **Artix Linux**, you will need to edit the `PKGBUILD` to pass the `systemd-libs` flag. To do this, you'll need to add `-Dlocaled=disabled` to the meson setup arguments. If using an AUR Helper, use git commit so it builds with your change and git merges it into future upgrades.
 
 ## Fedora
 
@@ -166,10 +166,8 @@ Pre-built `x86_64-linux` and `aarch64-linux` packages for Umbriel and its portal
 ```nix
 {
   nix.settings = {
-    extra-substituters = [ "https://umbriel.cachix.org" ];
-    extra-trusted-public-keys = [
-      "umbriel.cachix.org-1:JfNq/2yg2S6D6z4Z2dVSZrZlDPQTKtexB6GAVLD98nw="
-    ];
+    extra-substituters = [ "https://noctalia.cachix.org" ];
+    extra-trusted-public-keys = [ "noctalia.cachix.org-1:pCOR47nnMEo5thcxNDtzWpOxNFQsBRglJzxWPp3dkU4=" ];
   };
 }
 ```
