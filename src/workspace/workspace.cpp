@@ -4209,6 +4209,34 @@ namespace umbriel {
     if (existing != m_workspaces.end()) {
       return existing->get();
     }
+    if (config().workspaces.globalNumbers && origin->globalNumber != 0) {
+      const auto collision = std::ranges::find_if(m_workspaces, [&origin](const auto& workspace) {
+        return !workspace->displacedWorkspace() && workspace->globalNumber() == origin->globalNumber;
+      });
+      if (collision != m_workspaces.end()) {
+        Workspace* workspace = collision->get();
+        if (!workspace->hasViews() && !workspace->launchReserved() && !workspace->hasPendingLaunchView()) {
+          // A previously disabled output can still have an empty workspace with
+          // this number. Reuse it as the refuge, preserving its active state.
+          workspace->m_displacedWorkspace = std::move(origin);
+          workspace->m_layoutModeOverride.reset();
+          workspace->applyLayoutConfig(displacedWorkspaceLayout(*workspace->m_displacedWorkspace));
+          if (displacedLayoutCurrent(*workspace->m_displacedWorkspace)) {
+            workspace->m_layoutModeOverride = workspace->m_displacedWorkspace->layoutModeOverride;
+          }
+          return workspace;
+        }
+        // Keep any local windows separate from the returning numbered
+        // workspace. The local workspace claims the next available number.
+        const unsigned replacement = firstAvailableGlobalNumber();
+        if (replacement == 0) {
+          return nullptr;
+        }
+        workspace->m_globalNumber = replacement;
+        workspace->rename(std::to_string(replacement), workspace->index(), true);
+        refreshWorkspaceMetadata();
+      }
+    }
     if (storedWorkspaceCount() >= kMaxWorkspaces) {
       return nullptr;
     }
