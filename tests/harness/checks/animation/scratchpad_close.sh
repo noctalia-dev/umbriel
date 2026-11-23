@@ -232,6 +232,54 @@ fi
 "$UMBRIEL" msg scratchpad-toggle modal > /dev/null
 "$UMBRIEL" clock-advance 1500
 
+# A window closing while the pad is still fading in must keep the opacity it showed. The capture already carries the
+# pad's fade, so the pad's later fades apply relative to it instead of attenuating the capture a second time.
+spawn close-showing
+"$UMBRIEL" msg window-focus "$(window_id close-showing)" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad modal > /dev/null
+# Admission into a hidden pad fades the member out; let it reach 0 so the show below starts from there.
+"$UMBRIEL" clock-advance 1500
+"$UMBRIEL" msg scratchpad-toggle modal > /dev/null
+"$UMBRIEL" clock-advance 600
+showing_before=$(shot showing-before)
+if ((showing_before < 30 || showing_before > 120)); then
+  echo "scratchpad member was not mid fade-in before its close: blue=$showing_before"
+  exit 1
+fi
+close_window close-showing
+showing_close=$(shot showing-close)
+if ((showing_close < showing_before - 20)); then
+  echo "close snapshot attenuated a member that was still fading in: before=$showing_before after=$showing_close"
+  exit 1
+fi
+"$UMBRIEL" clock-advance "$CLOSE_MS"
+"$UMBRIEL" settle
+"$UMBRIEL" msg scratchpad-toggle modal > /dev/null
+"$UMBRIEL" clock-advance 1500
+
+# Opening another pad on the same output mid-hide must not revive the first pad's closing member: each pad drives only
+# its own fade, not a fade shared by the output.
+spawn close-other-pad
+"$UMBRIEL" msg window-focus "$(window_id close-other-pad)" > /dev/null
+"$UMBRIEL" msg window-move-to-scratchpad modal > /dev/null
+"$UMBRIEL" msg scratchpad-toggle modal > /dev/null
+"$UMBRIEL" clock-advance "$CLOSE_MS"
+close_window close-other-pad
+"$UMBRIEL" clock-advance 100
+"$UMBRIEL" msg scratchpad-toggle modal > /dev/null
+"$UMBRIEL" clock-advance 500
+"$UMBRIEL" msg scratchpad-toggle nonmodal > /dev/null
+"$UMBRIEL" clock-advance 1600
+other_pad_after=$(shot other-pad-after)
+if ((other_pad_after > 5)); then
+  echo "another pad's fade revived the hidden pad's closing snapshot: blue=$other_pad_after"
+  exit 1
+fi
+"$UMBRIEL" clock-advance "$CLOSE_MS"
+"$UMBRIEL" settle
+"$UMBRIEL" msg scratchpad-toggle nonmodal > /dev/null
+"$UMBRIEL" clock-advance 1500
+
 # A non-modal pad has no backdrop, but its closing member must still fade like the control and follow the pad's own
 # visibility fade, so hiding it mid-close leaves nothing on screen.
 spawn close-nonmodal
@@ -330,4 +378,4 @@ close_window close-hotplug
 "$UMBRIEL" clock-advance "$CLOSE_MS"
 "$UMBRIEL" settle
 
-echo "scratchpad close snapshot faded like a floating window: control $control_before -> $control_mid -> $control_after, member $member_before -> $member_mid -> $member_after, pad-hide $hiding_before -> $hiding_after, dialog $dialog_before -> $dialog_mid -> $dialog_after, non-modal $nonmodal_before -> $nonmodal_mid -> $nonmodal_after, non-modal hide $nonmodal_hiding_before -> $nonmodal_hiding_after, hot-unplug $hotplug_before"
+echo "scratchpad close snapshot faded like a floating window: control $control_before -> $control_mid -> $control_after, member $member_before -> $member_mid -> $member_after, pad-hide $hiding_before -> $hiding_after, dialog $dialog_before -> $dialog_mid -> $dialog_after, mid-show $showing_before -> $showing_close, other-pad $other_pad_after, non-modal $nonmodal_before -> $nonmodal_mid -> $nonmodal_after, non-modal hide $nonmodal_hiding_before -> $nonmodal_hiding_after, hot-unplug $hotplug_before"

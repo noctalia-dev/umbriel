@@ -2023,12 +2023,33 @@ namespace umbriel {
     applyPresentation();
   }
 
-  void Server::CloseSnapshot::setFadeMultiplier(float multiplier) {
-    const float clamped = std::clamp(multiplier, 0.0F, 1.0F);
-    if (clamped == m_fadeMultiplier) {
+  void Server::CloseSnapshot::setPadFade(float fade) {
+    const float clamped = std::clamp(fade, 0.0F, 1.0F);
+    if (m_padFade && clamped == *m_padFade) {
       return;
     }
-    m_fadeMultiplier = clamped;
+    m_padFade = clamped;
+    applyFade();
+  }
+
+  void Server::CloseSnapshot::setFadeReference(float reference) {
+    m_fadeReference = std::clamp(reference, 0.0F, 1.0F);
+    applyFade();
+  }
+
+  void Server::CloseSnapshot::applyFade() {
+    // The captured nodes already carry the owner's fade at capture time, so only the change since then is applied.
+    float multiplier = 1.0F;
+    if (m_padFade) {
+      multiplier = m_fadeReference > 0.001F ? *m_padFade / m_fadeReference : 0.0F;
+    }
+    if (!(multiplier > 0.0F)) {
+      multiplier = 0.0F;
+    }
+    if (multiplier == m_fadeMultiplier) {
+      return;
+    }
+    m_fadeMultiplier = multiplier;
     // A held snapshot shows its captured frame unchanged.
     if (!m_held) {
       applyOpacity();
@@ -2054,8 +2075,9 @@ namespace umbriel {
     const bool builtInSlide = !composited && m_slide.target() != m_slide.from();
     // Keep the moving snapshot visible long enough for slide to read as motion. Fade keeps the configured timeline.
     const float lifecycle = composited ? 1.0F : (builtInSlide ? std::sqrt(rawAlpha) : rawAlpha);
-    // An owner's fade attenuates every captured node, even inside a composite: the shader API has no group-opacity
-    // uniform, so it fades each contribution rather than the composed image.
+    // An owner's fade scales every captured node, even inside a composite: the shader API has no group-opacity
+    // uniform, so it fades each contribution rather than the composed image. The multiplier is relative to the fade
+    // the capture already carries, so it can exceed 1 while an interrupted show finishes and restore the pixels.
     const float alpha = lifecycle * m_fadeMultiplier;
     for (const Buffer& buffer : m_buffers) {
       wlr_scene_buffer_set_opacity(buffer.node, std::clamp(buffer.baseOpacity * alpha, 0.0F, 1.0F));
@@ -2068,7 +2090,7 @@ namespace umbriel {
       wlr_scene_rect_set_color(rect.node, color.data());
     }
     for (const Blur& blur : m_blurs) {
-      wlr_scene_blur_set_alpha(blur.node, blur.baseAlpha * alpha);
+      wlr_scene_blur_set_alpha(blur.node, std::clamp(blur.baseAlpha * alpha, 0.0F, 1.0F));
     }
     for (auto& border : m_borders) {
       float innerColor[4];
@@ -2079,7 +2101,7 @@ namespace umbriel {
     }
     if (m_shadow.node != nullptr) {
       auto color = m_shadow.color;
-      color[3] *= builtInSlide ? alpha : rawAlpha * m_fadeMultiplier;
+      color[3] = std::clamp(color[3] * (builtInSlide ? alpha : rawAlpha * m_fadeMultiplier), 0.0F, 1.0F);
       wlr_scene_shadow_set_color(m_shadow.node, color.data());
     }
   }
@@ -2360,10 +2382,19 @@ namespace umbriel {
     }
   }
 
-  void Server::setCloseSnapshotFade(CloseSnapshotId id, float multiplier) {
+  void Server::setCloseSnapshotFade(CloseSnapshotId id, float fade) {
     for (const auto& snapshot : m_closeSnapshots) {
       if (snapshot->id() == id) {
-        snapshot->setFadeMultiplier(multiplier);
+        snapshot->setPadFade(fade);
+        return;
+      }
+    }
+  }
+
+  void Server::setCloseSnapshotFadeReference(CloseSnapshotId id, float reference) {
+    for (const auto& snapshot : m_closeSnapshots) {
+      if (snapshot->id() == id) {
+        snapshot->setFadeReference(reference);
         return;
       }
     }

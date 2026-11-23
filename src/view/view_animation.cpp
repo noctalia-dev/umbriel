@@ -22,6 +22,7 @@ extern "C" {
 #include <utility>
 #include "wlr.h"
 // clang-format on
+#include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
 #include "xwayland/xwayland.h"
 
@@ -1121,7 +1122,7 @@ namespace umbriel {
     return fullArea;
   }
 
-  CloseSnapshotId View::beginCloseAnimation(Workspace* padWorkspace) {
+  CloseSnapshotId View::beginCloseAnimation(Workspace* resolvedWorkspace) {
     const auto& animation = config().animation;
     const bool held = m_tiled && m_workspace != nullptr && animation.holdsClosedTile();
     if (!m_mapped
@@ -1132,7 +1133,7 @@ namespace umbriel {
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return kInvalidCloseSnapshot;
     }
-    return captureSnapshot(held, true, padWorkspace);
+    return captureSnapshot(held, true, resolvedWorkspace);
   }
 
   CloseSnapshotId View::captureHeldSnapshot() {
@@ -1146,9 +1147,9 @@ namespace umbriel {
     return captureSnapshot(true, false);
   }
 
-  CloseSnapshotId View::captureSnapshot(bool held, bool withShadow, Workspace* padWorkspace) {
+  CloseSnapshotId View::captureSnapshot(bool held, bool withShadow, Workspace* resolvedWorkspace) {
     // A dialog has no workspace of its own, so its pad was resolved before the attachment link was released.
-    Workspace* workspace = padWorkspace != nullptr ? padWorkspace : m_workspace;
+    Workspace* workspace = resolvedWorkspace != nullptr ? resolvedWorkspace : m_workspace;
     Output* output =
         workspace != nullptr && workspace->group() != nullptr ? workspace->group()->output() : currentOutput();
     if (output == nullptr) {
@@ -1156,8 +1157,10 @@ namespace umbriel {
     }
 
     // Under the output's clipped root, so a snapshot of a view straddling the shared edge stays contained while it
-    // fades. Server::removeOutput purges this output's snapshots before the Output is destroyed. The tree remains at
-    // the captured presented box in output-root coordinates; the buffers keep their offsets inside the content subtree.
+    // fades; a scratchpad snapshot is reparented below into the pad's tree, whose clip (or lack of one) the live member
+    // already follows. Server::removeOutput purges this output's snapshots before the Output is destroyed. The tree
+    // remains at the captured presented box in output-root coordinates; the buffers keep their offsets inside the
+    // content subtree.
     wlr_scene_tree* snap = wlr_scene_tree_create(output->viewRoot());
     if (snap == nullptr) {
       return kInvalidCloseSnapshot;
@@ -1257,6 +1260,11 @@ namespace umbriel {
           wlr_scene_node_reparent(&shadow.tree->node, padTree);
         }
         wlr_scene_node_reparent(&snap->node, padTree);
+      }
+      // The copied buffers and chrome already carry the pad's fade as it stood here; the pad's later fades apply
+      // relative to this, so an interrupted show does not attenuate the capture twice.
+      if (const ScratchpadManager* scratchpads = m_server->scratchpadManager(); scratchpads != nullptr) {
+        m_server->setCloseSnapshotFadeReference(id, scratchpads->fadeFor(workspace));
       }
     }
     wlr_output_schedule_frame(output->wlr());

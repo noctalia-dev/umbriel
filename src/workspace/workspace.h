@@ -347,7 +347,8 @@ namespace umbriel {
     bool heldOpenerAlive(const View* view) const;
     void resumeHeldOpeners();
     void endLayoutMotion();
-    void syncCloseSnapshots();
+    // `padFade` is the owning scratchpad's visibility fade; a plain workspace ignores it.
+    void syncCloseSnapshots(float padFade = 1.0F);
     void discardCloseSnapshots();
     WorkspaceGroup* m_group = nullptr;
     wlr_ext_workspace_handle_v1* m_handle = nullptr;

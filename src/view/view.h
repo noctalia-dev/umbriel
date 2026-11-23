@@ -510,9 +510,9 @@ namespace umbriel {
     bool animatesOn(const Output* output) const override;
 
   private:
-    // `withShadow` copies the shadow. `padWorkspace` is the scratchpad workspace resolved before an attached dialog
-    // loses its link; null for a plain window.
-    CloseSnapshotId captureSnapshot(bool held, bool withShadow, Workspace* padWorkspace = nullptr);
+    // `withShadow` copies the shadow. `resolvedWorkspace` is the workspace `handleUnmap` resolved before an attached
+    // dialog loses its link; null falls back to this view's own workspace.
+    CloseSnapshotId captureSnapshot(bool held, bool withShadow, Workspace* resolvedWorkspace = nullptr);
     friend class Cursor;
     friend class ScratchpadManager;
     friend class ColorManager;
@@ -678,8 +678,9 @@ namespace umbriel {
     void watchViewSurfaceTree(wlr_surface* root, wlr_subsurface* attachment = nullptr);
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
-    // `padWorkspace` is the scratchpad workspace the closing window was drawn in, or null for a plain window.
-    [[nodiscard]] CloseSnapshotId beginCloseAnimation(Workspace* padWorkspace);
+    // `resolvedWorkspace` is the workspace the closing window was drawn in, resolved before an attached dialog loses
+    // its link; null falls back to this view's own.
+    [[nodiscard]] CloseSnapshotId beginCloseAnimation(Workspace* resolvedWorkspace);
     // A frozen copy of this view's content and border, held over it until Server::releaseCloseSnapshot. The live view
     // stays under it at the same box and keeps drawing its own shadow, so the copy takes none.
     [[nodiscard]] CloseSnapshotId captureHeldSnapshot();
