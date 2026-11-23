@@ -66,12 +66,16 @@ for _ in $(seq 60); do
 done
 [[ -n $rule_window ]]
 state | jq -e --arg id "$rule_window" 'any(.[]; .id == $id and .name == "6")' > /dev/null
+state | jq -e '[.[] | select(.output == "HEADLESS-2") | .name | tonumber] as $numbers
+  | $numbers == ($numbers | sort)' > /dev/null
 msg workspace-move-to-output HEADLESS-1 7
 "$UMBRIEL" settle
 state | jq -e --arg id "$destination" 'any(.[]; .id == $id and .name == "7" and .output == "HEADLESS-1")' > /dev/null
 msg workspace-move-to-output HEADLESS-2 7
 "$UMBRIEL" settle
 state | jq -e --arg id "$destination" 'any(.[]; .id == $id and .name == "7" and .output == "HEADLESS-2")' > /dev/null
+state | jq -e '[.[] | select(.output == "HEADLESS-2") | .name | tonumber] as $numbers
+  | $numbers == ($numbers | sort)' > /dev/null
 "$UMBRIEL" output-destroy HEADLESS-2 > /dev/null
 "$UMBRIEL" settle
 msg workspace-switch 7
@@ -81,7 +85,12 @@ state | jq -e 'any(.[]; .focused and .output == "HEADLESS-1" and .name == "7")
 "$UMBRIEL" settle
 destination=$("$UMBRIEL" windows --json | jq -r --arg id "$window" '.[] | select(.id == $id) | .workspace')
 state | jq -e --arg id "$destination" '([.[] | select(.name == "7")] | length == 1)
-  and any(.[]; .id == $id and .name == "7" and .output == "HEADLESS-2")' > /dev/null
+  and any(.[]; .id == $id and .name == "7" and .output == "HEADLESS-2")
+  and ([.[] | select(.output == "HEADLESS-2") | .name | tonumber] as $numbers | $numbers == ($numbers | sort))' > /dev/null
 msg workspace-switch 7
 state | jq -e 'any(.[]; .focused and .name == "7")' > /dev/null
+msg window-move-to-workspace-silent 20
+"$UMBRIEL" settle
+state | jq -e '[.[] | select(.output == "HEADLESS-2") | .name | tonumber] as $numbers
+  | ($numbers | index(7)) != null and ($numbers | index(20)) != null and $numbers == ($numbers | sort)' > /dev/null
 echo "global workspace numbers follow their workspace and can be reclaimed"

@@ -3008,6 +3008,11 @@ namespace umbriel {
   }
 
   void WorkspaceGroup::refreshWorkspaceMetadata() {
+    if (config().workspaces.globalNumbers && !slideActive()) {
+      std::ranges::stable_sort(m_workspaces, {}, [](const auto& workspace) {
+        return workspace->globalNumber() == 0 ? kMaxWorkspaces + 1 : workspace->globalNumber();
+      });
+    }
     for (size_t index = 0; index < m_workspaces.size(); ++index) {
       Workspace* workspace = m_workspaces[index].get();
       const bool named = workspace->named();
@@ -3995,6 +4000,7 @@ namespace umbriel {
         || storedWorkspaceCount() >= kMaxWorkspaces) {
       return nullptr;
     }
+    slideFinish();
     const size_t index = m_workspaces.size();
     const std::string name = std::to_string(number);
     auto workspace = createConfiguredWorkspace(
@@ -4003,6 +4009,7 @@ namespace umbriel {
     workspace->m_globalNumber = number;
     Workspace* result = workspace.get();
     m_workspaces.push_back(std::move(workspace));
+    refreshWorkspaceMetadata();
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
       overview->onWorkspaceInventoryChanged(this);
     }
@@ -4218,6 +4225,9 @@ namespace umbriel {
     }
     Workspace* result = workspace.get();
     m_workspaces.push_back(std::move(workspace));
+    if (config().workspaces.globalNumbers) {
+      refreshWorkspaceMetadata();
+    }
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
       overview->onWorkspaceInventoryChanged(this);
     }

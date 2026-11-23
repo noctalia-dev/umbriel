@@ -11,7 +11,7 @@ By default, each output has its own workspaces. Choose a dynamic or fixed model,
 global_numbers = true
 ```
 
-In this mode, numbers from 1 to 64 identify workspaces across all outputs. Selecting an existing number focuses the output that owns it. Selecting an unused number creates it on the focused output. Moving a window to an unused number creates it there as well. An empty workspace is removed after it becomes inactive, unless it is still reserved for an application launch. Each output keeps an active workspace.
+In this mode, numbers from 1 to 64 identify workspaces across all outputs. Each output displays its workspaces in ascending numeric order. Selecting an existing number focuses the output that owns it. Selecting an unused number creates it on the focused output. Moving a window to an unused number creates it there as well. An empty workspace is removed after it becomes inactive, unless it is still reserved for an application launch. Each output keeps an active workspace.
 
 This mode uses a dynamic global inventory in place of per-output workspace counts, named inventories and dynamic empty sentinels. The `min_workspaces` and `empty_above` settings do not apply. On reload, active and populated workspaces are retained and assigned distinct global numbers. Numeric workspace layout rules refer to the global number. Named workspace declarations do not create persistent workspaces in this mode.
 
