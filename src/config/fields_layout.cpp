@@ -339,8 +339,8 @@ namespace umbriel {
           }
         }
 
-        const bool targetExists = (loaded.workspaces.globalNumbers && ws.index.has_value())
-            || workspaceRuleTargetExists(loaded, ws);
+        const bool targetExists =
+            (loaded.workspaces.globalNumbers && ws.index.has_value()) || workspaceRuleTargetExists(loaded, ws);
         if (!targetExists) {
           const std::string selector =
               ws.index ? std::format("index {}", *ws.index) : std::format("name '{}'", ws.name);
