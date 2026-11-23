@@ -715,6 +715,41 @@ namespace umbriel {
     return true;
   }
 
+  void View::reassertTiledClientSize() {
+    if (m_toplevel == nullptr
+        || !m_mapped
+        || !m_tiled
+        || currentFullscreen()
+        || m_tiledSizeRequest
+        || configureOutstanding()) {
+      return;
+    }
+    const wlr_box content = committedContentBox();
+    const ClientSize scheduled = scheduledSize();
+    if (scheduled.width <= 0 || scheduled.height <= 0) {
+      return;
+    }
+    if (content.width == scheduled.width && content.height == scheduled.height) {
+      m_layoutFitSize = scheduled;
+      return;
+    }
+    if (m_reassertedClientSize
+        && m_reassertedClientSize->width == content.width
+        && m_reassertedClientSize->height == content.height) {
+      // It drew this layout size before and still answers it with its own: a dialog that sizes itself, so stop
+      // fighting it. A client that never drew the exact size (cell-rounded terminals) keeps its tile.
+      if (m_layoutFitSize && m_layoutFitSize->width == scheduled.width && m_layoutFitSize->height == scheduled.height) {
+        m_reassertedClientSize.reset();
+        setFloating(true, false);
+        requestFloatingSize(content.width, content.height);
+      }
+      return;
+    }
+    // Chromium's resizeTo commits a size of its own; ask once for the layout size.
+    m_reassertedClientSize = ClientSize{.width = content.width, .height = content.height};
+    (void)configureSize(scheduled.width, scheduled.height);
+  }
+
   void View::completeLayoutMotion(const wlr_box& target) {
     if (!m_layoutMotion && !m_layoutPresentationHeld) {
       return;

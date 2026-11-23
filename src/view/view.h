@@ -704,6 +704,9 @@ namespace umbriel {
     bool layoutPresentationOwned() const { return sizeAnimating() || m_layoutPresentationHeld; }
     void requestTiledSize(int width, int height);
     [[nodiscard]] bool settleTiledSizeRequest();
+    // Answers a tiled client that settled on a size of its own: the layout size is sent once per such size, and a
+    // client that takes it and then returns to its own size is floated at it.
+    void reassertTiledClientSize();
     // A layout size configure the client has not yet answered with a commit at that size.
     bool tiledSizeRequestPending() const { return m_tiledSizeRequest.has_value(); }
     // While windows_in owns a freshly admitted tiled view, presentation follows its final layout slot rather than the
@@ -1064,6 +1067,9 @@ namespace umbriel {
       ClientSize baseBuffer;
     };
     std::optional<TiledSizeRequest> m_tiledSizeRequest;
+    std::optional<ClientSize> m_reassertedClientSize;
+    // The layout size the client last drew exactly.
+    std::optional<ClientSize> m_layoutFitSize;
     float m_layoutMotionDirection = 1.0F;
     bool m_tiledOpeningDeferred = false;
     // Inset a built-in windows_in style starts an opener at, interpolated to rest by the fade: a popin or zoom scale
