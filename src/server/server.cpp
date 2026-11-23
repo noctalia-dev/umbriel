@@ -31,6 +31,7 @@
 #include "server/allocator.h"
 #include "server/backend_manager.h"
 #include "server/color_manager.h"
+#include "server/dmabuf_implicit_barrier.h"
 #include "server/drm_lease.h"
 #include "server/ipc.h"
 #include "server/syncobj_acquire_barrier.h"
@@ -748,6 +749,7 @@ namespace umbriel {
     resolveEffectSlot(m_cursorEffectSlot, EffectKind::Cursor);
     effectRegistry().prepare(m_renderer);
     m_compositor = wlr_compositor_create(m_display, 6, m_renderer);
+    m_dmabufImplicitBarrier = std::make_unique<DmabufImplicitBarrier>(m_compositor);
     if (explicitSync) {
       m_syncobjAcquireBarrier = std::make_unique<SyncobjAcquireBarrier>(m_compositor);
       m_syncobjUnmapRelease = std::make_unique<SyncobjUnmapRelease>(m_compositor);
@@ -1195,6 +1197,7 @@ namespace umbriel {
     wl_display_destroy_clients(m_display);
     m_drmLeaseManager.reset();
     m_colorManager.reset();
+    m_dmabufImplicitBarrier.reset();
     m_syncobjAcquireBarrier.reset();
     m_syncobjUnmapRelease.reset();
     m_syncobjSupersededRelease.reset();
