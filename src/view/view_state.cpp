@@ -21,7 +21,6 @@ extern "C" {
 #include <cassert>
 #include "wlr.h"
 // clang-format on
-#include "workspace/scratchpad.h"
 #include "workspace/workspace.h"
 #include "xwayland/xwayland.h"
 
@@ -120,15 +119,10 @@ namespace umbriel {
       return;
     }
 
-    // Record the target before cancelSizeAnimation synchronizes the current
-    // presentation back through ScratchpadManager.
+    // Record the target before cancelSizeAnimation synchronizes the current presentation back through the workspace.
     m_floatingMaximized = maximized;
     m_remaximizeOnTile = maximized;
-    const ScratchpadManager* scratchpad = m_server->scratchpadManager();
-    const bool visibleScratchpad = m_onActiveWorkspace && scratchpad != nullptr && scratchpad->contains(this);
-    // A visible scratchpad has a manager-owned presentation even though it is
-    // detached from a workspace, so its position and size can animate together.
-    const bool animateFloating = animate && (m_workspace != nullptr || visibleScratchpad);
+    const bool animateFloating = animate && m_workspace != nullptr;
     if (!animateFloating) {
       cancelSizeAnimation();
     }
@@ -516,9 +510,7 @@ namespace umbriel {
     if (m_mapped && !attached()) {
       if (inheritScratchpadFromParent(m_tiled)) {
         placeInUsableArea(m_initialRules.defaultPosition);
-        if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
-          scratchpad->syncViewPresentation(this);
-        }
+        syncOwnedPresentation();
       }
       raiseToTop();
     }
@@ -747,9 +739,6 @@ namespace umbriel {
         "set_floating '{}' [{}] -> {} (tiled={}, pinned={}, fs={})", appId() != nullptr ? appId() : "?",
         static_cast<const void*>(this), floating, m_tiled, m_pinned, scheduledFullscreen()
     );
-    if (!floating && m_server->scratchpadManager() != nullptr && m_server->scratchpadManager()->contains(this)) {
-      return;
-    }
     // A no-op request must stay a no-op: a redundant "make tiled" call must not unfullscreen or cancel the size
     // animation.
     const bool wantTiled = !floating;

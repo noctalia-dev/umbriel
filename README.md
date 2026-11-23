@@ -58,7 +58,6 @@ Umbriel would not exist without the work of these projects, and we are grateful 
 - [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots): the compositor library Umbriel is built on.
 - [SceneFX](https://github.com/wlrfx/scenefx): `umbrielfx`, Umbriel's scene graph and renderer, is a hard fork of SceneFX (MIT). Thank you for the foundation.
 - [niri](https://github.com/YaLTeR/niri): its scrolling layout and animations inspired ours. Thank you for showing how good they can feel.
-- [Hyprland](https://github.com/hyprwm/Hyprland): its visual effects inspired ours. Thank you for raising the bar.
 
 Thank you to all their authors and contributors.
 

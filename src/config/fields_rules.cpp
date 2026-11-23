@@ -40,6 +40,9 @@ namespace umbriel {
           registry::text("spawn_when_empty", &ScratchpadConfig::spawnWhenEmpty),
           registry::boolean("hide_when_empty", &ScratchpadConfig::hideWhenEmpty),
           registry::boolean("proportional_size", &ScratchpadConfig::proportionalSize),
+          registry::boolean("modal", &ScratchpadConfig::modal),
+          registry::boolean("sticky", &ScratchpadConfig::sticky),
+          registry::table("layout", &ScratchpadConfig::layout, workspaceLayoutFields()),
       };
       return fields;
     }
@@ -105,9 +108,11 @@ namespace umbriel {
       );
     }
 
-    // A match table that is not a table leaves its rule selecting nothing it meant to, so the rule is dropped.
-    template <typename T> bool rejectUnlessTable(const toml::node& node, T&, registry::ReadContext&) {
-      return node.is_table();
+    // A match table with an unknown key or of the wrong type would select more than the rule meant to, so the rule is
+    // dropped.
+    template <typename T> bool rejectUnlessDeclared(const registry::Fields<T>& match, const toml::node& node) {
+      const toml::table* table = node.as_table();
+      return table != nullptr && registry::declaresAll(match, *table);
     }
 
     // `{ x, y, anchor }`, placed only when both coordinates are set and the anchor is valid.
@@ -218,7 +223,10 @@ namespace umbriel {
           integer("height", 1, 100000, &W::defaultFloatingHeightPx),
       };
       static const registry::Fields<W> fields{
-          registry::table<W>("match", self, match, rejectUnlessTable<W>),
+          registry::table<W>(
+              "match", self, match,
+              [](const toml::node& node, W&, registry::ReadContext&) { return rejectUnlessDeclared(match, node); }
+          ),
           boolean("default_floating", &W::defaultFloating),
           boolean("default_fullscreen", &W::defaultFullscreen),
           boolean("default_maximize_to_edges", &W::defaultMaximizeToEdges),
@@ -262,6 +270,7 @@ namespace umbriel {
           integer("corner_radius", 0, 100, &W::cornerRadius),
           boolean("shadow", &W::shadow),
           optionalEffectField("border_effect", &W::borderEffect),
+          boolean("border_effect_unfocused", &W::borderUnfocused),
           optionalEffectField("window_effect", &W::windowEffect),
           registry::table<W>("default_floating_size", self, floatingSize),
           registry::table<W>("default_floating_size_px", self, floatingSizePx),
@@ -368,7 +377,8 @@ namespace umbriel {
       };
       static const registry::Fields<L> fields{
           registry::table<L>(
-              "match", [](auto& rule) -> auto& { return rule; }, match
+              "match", [](auto& rule) -> auto& { return rule; }, match,
+              [](const toml::node& node, L&, registry::ReadContext&) { return rejectUnlessDeclared(match, node); }
           ),
           registry::real("dim_behind", 0.0, 1.0, &L::dimBehind),
           registry::boolean("blur", &L::blur),

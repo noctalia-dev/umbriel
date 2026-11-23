@@ -812,7 +812,7 @@ namespace umbriel {
     const BorderEffectGate cardGate{
         .focused = m_spread ? view == m_spreadSelected
                             : workspace != nullptr && workspace->focusedView() == view && &card != m_dragCard,
-        .allowUnfocused = config().effects.borderUnfocused,
+        .allowUnfocused = view->borderUnfocused(),
         .decorated = card.border != nullptr && card.border->node.enabled && card.tree->node.enabled,
         .urgent = view->urgent(),
         .fullscreen = view->scheduledFullscreen(),
@@ -3015,7 +3015,8 @@ namespace umbriel {
         return true;
       }
       Card* card = m_pressCard;
-      Workspace* workspace = m_pressWorkspace;
+      // The pressed row may have been pruned or lost its output while the button was held.
+      Workspace* workspace = workspaceRowAlive(m_pressWorkspace) ? m_pressWorkspace : nullptr;
       View* tab = m_pressTab;
       m_pressCard = nullptr;
       m_pressWorkspace = nullptr;

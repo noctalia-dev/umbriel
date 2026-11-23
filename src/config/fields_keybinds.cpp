@@ -114,11 +114,7 @@ namespace umbriel {
 
         Keybind binding;
         if (!parseChord(chord, binding)) {
-          if (binding.keysym != XKB_KEY_NoSymbol && binding.modifiers == 0 && !binding.useMod) {
-            warnAt(key.source(), "ignoring keybind '{}' (needs at least one modifier)", chord);
-          } else {
-            warnAt(key.source(), "ignoring keybind '{}' (bad chord)", chord);
-          }
+          warnAt(key.source(), "ignoring keybind '{}' (bad chord)", chord);
           continue;
         }
         if (options.release && (binding.wheel != WheelDirection::None || binding.modifierOnly)) {

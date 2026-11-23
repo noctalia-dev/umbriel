@@ -17,6 +17,7 @@
 #include "view/registry.h"
 #include "view/size_hints.h"
 #include "view/view.h"
+#include "workspace/scratchpad.h"
 // clang-format off
 #include <algorithm>
 #include <cmath>
@@ -198,11 +199,13 @@ namespace umbriel {
     m_launchAnchor->workspace = this;
     m_layout->setConfig(&m_layoutConfig);
     m_layout->setConstraints(&viewLayoutConstraints);
-    m_handle->data = this;
-    wlr_ext_workspace_handle_v1_set_group(m_handle, m_group->handle());
-    wlr_ext_workspace_handle_v1_set_name(m_handle, m_name.c_str());
-    const uint32_t coords[1] = {static_cast<uint32_t>(m_index)};
-    wlr_ext_workspace_handle_v1_set_coordinates(m_handle, coords, 1);
+    if (m_handle != nullptr) {
+      m_handle->data = this;
+      wlr_ext_workspace_handle_v1_set_group(m_handle, m_group->handle());
+      wlr_ext_workspace_handle_v1_set_name(m_handle, m_name.c_str());
+      const uint32_t coords[1] = {static_cast<uint32_t>(m_index)};
+      wlr_ext_workspace_handle_v1_set_coordinates(m_handle, coords, 1);
+    }
     m_tree = wlr_scene_tree_create(m_group->output()->viewRoot());
     // Focus raises only within a layer: floating views can never fall below tiles. Tiles lend their shadows to the
     // layer under all of them, so a tile never shadows the tile beside it; every other window keeps its own.
@@ -210,6 +213,19 @@ namespace umbriel {
     m_tiledLayer = wlr_scene_tree_create(m_tree);
     m_floatingLayer = wlr_scene_tree_create(m_tree);
     m_fullscreenTree = wlr_scene_tree_create(m_group->output()->fullscreenRoot());
+  }
+
+  Workspace::Workspace(WorkspaceGroup& group, std::string_view scratchpadName, ResolvedLayoutConfig layoutConfig)
+      : Workspace(
+            group, nullptr, std::format("scratchpad:{}", scratchpadName), std::string(scratchpadName), 0, true,
+            std::move(layoutConfig)
+        ) {
+    m_scratchpad = true;
+    m_active = true;
+    wlr_scene_node_reparent(&m_tree->node, m_group->server()->scratchpadTree());
+    // Fullscreen windows stay with their pad, above its backdrop; ScratchpadManager::updateStacking() lifts the pad
+    // over fullscreen windows for them.
+    wlr_scene_node_reparent(&m_fullscreenTree->node, m_group->server()->scratchpadTree());
   }
 
   Workspace::~Workspace() {
@@ -257,17 +273,24 @@ namespace umbriel {
     discardCloseSnapshots();
     for (View* view : m_views) {
       view->cancelPositionAnimation();
-      view->rememberFloatingPosition();
+      // A scratchpad remaps its floats itself as it roams.
+      if (!m_scratchpad) {
+        view->rememberFloatingPosition();
+      }
       view->clearDisplaced();
     }
     m_displacedWorkspace.reset();
     m_transferred = true;
     m_group = &group;
-    wlr_ext_workspace_handle_v1_set_group(m_handle, group.handle());
-    wlr_scene_node_reparent(&m_tree->node, group.output()->viewRoot());
-    wlr_scene_node_reparent(&m_fullscreenTree->node, group.output()->fullscreenRoot());
-    for (View* view : m_views) {
-      view->restoreFloatingPosition();
+    if (m_handle != nullptr) {
+      wlr_ext_workspace_handle_v1_set_group(m_handle, group.handle());
+    }
+    if (!m_scratchpad) {
+      wlr_scene_node_reparent(&m_tree->node, group.output()->viewRoot());
+      wlr_scene_node_reparent(&m_fullscreenTree->node, group.output()->fullscreenRoot());
+      for (View* view : m_views) {
+        view->restoreFloatingPosition();
+      }
     }
     // Attached dialogs share their placement root's workspace without being layout members.
     for (const auto& view : group.server()->registry().all()) {
@@ -330,7 +353,9 @@ namespace umbriel {
 
   void Workspace::updateUrgent() {
     const bool urgent = std::ranges::any_of(m_views, [](const View* view) { return view->urgent(); });
-    wlr_ext_workspace_handle_v1_set_urgent(m_handle, urgent);
+    if (m_handle != nullptr) {
+      wlr_ext_workspace_handle_v1_set_urgent(m_handle, urgent);
+    }
     m_group->server()->scheduleIpcWorkspacesEvent();
   }
 
@@ -1056,6 +1081,12 @@ namespace umbriel {
     if (usable.width <= 0 || usable.height <= 0) {
       return;
     }
+    if (m_scratchpad) {
+      // An output clips its own view root, so a tiling scratchpad gets the same clip to keep its strip on its output.
+      // Floating scratchpad windows keep straddling outputs.
+      const wlr_box clip = m_layoutMode == LayoutMode::Stacking ? wlr_box{} : output->layoutBox();
+      wlr_scene_tree_set_clip(m_tree, &clip);
+    }
 
     m_layout->arrange(applyLayoutStruts(usable, m_layoutConfig.struts));
     // Tab visibility follows the layout on hidden workspaces too, so a workspace always comes back showing the right
@@ -1160,7 +1191,9 @@ namespace umbriel {
     wlr_box target{};
     const Overview* overview = m_group->server()->overview();
     const bool overviewActive = overview != nullptr && overview->active();
-    const bool normallyVisible = view->pinned() || m_active || m_inSwitchTransition;
+    // A scratchpad shows and hides its windows one by one, so its own visibility flag never applies.
+    const bool normallyVisible =
+        view->pinned() || (m_scratchpad ? view->onActiveWorkspace() : (m_active || m_inSwitchTransition));
 
     if (view->pinned()) {
       // Pinned views have no workspace slide, but retain pending resize targets.
@@ -2003,8 +2036,10 @@ namespace umbriel {
         ring.push_back(unitEntry(column, row));
       }
     }
-    std::ranges::copy_if(m_floatingStack, std::back_inserter(ring), [](const View* view) {
-      return !view->minimized();
+    // Stacking navigation follows workspace membership order, which stays stable when focus raises a window.
+    const auto& floatingOrder = m_layoutMode == LayoutMode::Stacking ? m_views : m_floatingStack;
+    std::ranges::copy_if(floatingOrder, std::back_inserter(ring), [](const View* view) {
+      return view->floating() && !view->minimized();
     });
     if (ring.size() < 2) {
       return nullptr;
@@ -2632,6 +2667,10 @@ namespace umbriel {
   }
 
   void Workspace::applyVisibility() {
+    // ScratchpadManager owns the visibility of a scratchpad's windows.
+    if (m_scratchpad) {
+      return;
+    }
     for (View* view : m_views) {
       if (view->pinned()) {
         continue;
@@ -3285,6 +3324,19 @@ namespace umbriel {
     for (size_t index = 0; index < m_workspaces.size(); ++index) { // NOLINT(modernize-loop-convert)
       m_workspaces[index]->flushArrange();
     }
+    for (Workspace* pad : scratchpadWorkspaces()) {
+      pad->flushArrange();
+    }
+  }
+
+  std::vector<Workspace*> WorkspaceGroup::scratchpadWorkspaces() const {
+    std::vector<Workspace*> pads;
+    if (const ScratchpadManager* scratchpads = m_server->scratchpadManager()) {
+      std::ranges::copy_if(scratchpads->workspaces(), std::back_inserter(pads), [this](const Workspace* pad) {
+        return pad->group() == this;
+      });
+    }
+    return pads;
   }
 
   bool WorkspaceGroup::pruneDisplacedWorkspaces() {
@@ -3627,6 +3679,11 @@ namespace umbriel {
     if (extent <= 0) {
       return false;
     }
+    // A workspace swipe on a scratchpad's output takes the scratchpad away, as a workspace switch does.
+    if (ScratchpadManager* scratchpads = m_server->scratchpadManager();
+        scratchpads != nullptr && !scratchpads->stickyOn(m_output)) {
+      scratchpads->dismissOn(m_output);
+    }
     // A settle still running between neighbours is heading for a whole step, so where it is on screen minus that step
     // is where it sits relative to the workspace that is now active. A gesture that starts now carries on from there
     // rather than snapping the slide to the end of the animation first. A jump across several workspaces has a
@@ -3751,16 +3808,20 @@ namespace umbriel {
     for (const auto& workspace : m_workspaces) {
       active = workspace->tickLayoutMotion(nowMsec) || active;
     }
+    for (Workspace* pad : scratchpadWorkspaces()) {
+      active = pad->tickLayoutMotion(nowMsec) || active;
+    }
     return active;
   }
 
   bool WorkspaceGroup::hasActiveAnimations() const {
     return m_slideAnim.animating()
-        || std::ranges::any_of(m_workspaces, [](const auto& workspace) { return workspace->layoutMotionActive(); });
+        || std::ranges::any_of(m_workspaces, [](const auto& workspace) { return workspace->layoutMotionActive(); })
+        || std::ranges::any_of(scratchpadWorkspaces(), &Workspace::layoutMotionActive);
   }
 
   void WorkspaceGroup::activate(Workspace* workspace, bool animate) {
-    if (workspace == nullptr || workspace->group() != this) {
+    if (workspace == nullptr || workspace->group() != this || workspace->scratchpad()) {
       return;
     }
     restoreLaunchWorkspace(*workspace);
@@ -3827,6 +3888,11 @@ namespace umbriel {
     if (m_active == workspace && config().workspaces.backAndForth && m_previous != nullptr && m_previous != m_active) {
       selected = m_previous;
     }
+    // A scratchpad covers the workspace it was shown over, so switching away from it closes it unless it is sticky.
+    if (ScratchpadManager* scratchpads = m_server->scratchpadManager();
+        scratchpads != nullptr && selected != m_active && !scratchpads->stickyOn(m_output)) {
+      scratchpads->dismissOn(m_output);
+    }
     activate(selected);
     m_server->cursor()->clearConstraint();
     m_server->refocus(m_output);
@@ -3874,7 +3940,7 @@ namespace umbriel {
       }
       return false;
     };
-    if (source.group() != this) {
+    if (source.group() != this || source.scratchpad()) {
       return reject("no workspace to transfer");
     }
     if (&destination == this) {
