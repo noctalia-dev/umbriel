@@ -145,6 +145,12 @@ namespace umbriel {
     std::string spawnWhenEmpty;
     bool hideWhenEmpty = false;
     bool proportionalSize = false;
+    // A shown pad holds its output's pointer and keyboard, and leaves when a window behind it would get them.
+    bool modal = true;
+    // A shown pad stays up when its output switches workspace.
+    bool sticky = false;
+    // Layout overrides as in [[workspace]]. Without `mode` the pad uses stacking, not the global [layout] mode.
+    WorkspaceLayoutOverrides layout{};
     bool operator==(const ScratchpadConfig&) const = default;
   };
 
@@ -519,6 +525,7 @@ namespace umbriel {
     std::optional<bool> shadow;
     // Override [effects] border and window for windows this rule matches; "off" disables the default.
     std::optional<std::string> borderEffect;
+    std::optional<bool> borderUnfocused;
     std::optional<std::string> windowEffect;
 
     // See RegexPatterns: the regexes are derived from the patterns, so equality compares the patterns alone.
@@ -583,6 +590,7 @@ namespace umbriel {
           && cornerRadius == other.cornerRadius
           && shadow == other.shadow
           && borderEffect == other.borderEffect
+          && borderUnfocused == other.borderUnfocused
           && windowEffect == other.windowEffect;
     }
   };
@@ -634,6 +642,7 @@ namespace umbriel {
     std::optional<int> cornerRadius;
     std::optional<bool> shadow;
     std::optional<std::string> borderEffect;
+    std::optional<bool> borderUnfocused;
     std::optional<std::string> windowEffect;
     bool operator==(const ResolvedWindowRule&) const = default;
   };

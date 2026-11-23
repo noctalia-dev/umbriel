@@ -968,6 +968,21 @@ UMBRIEL_TEST(windowRulesRaiseEffectsOnlyWhenARuleSelectsAnEffect) {
   CHECK(ConfigEffects::between(selecting, rematched).effects);
 }
 
+UMBRIEL_TEST(borderUnfocusedRuleChangesRefreshWindowChromeAndOverview) {
+  Config before;
+  before.windowRules.emplace_back().borderUnfocused = true;
+  Config after = before;
+  after.windowRules[0].borderUnfocused = false;
+  CHECK(ConfigChange::between(before, after).windowRules);
+  const ConfigEffects effects = ConfigEffects::between(before, after);
+  CHECK(effects.viewChrome);
+  CHECK(effects.invalidatesOverview());
+  CHECK(!effects.effects);
+
+  after.windowRules[0].borderUnfocused.reset();
+  CHECK(ConfigChange::between(before, after).windowRules);
+}
+
 UMBRIEL_TEST(directScanoutPolicyForcesOnlyItsRuntimeEffect) {
   Config before;
   OutputRule output;

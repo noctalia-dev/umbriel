@@ -231,6 +231,7 @@ namespace umbriel {
     int decorationCornerRadius() const { return m_decoration.cornerRadius(); }
     // Padding of this window's border preset, 0 without one.
     int borderEffectPadding() const { return m_effects.borderPadding(); }
+    bool borderUnfocused();
     // Opacity multiplier the overview applies to windows it leaves on screen (pinned ones) while it opens and closes.
     void setOverviewOpacity(float opacity);
     wlr_scene_tree* homeTree() const;
@@ -703,6 +704,9 @@ namespace umbriel {
     bool layoutPresentationOwned() const { return sizeAnimating() || m_layoutPresentationHeld; }
     void requestTiledSize(int width, int height);
     [[nodiscard]] bool settleTiledSizeRequest();
+    // Answers a tiled client that settled on a size of its own: the layout size is sent once per such size, and a
+    // client that takes it and then returns to its own size is floated at it.
+    void reassertTiledClientSize();
     // A layout size configure the client has not yet answered with a commit at that size.
     bool tiledSizeRequestPending() const { return m_tiledSizeRequest.has_value(); }
     // While windows_in owns a freshly admitted tiled view, presentation follows its final layout slot rather than the
@@ -845,7 +849,7 @@ namespace umbriel {
     void leaveForeignOutput();
     bool assignLaunchOrigin(
         std::string_view token, std::shared_ptr<WorkspaceLaunchAnchor> workspace, uint32_t timeoutMsec,
-        std::string_view scratchpad
+        std::string_view scratchpad, bool floating
     );
     bool consumeLaunchActivation(std::string_view token);
     bool cancelLaunchOrigin(std::string_view token);
@@ -1030,6 +1034,7 @@ namespace umbriel {
     bool m_launchPlacementPending = false;
     std::shared_ptr<WorkspaceLaunchAnchor> m_launchWorkspace;
     std::string m_launchScratchpad;
+    bool m_launchFloating = false;
     std::optional<std::string> m_launchToken;
     std::string m_launchWorkspaceId;
     wl_event_source* m_launchPlacementTimer = nullptr;
@@ -1062,6 +1067,9 @@ namespace umbriel {
       ClientSize baseBuffer;
     };
     std::optional<TiledSizeRequest> m_tiledSizeRequest;
+    std::optional<ClientSize> m_reassertedClientSize;
+    // The layout size the client last drew exactly.
+    std::optional<ClientSize> m_layoutFitSize;
     float m_layoutMotionDirection = 1.0F;
     bool m_tiledOpeningDeferred = false;
     // Inset a built-in windows_in style starts an opener at, interpolated to rest by the fade: a popin or zoom scale

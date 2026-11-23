@@ -714,15 +714,26 @@ UMBRIEL_TEST(windowRuleEffectOverridesUseLastWriterWins) {
   umbriel::WindowRule first;
   first.appIdPatterns.add("foot");
   first.borderEffect = "pulse";
+  first.borderUnfocused = true;
   first.windowEffect = "lines";
   umbriel::WindowRule second = first;
   second.borderEffect = "off";
+  second.borderUnfocused = false;
   second.windowEffect.reset();
   config.windowRules = {first, second};
   const auto resolved =
       umbriel::resolveWindowRules(config, "foot", std::nullopt, std::nullopt, ContentType::None, {}, 0);
   CHECK(resolved.borderEffect == "off");
+  CHECK(resolved.borderUnfocused == false);
   CHECK(resolved.windowEffect == "lines");
+
+  config.windowRules[1].borderUnfocused.reset();
+  const auto inherited =
+      umbriel::resolveWindowRules(config, "foot", std::nullopt, std::nullopt, ContentType::None, {}, 0);
+  CHECK(inherited.borderUnfocused == true);
+  const auto unmatched =
+      umbriel::resolveWindowRules(config, "other", std::nullopt, std::nullopt, ContentType::None, {}, 0);
+  CHECK(!unmatched.borderUnfocused.has_value());
 }
 
 UMBRIEL_TEST(windowRulesMergeWorkspaceTargetsAcrossSelectorKinds) {
@@ -1528,6 +1539,25 @@ UMBRIEL_TEST(maximizedToEdgesSelectsCurrentState) {
       config, "app", "title", std::nullopt, ContentType::None, {.maximizedToEdges = true}, 0
   );
   CHECK(edges.titleBar == umbriel::TitleBarMode::Off);
+}
+
+UMBRIEL_TEST(scratchpadLayoutDefaultsToStackingAndTakesItsOwnOverrides) {
+  Config config;
+  config.layout.mode = LayoutMode::Dwindle;
+  config.layout.gap = 7;
+  const umbriel::ResolvedLayoutConfig implicit = umbriel::resolveScratchpadLayout(config, "default");
+  CHECK(implicit.mode == LayoutMode::Stacking);
+  CHECK_EQ(implicit.gap, 7);
+
+  umbriel::ScratchpadConfig tiles;
+  tiles.name = "tiles";
+  tiles.layout.mode = LayoutMode::Master;
+  tiles.layout.gap = 3;
+  config.scratchpads.push_back(std::move(tiles));
+  const umbriel::ResolvedLayoutConfig resolved = umbriel::resolveScratchpadLayout(config, "tiles");
+  CHECK(resolved.mode == LayoutMode::Master);
+  CHECK_EQ(resolved.gap, 3);
+  CHECK_EQ(resolved.totalGap, 3 + 2 * config.appearance.totalBorderWidth());
 }
 
 int main() { return RUN_TESTS(); }
