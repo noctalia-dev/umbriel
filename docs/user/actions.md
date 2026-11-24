@@ -248,6 +248,8 @@ Selector resolution, including forced numeric names and `--output` qualifiers, i
 | `workspace-switch <workspace> [--output <output>]`                                      | Switch to the selected workspace                           |
 | `workspace-toggle-show-desktop`                                                         | Minimize or restore the workspace's floating windows       |
 
+With `workspaces.global_numbers` enabled, the `workspace-swap-active-output-*` actions swap the workspace objects themselves, including their numbers and layouts. Pinned windows remain on their original outputs.
+
 ## Overview
 
 Dragging windows between previews and creating workspaces by dropping into a gap are described in [Overview](workspaces-overview.md).

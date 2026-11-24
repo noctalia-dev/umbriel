@@ -77,6 +77,7 @@ namespace umbriel {
     // generated for anonymous static or dynamic positions leave this false.
     bool named() const { return m_named; }
     unsigned globalNumber() const { return m_globalNumber; }
+    bool globalSentinel() const { return m_globalSentinel; }
     bool transferred() const { return m_transferred; }
     size_t index() const { return m_index; }
     bool active() const { return m_active; }
@@ -354,6 +355,7 @@ namespace umbriel {
     size_t m_index = 0;
     bool m_named = false;
     unsigned m_globalNumber = 0;
+    bool m_globalSentinel = false;
     bool m_transferred = false;
     bool m_active = false;
     bool m_scratchpad = false;
@@ -469,9 +471,12 @@ namespace umbriel {
     Workspace* createWorkspace(const char* name);
     Workspace* createGlobalWorkspace(unsigned number);
     Workspace* findGlobalWorkspace(unsigned number) const;
-    unsigned firstAvailableGlobalNumber() const;
+    unsigned firstAvailableGlobalNumber(unsigned after = 0) const;
+    unsigned nextGlobalDynamicNumber() const;
+    void activateGlobalSentinel(Workspace& workspace);
     // Move the workspace object after the destination's active member, retaining its identity, layout, and views.
     bool transferTo(Workspace& source, WorkspaceGroup& destination, std::string* error);
+    bool swapActiveWith(WorkspaceGroup& other, std::string* error);
     // Acquire a temporary workspace for one absent home, including on a fixed output. Explicit names survive, while
     // anonymous workspaces use their new numeric position. Original identities keep matching names separate.
     Workspace* displacedDestination(std::shared_ptr<const DisplacedWorkspace> origin);

@@ -1120,6 +1120,7 @@ namespace umbriel {
       bool backAndForth = false;
       bool emptyAbove = false;
       bool globalNumbers = false;
+      bool globalDynamic = false;
       bool operator==(const Workspaces&) const = default;
     } workspaces;
 

@@ -190,6 +190,7 @@ numlock_toggle = true
 # Optional global workspace numbers follow workspaces across monitors.
 # [workspaces]
 # global_numbers = true
+# global_dynamic = true
 
 # ==============================================================================
 # Keybinds

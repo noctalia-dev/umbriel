@@ -380,6 +380,12 @@ namespace umbriel {
   }
 
   void View::moveToWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin) {
+    if (!m_pinned
+        && workspace != nullptr
+        && workspace->globalSentinel()
+        && workspace->group()->nextGlobalDynamicNumber() == 0) {
+      return;
+    }
     const bool wasDisplaced = m_displacedHome.has_value();
     m_displacedHome.reset();
     setWorkspace(workspace, attachToLayout, origin);
@@ -394,6 +400,12 @@ namespace umbriel {
 
   void View::setWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin) {
     assert(!attached());
+    if (!m_pinned
+        && workspace != nullptr
+        && workspace->globalSentinel()
+        && workspace->group()->nextGlobalDynamicNumber() == 0) {
+      return;
+    }
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager(); workspace != nullptr
         && scratchpad != nullptr
         && scratchpad->contains(this)

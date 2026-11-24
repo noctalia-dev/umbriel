@@ -17,6 +17,16 @@ This mode uses a dynamic global inventory in place of per-output workspace count
 
 A numeric selector with `--output` creates an unused number on that output; if the number already belongs to another output, the action is rejected. Next and previous actions and gestures continue to navigate the workspace order of the current output.
 
+To create new workspaces with next/previous navigation or a swipe, enable the optional trailing empty workspace:
+
+```toml
+[workspaces]
+global_numbers = true
+global_dynamic = true
+```
+
+An inactive trailing workspace is shown as `+` and does not reserve a number. Selecting it assigns the lowest globally unused number greater than the output's existing numbers. When it gains a window, another empty workspace becomes available at the end. An empty numbered workspace is removed after it is left. A new trailing workspace cannot be selected when no higher number is available within the 1–64 range.
+
 ### Dynamic workspaces
 
 Omit `workspaces` or set it to `"dynamic"`:
@@ -152,6 +162,7 @@ Use `umbriel workspaces --json` for scripts. Each entry includes its stable `id`
 back_and_forth = true
 empty_above = false
 global_numbers = false
+global_dynamic = false
 ```
 
 | Key              | Default | Description                                                                |
@@ -159,6 +170,7 @@ global_numbers = false
 | `back_and_forth` | `false` | Selecting the active workspace returns to the previous one on that output. |
 | `empty_above`    | `false` | Keep a leading empty workspace on dynamic outputs.                         |
 | `global_numbers` | `false` | Use one global namespace for numbered workspaces.                          |
+| `global_dynamic` | `false` | Keep a trailing workspace for dynamic global-number navigation.            |
 
 ## Workspace rules
 

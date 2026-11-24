@@ -1,6 +1,7 @@
 #include "ext-workspace-v1-client-protocol.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <memory>
 #include <print>
 #include <string>
@@ -160,9 +161,10 @@ int main(int argc, char** argv) {
   const bool listAll = argc == 2 && std::string_view(argv[1]) == "--all";
   const bool listActive = argc == 2 && std::string_view(argv[1]) == "--active";
   const bool listGroups = argc == 2 && std::string_view(argv[1]) == "--groups";
+  const bool watchGroups = argc == 2 && std::string_view(argv[1]) == "--watch-groups";
   const bool create = argc == 4 && std::string_view(argv[1]) == "--create";
-  if (!((argc == 1) || listAll || listActive || listGroups || create)) {
-    std::println(stderr, "usage: workspace-client [--all|--active|--groups|--create OUTPUT NAME]");
+  if (!((argc == 1) || listAll || listActive || listGroups || watchGroups || create)) {
+    std::println(stderr, "usage: workspace-client [--all|--active|--groups|--watch-groups|--create OUTPUT NAME]");
     return 2;
   }
   wl_display* display = wl_display_connect(nullptr);
@@ -197,6 +199,37 @@ int main(int argc, char** argv) {
       std::println(stderr, "workspace-client: create request roundtrip failed");
       return 1;
     }
+  }
+
+  if (watchGroups) {
+    const auto printSnapshot = [&] {
+      std::println("snapshot");
+      for (const auto& workspace : state.workspaces) {
+        if (workspace->removed || (workspace->state & EXT_WORKSPACE_HANDLE_V1_STATE_HIDDEN) != 0) {
+          continue;
+        }
+        for (const auto& group : state.groups) {
+          if (std::ranges::find(group->workspaces, workspace->handle) == group->workspaces.end()) {
+            continue;
+          }
+          for (const auto& output : state.outputs) {
+            if (std::ranges::find(group->outputs, output->handle) != group->outputs.end()) {
+              std::println("{}\t{}\t{}", workspace->id, workspace->name, output->name);
+            }
+          }
+        }
+      }
+      std::fflush(stdout);
+    };
+    printSnapshot();
+    state.done = false;
+    while (wl_display_dispatch(display) >= 0) {
+      if (state.done) {
+        printSnapshot();
+        state.done = false;
+      }
+    }
+    return 0;
   }
 
   int active = 0;
