@@ -282,6 +282,7 @@ namespace umbriel {
           boolean("tap", &In::Touchpad::tap),
           boolean("tap_and_drag", &In::Touchpad::tapAndDrag),
           choice("drag_lock", &In::Touchpad::dragLock, dragLocks, Case::Fold),
+          boolean("three_finger_drag", &In::Touchpad::threeFingerDrag),
           boolean("natural_scroll", &In::Touchpad::naturalScroll),
           boolean("left_handed", &In::Touchpad::leftHanded),
           real("sensitivity", -1.0, 1.0, &In::Touchpad::sensitivity),

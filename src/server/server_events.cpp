@@ -619,6 +619,21 @@ namespace umbriel {
               hasDragLockOverride ? "input.device.drag_lock" : "input.touchpad.drag_lock", deviceName(device)
           );
         }
+        if (input.touchpad.threeFingerDrag) {
+          if (libinput_device_config_3fg_drag_get_finger_count(libinputDevice) >= 3) {
+            const auto dragState = *input.touchpad.threeFingerDrag ? LIBINPUT_CONFIG_3FG_DRAG_ENABLED_3FG
+                                                                   : LIBINPUT_CONFIG_3FG_DRAG_DISABLED;
+            if (libinput_device_config_3fg_drag_set_enabled(libinputDevice, dragState)
+                != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+              kLog.warn("input: failed to apply input.touchpad.three_finger_drag to '{}'", deviceName(device));
+            }
+          } else if (*input.touchpad.threeFingerDrag) {
+            kLog.warn(
+                "input: could not apply input.touchpad.three_finger_drag to '{}': device does not support it",
+                deviceName(device)
+            );
+          }
+        }
         if ((libinput_device_config_send_events_get_modes(libinputDevice)
              & LIBINPUT_CONFIG_SEND_EVENTS_DISABLED_ON_EXTERNAL_MOUSE)
             != 0) {

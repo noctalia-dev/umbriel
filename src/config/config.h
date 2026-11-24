@@ -1215,6 +1215,8 @@ namespace umbriel {
         std::optional<bool> tap = true;
         std::optional<bool> tapAndDrag;
         std::optional<DragLock> dragLock;
+        // libinput three-finger drag: three fingers moving hold the left button. Unset keeps the device default.
+        std::optional<bool> threeFingerDrag;
         std::optional<bool> naturalScroll;
         std::optional<bool> leftHanded;
         std::optional<AccelProfile> accelProfile;
