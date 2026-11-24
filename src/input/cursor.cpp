@@ -319,6 +319,7 @@ namespace umbriel {
       forwardEffectPointer();
       if (m_compositorOwnsCursor) {
         setXcursor(m_compositorCursorName.c_str());
+        refreshPointerFocus();
       } else {
         restoreClientCursor();
       }
@@ -343,6 +344,7 @@ namespace umbriel {
         forwardEffectPointer();
         if (m_compositorOwnsCursor) {
           setXcursor(m_compositorCursorName.c_str());
+          refreshPointerFocus();
         } else {
           restoreClientCursor();
         }
@@ -371,6 +373,9 @@ namespace umbriel {
     m_cursorHidden = true;
     forwardEffectPointer();
     wlr_cursor_set_surface(m_cursor, nullptr, 0, 0);
+    // An invisible cursor must not keep a client looking pointed at: drop pointer focus so the surface under it
+    // receives leave and stops drawing hover state.
+    clearPointerFocus();
   }
 
   void Cursor::forwardEffectPointer() const {
@@ -2714,6 +2719,7 @@ namespace umbriel {
     // The same gates as hover: grabs, lock, exclusive layers, and the overview keep their focus.
     wlr_seat* seat = m_server->seat()->wlr();
     if (!isPassthrough()
+        || m_cursorHidden
         || seat->drag != nullptr
         || seat->pointer_state.button_count != 0
         || wlr_seat_pointer_has_grab(seat)
@@ -3690,6 +3696,12 @@ namespace umbriel {
   }
 
   void Cursor::setPointerFocus(wlr_surface* surface, double sx, double sy, uint32_t timeMsec) {
+    // Compositor warps and refreshes run while the cursor is hidden; none of them may hand pointer focus to the
+    // surface under the invisible cursor.
+    if (m_cursorHidden) {
+      clearPointerFocus();
+      return;
+    }
     if (surface == nullptr) {
       clearPointerFocus();
       return;
