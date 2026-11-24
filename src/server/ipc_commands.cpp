@@ -27,9 +27,11 @@
 #include <cmath>
 #include <drm_fourcc.h>
 #include <format>
+#include <limits>
 #include <map>
 #include <nlohmann/json.hpp>
 #include <print>
+#include <ranges>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -195,6 +197,97 @@ namespace umbriel {
     }
     audio[FX_AUDIO_BANDS] = 1.0F;
     return audio;
+  }
+
+  std::optional<LiveEffectUniforms> IpcCommands::parseLiveEffectUniforms(const nlohmann::json& request) {
+    if (!request.is_object()
+        || request.size() != 5
+        || !request.contains("cmd")
+        || !request["cmd"].is_string()
+        || request["cmd"] != "effect-uniforms"
+        || !request.contains("version")
+        || !request["version"].is_number_integer()
+        || request["version"] != 1
+        || !request.contains("kind")
+        || !request["kind"].is_string()
+        || request["kind"] != "screen"
+        || !request.contains("output")
+        || !request["output"].is_string()
+        || !request.contains("uniforms")
+        || !request["uniforms"].is_array()) {
+      return std::nullopt;
+    }
+    LiveEffectUniforms snapshot;
+    snapshot.output = request["output"].get<std::string>();
+    if (snapshot.output.empty()
+        || snapshot.output.size() > 128
+        || request["uniforms"].empty()
+        || request["uniforms"].size() > kMaxLiveEffectUniforms) {
+      return std::nullopt;
+    }
+
+    for (const auto& item : request["uniforms"]) {
+      if (!item.is_object()
+          || item.size() != 3
+          || !item.contains("name")
+          || !item["name"].is_string()
+          || !item.contains("type")
+          || !item["type"].is_string()
+          || !item.contains("value")) {
+        return std::nullopt;
+      }
+      const auto& name = item["name"].get_ref<const std::string&>();
+      const auto& type = item["type"].get_ref<const std::string&>();
+      if (name.empty()
+          || name.size() >= FX_UNIFORM_NAME_MAX
+          || name.starts_with("umbriel_")
+          || !(std::isalpha(static_cast<unsigned char>(name[0])) || name[0] == '_')
+          || !std::ranges::all_of(name.substr(1), [](unsigned char c) { return std::isalnum(c) || c == '_'; })) {
+        return std::nullopt;
+      }
+      for (size_t i = 0; i < snapshot.count; ++i) {
+        if (name == snapshot.uniforms[i].name) {
+          return std::nullopt;
+        }
+      }
+      enum fx_uniform_type kind = FX_UNIFORM_FLOAT;
+      unsigned components = 1;
+      if (type == "vec2") {
+        kind = FX_UNIFORM_VEC2;
+        components = 2;
+      } else if (type == "vec3") {
+        kind = FX_UNIFORM_VEC3;
+        components = 3;
+      } else if (type == "vec4") {
+        kind = FX_UNIFORM_VEC4;
+        components = 4;
+      } else if (type != "float") {
+        return std::nullopt;
+      }
+      const auto& value = item["value"];
+      if (components == 1 ? !value.is_number() : (!value.is_array() || value.size() != components)) {
+        return std::nullopt;
+      }
+      fx_uniform& uniform = snapshot.uniforms[snapshot.count];
+      std::copy(name.begin(), name.end(), uniform.name);
+      uniform.type = kind;
+      uniform.count = 1;
+      for (unsigned i = 0; i < components; ++i) {
+        const auto& component = components == 1 ? value : value[i];
+        if (!component.is_number()) {
+          return std::nullopt;
+        }
+        const double number = component.get<double>();
+        if (!std::isfinite(number)
+            || number < -std::numeric_limits<float>::max()
+            || number > std::numeric_limits<float>::max()) {
+          return std::nullopt;
+        }
+        uniform.floats[i] = static_cast<float>(number);
+      }
+      ++snapshot.count;
+    }
+    return snapshot;
   }
 
   namespace {

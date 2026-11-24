@@ -595,3 +595,86 @@ UMBRIEL_TEST(workspaceOutputRequestRejectsMalformedFields) {
 }
 
 int main() { return RUN_TESTS(); }
+
+UMBRIEL_TEST(liveUniformsAcceptTypedSnapshot) {
+  const nlohmann::json request = {
+      {"cmd", "effect-uniforms"},
+      {"version", 1},
+      {"kind", "screen"},
+      {"output", "HEADLESS-1"},
+      {"uniforms",
+       nlohmann::json::array({
+           {{"name", "rotation"}, {"type", "vec4"}, {"value", {0.0, 0.0, 0.0, 1.0}}},
+           {{"name", "zoom"}, {"type", "float"}, {"value", 0.85}},
+       })},
+  };
+  const auto parsed = umbriel::IpcCommands::parseLiveEffectUniforms(request);
+  CHECK(parsed.has_value());
+  if (!parsed) {
+    return;
+  }
+  CHECK_EQ(parsed->output, "HEADLESS-1");
+  CHECK_EQ(parsed->count, 2u);
+  CHECK_EQ(std::string(parsed->uniforms[0].name), "rotation");
+  CHECK_EQ(parsed->uniforms[0].floats[3], 1.0F);
+  CHECK_EQ(std::string(parsed->uniforms[1].name), "zoom");
+}
+
+UMBRIEL_TEST(liveUniformsRejectInvalidMessages) {
+  nlohmann::json valid = {
+      {"cmd", "effect-uniforms"},
+      {"version", 1},
+      {"kind", "screen"},
+      {"output", "HEADLESS-1"},
+      {"uniforms",
+       nlohmann::json::array({
+           {{"name", "offset"}, {"type", "vec2"}, {"value", {0.5, -0.5}}},
+       })},
+  };
+  CHECK(umbriel::IpcCommands::parseLiveEffectUniforms(valid).has_value());
+
+  auto request = valid;
+  request["cmd"] = 123;
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["kind"] = "cursor";
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["output"] = "";
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["uniforms"][0]["name"] = "umbriel_time";
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["uniforms"][0]["name"] = "bad name";
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["uniforms"][0]["name"] = "2bad";
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["uniforms"][0]["type"] = "mat4";
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["uniforms"][0]["value"] = {0.25};
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["uniforms"][0]["value"] = {0.25, "bad"};
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["uniforms"][0]["value"] = {0.25, 1e100};
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["extra"] = "unexpected";
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["uniforms"].push_back(request["uniforms"][0]);
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  for (int i = 0; i < 4; ++i) {
+    request["uniforms"].push_back({{"name", "extra_" + std::to_string(i)}, {"type", "float"}, {"value", 0.0}});
+  }
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+  request = valid;
+  request["uniforms"] = nlohmann::json::array();
+  CHECK(!umbriel::IpcCommands::parseLiveEffectUniforms(request).has_value());
+}

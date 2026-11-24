@@ -364,10 +364,59 @@ static void reset_optional_uniforms(struct fx_effect_shader* shader) {
   }
 }
 
+// Screen programs may be shared by outputs. Custom numeric uniforms not
+// supplied by this draw must not inherit another output's or snapshot's values.
+static void reset_screen_uniforms(struct fx_effect_shader* shader, const struct fx_animation_parameters* parameters) {
+  if (shader->kind != FX_EFFECT_SCREEN) {
+    return;
+  }
+  static const float zeros[FX_UNIFORM_FLOATS_MAX] = {0};
+  for (unsigned i = 0; i < shader->uniform_count; i++) {
+    const struct fx_effect_uniform* cached = &shader->uniforms[i];
+    if (strncmp(cached->name, "umbriel_", 8) == 0 && strcmp(cached->name, "umbriel_live_available") != 0) {
+      continue;
+    }
+    enum fx_uniform_type type;
+    switch (cached->type) {
+    case GL_FLOAT:
+      type = FX_UNIFORM_FLOAT;
+      break;
+    case GL_FLOAT_VEC2:
+      type = FX_UNIFORM_VEC2;
+      break;
+    case GL_FLOAT_VEC3:
+      type = FX_UNIFORM_VEC3;
+      break;
+    case GL_FLOAT_VEC4:
+      type = FX_UNIFORM_VEC4;
+      break;
+    default:
+      continue;
+    }
+    const unsigned capacity = FX_UNIFORM_FLOATS_MAX / fx_uniform_components(type);
+    const unsigned count = (unsigned)cached->size < capacity ? (unsigned)cached->size : capacity;
+    bool supplied = false;
+    for (unsigned j = 0; j < parameters->uniform_count && j < FX_UNIFORMS_MAX; j++) {
+      const struct fx_uniform* uniform = &parameters->uniforms[j];
+      if (strcmp(uniform->name, cached->name) == 0
+          && uniform->type == type
+          && uniform->count >= count
+          && uniform->count <= capacity) {
+        supplied = true;
+        break;
+      }
+    }
+    if (!supplied) {
+      fx_effect_shader_bind_uniform_data(shader, cached->name, type, count, zeros, sizeof(zeros));
+    }
+  }
+}
+
 void fx_effect_shader_bind_parameters(
     struct fx_effect_shader* shader, const struct fx_animation_parameters* parameters
 ) {
   reset_optional_uniforms(shader);
+  reset_screen_uniforms(shader, parameters);
   for (unsigned i = 0; i < parameters->uniform_count && i < FX_UNIFORMS_MAX; i++) {
     fx_effect_shader_bind_uniform(shader, &parameters->uniforms[i]);
   }

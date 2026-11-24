@@ -35,6 +35,8 @@ namespace umbriel {
     constexpr int kSnapshotEventIntervalMs = 16;
     constexpr int kConnectionTimeoutMs = 1000;
     constexpr size_t kMaxAudioRequestSize = 4096;
+    constexpr size_t kMaxLiveRequestSize = 4096;
+    constexpr int kLiveFreshnessMs = 250;
     constexpr int kAudioFreshnessMs = 250;
     // Long enough for any configured animation to finish; a compositor that never settles still answers.
     constexpr int kFrameWaitTimeoutMs = 30000;
@@ -224,6 +226,7 @@ namespace umbriel {
   }
 
   Ipc::~Ipc() {
+    m_liveUniforms.clear();
     if (m_eventSource != nullptr) {
       wl_event_source_remove(m_eventSource);
       m_eventSource = nullptr;
@@ -249,6 +252,39 @@ namespace umbriel {
   void Ipc::dropAudioOwner() {
     m_audio = nullptr;
     m_server->effects().setAudio({});
+  }
+
+  const LiveEffectUniforms* Ipc::liveUniformsForOutput(std::string_view output) const {
+    auto it = m_liveUniforms.find(output);
+    return it != m_liveUniforms.end() ? &it->second.snapshot : nullptr;
+  }
+
+  void Ipc::forgetLiveUniformsForOutput(std::string_view output) {
+    auto it = m_liveUniforms.find(output);
+    if (it == m_liveUniforms.end()) {
+      return;
+    }
+    it->second.owner->liveOutput.clear();
+    m_liveUniforms.erase(it);
+  }
+
+  void Ipc::dropLiveOwner(Connection& connection) {
+    if (connection.liveOutput.empty()) {
+      return;
+    }
+    const std::string outputName = std::move(connection.liveOutput);
+    connection.liveOutput.clear();
+    auto it = m_liveUniforms.find(outputName);
+    if (it == m_liveUniforms.end() || it->second.owner != &connection) {
+      return;
+    }
+    m_liveUniforms.erase(it);
+    for (const auto& output : m_server->outputs()) {
+      if (output->wlr()->name != nullptr && outputName == output->wlr()->name) {
+        output->scheduleLiveUniformsFrame();
+        break;
+      }
+    }
   }
 
   void Ipc::acceptConnections() {
@@ -333,7 +369,8 @@ namespace umbriel {
       const ssize_t size = recv(connection.fd, chunk, sizeof(chunk), 0);
       if (size > 0) {
         connection.input.append(chunk, static_cast<size_t>(size));
-        if (&connection == m_audio && connection.input.size() > kMaxAudioRequestSize) {
+        if ((&connection == m_audio && connection.input.size() > kMaxAudioRequestSize)
+            || (!connection.liveOutput.empty() && connection.input.size() > kMaxLiveRequestSize)) {
           return false;
         }
         if (connection.input.size() > kMaxRequestSize) {
@@ -393,7 +430,7 @@ namespace umbriel {
       }
       return false;
     }
-    if (connection.subscribedEvents != 0 || &connection == m_audio) {
+    if (connection.subscribedEvents != 0 || &connection == m_audio || !connection.liveOutput.empty()) {
       connection.output.clear();
       connection.writeOffset = 0;
       connection.responding = false;
@@ -507,6 +544,7 @@ namespace umbriel {
     if (connection == m_audio) {
       dropAudioOwner();
     }
+    dropLiveOwner(*connection);
     closeConnection(**entry);
     m_connections.erase(entry);
     refreshScreenCastActive();
@@ -535,7 +573,11 @@ namespace umbriel {
 
   std::optional<std::string> Ipc::handleRequest(Connection& connection, std::string_view line) {
     auto req = nlohmann::json::parse(line, nullptr, false);
-    if (&connection == m_audio || (req.is_object() && req.contains("cmd") && req["cmd"] == "effect-audio")) {
+    if (&connection == m_audio
+        || !connection.liveOutput.empty()
+        || (req.is_object()
+            && req.contains("cmd")
+            && (req["cmd"] == "effect-audio" || req["cmd"] == "effect-uniforms"))) {
       return dispatchRequest(connection, req, line.size() + 1);
     }
     std::string launchToken;
@@ -562,6 +604,51 @@ namespace umbriel {
 
   std::optional<std::string>
   Ipc::dispatchRequest(Connection& connection, const nlohmann::json& req, size_t requestSize) {
+    if (!connection.liveOutput.empty() || (req.is_object() && req.contains("cmd") && req["cmd"] == "effect-uniforms")) {
+      const auto snapshot = IpcCommands::parseLiveEffectUniforms(req);
+      if (requestSize > kMaxLiveRequestSize) {
+        return R"({"err":"live effect request too long"})";
+      }
+      if (!snapshot) {
+        return R"({"err":"malformed live effect request"})";
+      }
+      if (!connection.liveOutput.empty() && connection.liveOutput != snapshot->output) {
+        return R"({"err":"live effect producer cannot change outputs"})";
+      }
+      if (!connection.input.empty()
+          || connection.subscribedEvents != 0
+          || connection.screenCastActive
+          || &connection == m_audio) {
+        return R"({"err":"live effect input not allowed on this connection"})";
+      }
+      if (m_server->sessionLocked() || !outputFrameAllowed(m_server->stopping(), m_server->session())) {
+        return R"({"err":"live effect input unavailable while locked or inactive"})";
+      }
+      Output* target = nullptr;
+      for (const auto& output : m_server->outputs()) {
+        if (output->wlr()->name != nullptr && snapshot->output == output->wlr()->name && output->wlr()->enabled) {
+          target = output.get();
+          break;
+        }
+      }
+      if (target == nullptr) {
+        return R"({"err":"unknown or disabled output"})";
+      }
+      auto found = m_liveUniforms.find(snapshot->output);
+      if (found != m_liveUniforms.end() && found->second.owner != &connection) {
+        return R"({"err":"live effect input already owned"})";
+      }
+      connection.liveOutput = snapshot->output;
+      m_liveUniforms[connection.liveOutput] = {.owner = &connection, .snapshot = *snapshot};
+      if (wl_event_source_timer_update(connection.deadline, kLiveFreshnessMs) < 0) {
+        dropLiveOwner(connection);
+        return R"({"err":"live effect input deadline failed"})";
+      }
+      // Rendering is paced by the output; multiple incoming snapshots replace
+      // the pending value and do not allocate a queue of compositor frames.
+      target->scheduleLiveUniformsFrame();
+      return R"({"ok":true})";
+    }
     if (&connection == m_audio || (req.is_object() && req.contains("cmd") && req["cmd"] == "effect-audio")) {
       const auto audio = IpcCommands::parseAudioSpectrum(req);
       const char* error = nullptr;

@@ -2,6 +2,7 @@
 
 #include "config/value_parse.h"
 #include "scene/effect_audio.h"
+#include "scene/live_effect_uniforms.h"
 
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
@@ -29,6 +30,7 @@ namespace umbriel {
     static nlohmann::json globalShortcuts(Server& server, IpcArgs args);
     static nlohmann::json globalShortcutsRevoke(Server& server, IpcArgs args);
     static std::optional<EffectAudio> parseAudioSpectrum(const nlohmann::json& request);
+    static std::optional<LiveEffectUniforms> parseLiveEffectUniforms(const nlohmann::json& request);
     static nlohmann::json effects(Server& server, IpcArgs args);
     static nlohmann::json windows(Server& server, IpcArgs args);
     static nlohmann::json focusedWindow(Server& server, IpcArgs args);
