@@ -679,22 +679,39 @@ namespace umbriel {
     m_server->scheduleIpcWindowsEvent();
   }
 
-  bool View::dragPresentationOwnsVisibility() const {
-    const Cursor* cursor = m_server->cursor();
-    wlr_scene_tree* dragTree = m_server->dragTree();
+  bool View::dragPresented() const {
+    if (const Cursor* cursor = m_server->cursor(); cursor != nullptr && cursor->isDraggingView(this)) {
+      return true;
+    }
+    // A released sheet is presented here only while its spring is displaced: a
+    // settled node that has not been re-homed yet is resting, not presented.
+    return m_sceneTree != nullptr && m_sceneTree->node.parent == m_server->dragTree() && dragSheetDisplaced();
+  }
+
+  bool View::dragPresentationLive() const {
     // A dragged window carries its transient children into the drag tree, and the
-    // ride outlives the grab: the sheet rests there until its spring settles, and a
-    // pinned release lands under the output's pinned root. Key on where the view
-    // rests, not on who holds it, so every phase owns its visibility.
+    // ride outlives the grab until the spring settles, so both phases present the
+    // subtree. Membership in the drag tree alone does not: a settled draw must be
+    // free to follow its parent home.
     for (const View* view = this; view != nullptr; view = view->transientParent()) {
-      if (view->m_sceneTree != nullptr && view->m_sceneTree->node.parent == dragTree) {
-        return true;
-      }
-      if (cursor != nullptr && cursor->isDraggingView(view)) {
+      if (view->dragPresented()) {
         return true;
       }
     }
     return false;
+  }
+
+  bool View::dragPresentationOwnsVisibility() const {
+    // The transient chain stops where the workspace changes, but a pinned view's
+    // presentation is output-global: its dialogs stay presented with it even when
+    // a switch moved the parent onto another workspace. Follow declared parents
+    // for that question, so the workspace never hides the subtree.
+    for (const View* view = this; view != nullptr; view = view->shellParent()) {
+      if (view->m_pinned) {
+        return true;
+      }
+    }
+    return dragPresentationLive();
   }
 
   void View::setNodeEnabled(bool enabled) {
@@ -819,15 +836,24 @@ namespace umbriel {
     if (!m_mapped || m_workspace == nullptr || m_pinned || m_server->cursor()->isDraggingView(this)) {
       return false;
     }
-    // A view the drag presentation owns stays where the drag put it. A focus change re-syncs the previous focus, which
+    // A view the live drag presents stays where the drag put it. A focus change re-syncs the previous focus, which
     // would otherwise pull a riding dialog out of the drag tree and into the workspace it was carried out of, where a
-    // switch clips it away mid-settle.
-    if (m_sceneTree->node.parent == m_server->dragTree() && dragPresentationOwnsVisibility()) {
+    // switch clips it away mid-settle. Once the spring settles the subtree belongs to its home tree again.
+    if (m_sceneTree->node.parent == m_server->dragTree() && dragPresentationLive()) {
       return false;
     }
 
     wlr_scene_tree* target = homeTree();
-    if (View* parent = transientParent()) {
+    // A pinned view's presentation is output-global, so its dialog follows it onto
+    // the pinned root even when a workspace switch moved the parent to another
+    // workspace and broke the transient chain.
+    View* parent = transientParent();
+    if (parent == nullptr) {
+      if (View* shell = shellParent(); shell != nullptr && shell->pinned()) {
+        parent = shell;
+      }
+    }
+    if (parent != nullptr) {
       wlr_scene_tree* parentTree = parent->m_sceneTree->node.parent;
       Output* output = currentOutput();
       const bool inRaisedFloatingLayer = !m_tiled && !scheduledFullscreen() && m_workspace->floatingLayerRaised();
@@ -842,7 +868,16 @@ namespace umbriel {
     if (m_sceneTree->node.parent == target) {
       return false;
     }
-    return applySceneParent(target);
+    const bool changedPresentation = applySceneParent(target);
+    // A view re-homed into a workspace that is not presenting must not keep
+    // drawing from the presentation it just left (an unpinned dialog, say).
+    if (m_sceneTree->node.parent == homeTree()
+        && !m_workspace->active()
+        && !m_workspace->switchTransitionActive()
+        && !dragPresentationOwnsVisibility()) {
+      setNodeEnabled(false);
+    }
+    return changedPresentation;
   }
 
   void View::collectTransientTree(std::vector<wlr_scene_node*>& frames) { walkTransientTree(&frames); }
@@ -864,7 +899,7 @@ namespace umbriel {
     const auto views = m_server->registry().all();
     for (const auto& view : std::views::reverse(views)) {
       View* child = view.get();
-      if (child != nullptr && child != this && child->transientParent() == this) {
+      if (child != nullptr && child != this && child->rehomeParent() == this) {
         child->walkTransientTree(frames);
       }
     }
@@ -881,13 +916,41 @@ namespace umbriel {
 
   bool View::dragSheetDisplaced() const { return m_dragPhysics.active() || m_dragPhysics.grabbed(); }
 
+  bool View::underPinnedRoot() const {
+    if (m_sceneTree == nullptr || m_server->pinnedTree() == nullptr) {
+      return false;
+    }
+    for (const wlr_scene_node* node = &m_sceneTree->node; node != nullptr;
+         node = node->parent != nullptr ? &node->parent->node : nullptr) {
+      if (node == &m_server->pinnedTree()->node) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  View* View::rehomeParent() const {
+    if (View* parent = transientParent()) {
+      return parent;
+    }
+    // A drag or a pinned presentation is output-global, so a workspace change can
+    // move the parent away from a rider without ending the sequence. The declared
+    // parent still anchors the subtree while it rests in the drag tree or under an
+    // output's pinned root, so a landing or an unpin carries it along.
+    if (m_sceneTree == nullptr) {
+      return nullptr;
+    }
+    const bool presented = m_sceneTree->node.parent == m_server->dragTree() || underPinnedRoot();
+    return presented ? shellParent() : nullptr;
+  }
+
   void View::setSceneParent(wlr_scene_tree* parent) {
-    // Only a move that took this node out of the drag tree needs the subtree re-homed: an ordinary re-parent leaves
-    // the elevation alone.
+    // A move between presentation trees (the drag tree, a pinned root) re-homes the transient subtree; an ordinary
+    // re-parent leaves it alone.
     if (!applySceneParent(parent)) {
       return;
     }
-    // Transient children elevated with this view follow it home; the elevation is re-checked once, after the whole
+    // Transient children carried by this presentation follow it; the elevation is re-checked once, after the whole
     // subtree has moved, so a child that left the drag tree collapses the elevation only when it was the last one in.
     walkTransientTree(nullptr);
     demoteDragTreeIfIdle();
@@ -906,7 +969,8 @@ namespace umbriel {
       }
       return false;
     }
-    const bool leavingDragTree = m_sceneTree->node.parent == m_server->dragTree() && parent != m_server->dragTree();
+    const wlr_scene_tree* oldParent = m_sceneTree->node.parent;
+    const bool wasPresented = oldParent == m_server->dragTree() || underPinnedRoot();
     m_pendingHomeParent = nullptr;
     m_releaseRehomeArmed = false;
 
@@ -916,7 +980,11 @@ namespace umbriel {
     if (m_xsurface != nullptr && m_mapped) {
       syncXwaylandConfigure();
     }
-    return leavingDragTree;
+    const wlr_scene_tree* newParent = m_sceneTree->node.parent;
+    const bool isPresented = newParent == m_server->dragTree() || underPinnedRoot();
+    // A different presentation tree (the drag tree to a pinned root, say) is a move too, even though the view stays
+    // presented; the caller must re-home the subtree.
+    return newParent != oldParent && (wasPresented || isPresented);
   }
 
   void View::closeReleaseRehomeWindow() { m_releaseRehomeArmed = false; }
@@ -932,6 +1000,11 @@ namespace umbriel {
   }
 
   void View::demoteDragTreeIfIdle() {
+    // Entering the presentation calls this while the view still rests in the drag tree; its own occupancy is excluded
+    // below, so demoting here would undo the raise the drag just applied.
+    if (m_sceneTree->node.parent == m_server->dragTree()) {
+      return;
+    }
     // The elevation serves the whole drag presentation, not just the departing view: a settling release or an
     // unmapping rider must not demote a drag still in progress. It drops when the last drag-presented view leaves.
     if (!dragTreeOccupied()) {

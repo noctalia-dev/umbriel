@@ -304,8 +304,9 @@ namespace umbriel {
     // A member of a tabbed column other than the one it shows. It keeps its layout slot and stays mapped and configured
     // at that size, but its frame stays disabled whatever else asks to enable it.
     void setTabHidden(bool hidden);
-    // True while the drag tree presents this view or a transient ancestor (held,
-    // settling, or landed on a pinned root): a workspace must not show or hide it.
+    // True while the view's visibility belongs above its workspace: a live drag
+    // presentation, or a pinned transient ancestor whose output root presents the
+    // subtree. A workspace must not show or hide a view this returns true for.
     bool dragPresentationOwnsVisibility() const;
     bool tabHidden() const { return m_tabHidden; }
     // Minimized: hidden, but keeping its workspace, floating box, stacking slot, and taskbar entries. Focusing the
@@ -768,6 +769,13 @@ namespace umbriel {
     // True while the physics sheet is displaced from its resting box: grabbed,
     // or still settling after the release.
     bool dragSheetDisplaced() const;
+    // True while the drag tree actively presents this view: held by the cursor,
+    // or still displaced after the release. Resting under the drag tree once the
+    // spring settles is not presentation.
+    bool dragPresented() const;
+    // True while the drag tree actively presents this view or a transient
+    // ancestor: the placement the drag owns, and the stable form of it.
+    bool dragPresentationLive() const;
     // The release's say over where the view rests: the window closes when the
     // release handler ends, flush lands the wait immediately.
     void closeReleaseRehomeWindow();
@@ -847,12 +855,18 @@ namespace umbriel {
     void syncModalShade();
     void releaseDialog();
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
-    // Re-homes this node under the tree its transient parent now lives in. Returns true when the node left the drag
-    // tree, so the caller can collapse the drag elevation.
+    // Re-homes this node under the tree its transient parent now lives in. Returns true when the move changed the
+    // view's presentation tree, so the caller re-homes the subtree and collapses the drag elevation.
     bool syncTransientSceneParent();
     // The one reparent policy: waits out a displaced sheet, moves the node with its shadow and X11 state, and returns
-    // whether the move took it out of the drag tree. The caller owns the transient subtree.
+    // whether the move entered or left a presentation tree (the drag tree or a pinned root), so the caller re-homes
+    // the transient subtree. The caller owns that subtree.
     bool applySceneParent(wlr_scene_tree* parent);
+    // True while this node rests under the server's pinned tree, which every output's pinned root hangs from.
+    bool underPinnedRoot() const;
+    // The parent whose landing or unpin re-homes this view: the transient parent when the chain holds, else the
+    // declared parent while a drag or pinned presentation carries it across a workspace change.
+    View* rehomeParent() const;
     // Lowers the drag tree under its icons once no drag-presented view is left in it.
     void demoteDragTreeIfIdle();
     // Appends the frames a raise of this transient tree lifts, in the order it lifts them.

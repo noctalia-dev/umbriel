@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # harness: outputs=1
 # The ride outlives the grab. A pinned release parks its wait on the output's
-# pinned root, so the sheet settles under the drag tree while its dialog rides it,
-# and every flush skips a pinned view: only the ride can keep the dialog shown.
-# Switching workspace during that settle must leave both where they are.
+# pinned root, so the sheet settles under the drag tree while its dialog rides it.
+# The switch under test moves the pinned parent onto the active workspace, which
+# breaks the transient chain: the pinned presentation must keep owning its
+# subtree's visibility, and the landing must still present the dialog there.
 #
 # The dialog sits on its own workspace and the parent is moved onto it, so the
 # switch under test leaves the dialog's workspace entirely.
@@ -78,6 +79,22 @@ if ((across < SETTLE_DIALOG_FLOOR)); then
 fi
 if ((landed < SETTLE_DIALOG_FLOOR)); then
   echo "the dialog stayed hidden after the pinned sheet landed (red=$across -> $landed)"
+  exit 1
+fi
+
+# The pinned presentation ends when the parent unpins. The dialog belongs to the
+# workspace it was left on, which is not the active one, so it must stop drawing
+# instead of lingering under the pinned root.
+"$UMBRIEL" msg window-focus "$(settle_id "$PARENT")" > /dev/null
+"$UMBRIEL" msg window-toggle-pinned > /dev/null
+"$UMBRIEL" settle > /dev/null
+unpinned=$(settle_red)
+if [[ $(window_by_title "$PARENT" | jq -r '.pinned') != false ]]; then
+  echo "scenario never engaged: the parent did not unpin"
+  exit 1
+fi
+if ((unpinned != 0)); then
+  echo "the pinned dialog stayed drawn after its parent unpinned (red=$unpinned)"
   exit 1
 fi
 echo "a pinned sheet that settles under the drag tree keeps its dialog shown"
