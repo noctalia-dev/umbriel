@@ -3556,6 +3556,37 @@ accel_profile = "custom 0.2 1.0"
   CHECK(containsDiagnostic(store, "custom <step> <points...>"));
 }
 
+UMBRIEL_TEST(customAccelerationCurveAcceptsScrollCurve) {
+  const TempConfig file;
+  file.write(R"(
+[input.touchpad]
+accel_profile = "custom 0.5 0.0 1.0 3.0 scroll 1.0 0.0 0.25"
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  const auto& profile = store.config().input.touchpad.accelProfile;
+  CHECK(profile.has_value());
+  if (profile.has_value()) {
+    CHECK(profile->kind == umbriel::AccelProfile::Kind::Custom);
+    CHECK_EQ(profile->step, 0.5);
+    CHECK_EQ(profile->points, std::vector<double>({0.0, 1.0, 3.0}));
+    CHECK_EQ(profile->scrollStep, 1.0);
+    CHECK_EQ(profile->scrollPoints, std::vector<double>({0.0, 0.25}));
+  }
+
+  file.write("[input.touchpad]\naccel_profile = \"custom 0.5 0.0 1.0 scroll 1.0 0.25\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().input.touchpad.accelProfile.has_value());
+  CHECK(containsDiagnostic(store, "[scroll <step> <points...>]"));
+
+  file.write("[input.touchpad]\naccel_profile = \"custom 0.5 0.0 1.0 scroll 0.0 0.0 0.25\"\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().input.touchpad.accelProfile.has_value());
+  CHECK(containsDiagnostic(store, "custom scroll step must be greater than zero"));
+}
+
 UMBRIEL_TEST(invalidClickMethodIsRejectedAndStillClaimsTheKey) {
   const TempConfig file;
   file.write(R"(

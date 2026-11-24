@@ -190,6 +190,12 @@ Omitting `accel_profile` preserves the device default. A custom libinput curve u
 accel_profile = "custom 0.2 0.0 0.5 1.0 2.0"
 ```
 
+A custom curve can also set the scroll curve that libinput applies to touchpad and button scrolling. Without it, a custom profile scrolls through libinput's 1:1 fallback curve, which is faster than the `adaptive` and `flat` profiles on most touchpads:
+
+```toml
+accel_profile = "custom 0.2 0.0 0.5 1.0 2.0 scroll 1.0 0.0 0.25"
+```
+
 `scroll_button` turns pointer motion into scrolling while the named button is held. Set `scroll_button_lock = true` to toggle that mode with a press instead. Accepted names are `MouseLeft`, `MouseRight`, `MouseMiddle`, `MouseBack`, and `MouseForward`.
 
 `scroll_wheel_step` controls the distance used by layout scroll actions, not the scrolling sent to applications.

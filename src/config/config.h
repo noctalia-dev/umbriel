@@ -82,6 +82,10 @@ namespace umbriel {
     } kind = Kind::Flat;
     double step = 0.0;
     std::vector<double> points;
+    // Custom only: optional curve for scrolling (`... scroll <step> <points...>`). Empty leaves libinput's
+    // fallback curve, which is 1:1 in device units.
+    double scrollStep = 0.0;
+    std::vector<double> scrollPoints;
     bool operator==(const AccelProfile&) const = default;
   };
 

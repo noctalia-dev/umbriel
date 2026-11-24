@@ -515,9 +515,16 @@ namespace umbriel {
               acceleration, LIBINPUT_ACCEL_TYPE_MOTION, configuredProfile->step, configuredProfile->points.size(),
               configuredProfile->points.data()
           );
-          const auto applyStatus = pointsStatus == LIBINPUT_CONFIG_STATUS_SUCCESS
-              ? libinput_device_config_accel_apply(libinputDevice, acceleration)
+          const auto scrollStatus =
+              pointsStatus == LIBINPUT_CONFIG_STATUS_SUCCESS && !configuredProfile->scrollPoints.empty()
+              ? libinput_config_accel_set_points(
+                    acceleration, LIBINPUT_ACCEL_TYPE_SCROLL, configuredProfile->scrollStep,
+                    configuredProfile->scrollPoints.size(), configuredProfile->scrollPoints.data()
+                )
               : pointsStatus;
+          const auto applyStatus = scrollStatus == LIBINPUT_CONFIG_STATUS_SUCCESS
+              ? libinput_device_config_accel_apply(libinputDevice, acceleration)
+              : scrollStatus;
           libinput_config_accel_destroy(acceleration);
           if (applyStatus != LIBINPUT_CONFIG_STATUS_SUCCESS) {
             kLog.warn("input: failed to apply {} to '{}'", accelSetting, deviceName(device));

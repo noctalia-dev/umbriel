@@ -64,41 +64,68 @@ namespace umbriel {
             .kind = profile == "flat" ? AccelProfile::Kind::Flat : AccelProfile::Kind::Adaptive,
             .step = 0.0,
             .points = {},
+            .scrollStep = 0.0,
+            .scrollPoints = {},
         };
       }
-      if (profile != "custom" || tokens.size() < 4) {
+      const auto scrollKeyword =
+          std::ranges::find_if(tokens, [](std::string_view token) { return lowercase(token) == "scroll"; });
+      const size_t motionEnd = static_cast<size_t>(scrollKeyword - tokens.begin());
+      const bool hasScroll = scrollKeyword != tokens.end();
+      if (profile != "custom" || motionEnd < 4 || (hasScroll && tokens.size() - motionEnd - 1 < 3)) {
         warnAt(
-            node.source(), R"(invalid {} "{}" (expected "flat", "adaptive", or "custom <step> <points...>"))", path,
-            value->get()
+            node.source(),
+            R"(invalid {} "{}" (expected "flat", "adaptive", or "custom <step> <points...> [scroll <step> <points...>]"))",
+            path, value->get()
         );
         return std::nullopt;
       }
 
-      std::vector<double> values;
-      values.reserve(tokens.size() - 1);
-      for (size_t index = 1; index < tokens.size(); ++index) {
-        const std::string_view token = tokens[index];
-        double number = 0.0;
-        const auto [end, error] = std::from_chars(token.data(), token.data() + token.size(), number);
-        if (error != std::errc{} || end != token.data() + token.size() || !std::isfinite(number)) {
-          warnAt(node.source(), R"(invalid number "{}" in {})", token, path);
+      // One curve: a step followed by at least two points.
+      const auto parseCurve = [&](size_t first, size_t last, const char* what) -> std::optional<std::vector<double>> {
+        std::vector<double> values;
+        values.reserve(last - first);
+        for (size_t index = first; index < last; ++index) {
+          const std::string_view token = tokens[index];
+          double number = 0.0;
+          const auto [end, error] = std::from_chars(token.data(), token.data() + token.size(), number);
+          if (error != std::errc{} || end != token.data() + token.size() || !std::isfinite(number)) {
+            warnAt(node.source(), R"(invalid number "{}" in {})", token, path);
+            return std::nullopt;
+          }
+          values.push_back(number);
+        }
+        if (values.front() <= 0.0) {
+          warnAt(node.source(), "{} custom {}step must be greater than zero", path, what);
           return std::nullopt;
         }
-        values.push_back(number);
-      }
-      if (values.front() <= 0.0) {
-        warnAt(node.source(), "{} custom step must be greater than zero", path);
-        return std::nullopt;
-      }
-      if (std::ranges::any_of(values.begin() + 1, values.end(), [](double point) { return point < 0.0; })) {
-        warnAt(node.source(), "{} custom points must be non-negative", path);
-        return std::nullopt;
-      }
-      return AccelProfile{
-          .kind = AccelProfile::Kind::Custom,
-          .step = values.front(),
-          .points = std::vector<double>(values.begin() + 1, values.end()),
+        if (std::ranges::any_of(values.begin() + 1, values.end(), [](double point) { return point < 0.0; })) {
+          warnAt(node.source(), "{} custom {}points must be non-negative", path, what);
+          return std::nullopt;
+        }
+        return values;
       };
+
+      const auto motion = parseCurve(1, motionEnd, "");
+      if (!motion) {
+        return std::nullopt;
+      }
+      AccelProfile result{
+          .kind = AccelProfile::Kind::Custom,
+          .step = motion->front(),
+          .points = std::vector<double>(motion->begin() + 1, motion->end()),
+          .scrollStep = 0.0,
+          .scrollPoints = {},
+      };
+      if (hasScroll) {
+        const auto scroll = parseCurve(motionEnd + 1, tokens.size(), "scroll ");
+        if (!scroll) {
+          return std::nullopt;
+        }
+        result.scrollStep = scroll->front();
+        result.scrollPoints = std::vector<double>(scroll->begin() + 1, scroll->end());
+      }
+      return result;
     }
 
     // `accel_profile` on any device class whose struct has an `accelProfile` member.
