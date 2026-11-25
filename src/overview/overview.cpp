@@ -686,7 +686,7 @@ namespace umbriel {
     Workspace* workspace = view->workspace();
     const BorderEffectGate cardGate{
         .focused = workspace != nullptr && workspace->focusedView() == view && &card != m_dragCard,
-        .allowUnfocused = config().effects.borderUnfocused,
+        .allowUnfocused = view->borderUnfocused(),
         .decorated = card.border != nullptr && card.border->node.enabled && card.tree->node.enabled,
         .urgent = view->urgent(),
         .fullscreen = view->scheduledFullscreen(),
