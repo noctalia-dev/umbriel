@@ -2411,6 +2411,24 @@ UMBRIEL_TEST(windowStateMatchersLoadBooleans) {
   CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_scratchpad"));
 }
 
+UMBRIEL_TEST(maximizedMatcherLoadsStrictBoolean) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[[window_rule]]\nmatch.is_maximized = true\nborder_width = 0\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchMaximized == true);
+  file.write("[[window_rule]]\nmatch.is_maximized = false\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchMaximized == false);
+  file.write("[[window_rule]]\nmatch.is_maximized = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_maximized"));
+}
+
 UMBRIEL_TEST(maximizedToEdgesMatcherLoadsStrictBoolean) {
   const TempConfig file;
   ConfigStore& store = umbriel::configStore();

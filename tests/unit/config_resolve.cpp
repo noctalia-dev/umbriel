@@ -928,9 +928,19 @@ UMBRIEL_TEST(windowRulesMatchWindowStateSelectors) {
   scratchpadRule.opacity = 0.9;
   config.windowRules.push_back(std::move(scratchpadRule));
 
+  WindowRule maximizedRule;
+  maximizedRule.matchMaximized = true;
+  maximizedRule.borderWidth = 0;
+  config.windowRules.push_back(std::move(maximizedRule));
+
   const auto tiled = umbriel::resolveWindowRules(config, "foot", "shell", std::nullopt, ContentType::None, {}, 0);
   CHECK(!tiled.opacity);
   CHECK(!tiled.blur);
+  CHECK(!tiled.borderWidth);
+
+  const auto maximized =
+      umbriel::resolveWindowRules(config, "foot", "shell", std::nullopt, ContentType::None, {.maximized = true}, 0);
+  CHECK(maximized.borderWidth && *maximized.borderWidth == 0);
 
   const auto floating =
       umbriel::resolveWindowRules(config, "foot", "shell", std::nullopt, ContentType::None, {.floating = true}, 0);
