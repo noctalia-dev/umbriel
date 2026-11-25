@@ -46,6 +46,22 @@ You can also press `Mod+Space` before opening any windows, then use your normal 
 
 Both styles work on the same scratchpad, so each binding can pick the one it wants.
 
+## One key to show and hide
+
+`scratchpad-window-cycle` shows and hides one window at a time on a single key:
+
+```toml
+[keybinds]
+"Mod+S" = "scratchpad-window-cycle"
+"Mod+Ctrl+S" = "scratchpad-window-cycle-previous"
+```
+
+- If a scratchpad window has focus, it hides the scratchpad.
+- If the scratchpad is shown but another window has focus, such as a pinned window or one on another output, it focuses the scratchpad, moving it to this output if needed.
+- Otherwise it shows the window after the one you used last, or before it with `scratchpad-window-cycle-previous`. If the scratchpad was dismissed some other way, such as by focusing a window behind it, it shows the same window again.
+
+With windows A, B and C, repeated presses show A, hide, show B, hide, show C, hide, and start again at A. The order is the same as `scratchpad-window-show-next`, so both can be bound together.
+
 ## Named scratchpads
 
 Define names when you want several independent scratchpads:
@@ -147,15 +163,17 @@ Only losing the last window hides the pad. An empty pad you open explicitly stay
 
 ## Actions
 
-| Action                                           | What it does                                                                                                                               |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `window-move-to-scratchpad [<scratchpad>]`       | Store the focused workspace window.                                                                                                        |
-| `scratchpad-toggle [<scratchpad>]`               | Show or hide the selected scratchpad, including when empty. Opening an empty pad also runs its `spawn_when_empty` command when configured. |
-| `window-restore-from-scratchpad [<scratchpad>]`  | Restore one remembered window.                                                                                                             |
-| `window-toggle-scratchpad [<scratchpad>]`        | Store the focused window or restore it when already selected.                                                                              |
-| `scratchpad-focus-next [<scratchpad>]`           | Focus the next visible member.                                                                                                             |
-| `scratchpad-window-show-next [<scratchpad>]`     | Show only the next member, hiding the one on show.                                                                                         |
-| `scratchpad-window-show-previous [<scratchpad>]` | Show only the previous member, hiding the one on show.                                                                                     |
+| Action                                            | What it does                                                                                                                               |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `window-move-to-scratchpad [<scratchpad>]`        | Store the focused workspace window.                                                                                                        |
+| `scratchpad-toggle [<scratchpad>]`                | Show or hide the selected scratchpad, including when empty. Opening an empty pad also runs its `spawn_when_empty` command when configured. |
+| `window-restore-from-scratchpad [<scratchpad>]`   | Restore one remembered window.                                                                                                             |
+| `window-toggle-scratchpad [<scratchpad>]`         | Store the focused window or restore it when already selected.                                                                              |
+| `scratchpad-focus-next [<scratchpad>]`            | Focus the next visible member.                                                                                                             |
+| `scratchpad-window-show-next [<scratchpad>]`      | Show only the next member, hiding the one on show.                                                                                         |
+| `scratchpad-window-show-previous [<scratchpad>]`  | Show only the previous member, hiding the one on show.                                                                                     |
+| `scratchpad-window-cycle [<scratchpad>]`          | Show only the next member, or hide the scratchpad when it has focus.                                                                       |
+| `scratchpad-window-cycle-previous [<scratchpad>]` | Show only the previous member, or hide the scratchpad when it has focus.                                                                   |
 
 The argument is optional only for the implicit `default` scratchpad. Restore and focus-next require the scratchpad to be visible.
 
@@ -185,7 +203,20 @@ Fullscreen and maximized windows continue to fit their monitor, and their saved 
 
 Showing a populated scratchpad focuses its most recently focused member. Hiding it returns focus to a workspace window. Opening the workspace overview hides every visible scratchpad without removing its stored windows. While the overview is open, including its closing animation, scratchpad actions and window rules do not show a scratchpad.
 
-A visible scratchpad owns its output's input. The pointer reaches only its windows, pinned windows, and layer surfaces such as panels; the workspace windows behind it get neither clicks, hover, nor Mod-drags. Clicking the backdrop hides the scratchpad and focuses the workspace. Switching or swiping to another workspace on that output also hides it, as does any other focus change to a workspace window there, such as `window-focus` or an application activating. With focus following the mouse, moving the pointer onto the scratchpad's output focuses the scratchpad.
+A visible scratchpad owns its output's input. The pointer reaches only its windows, pinned windows, and layer surfaces such as panels; the workspace windows behind it get neither clicks, hover, nor Mod-drags. Clicking the backdrop hides the scratchpad and focuses the workspace. Any other focus change to a workspace window there also hides it, such as `window-focus` or an application activating, and so does switching or swiping to another workspace on that output unless the scratchpad is sticky. With focus following the mouse, moving the pointer onto the scratchpad's output focuses the scratchpad.
+
+Set `modal = false` on a named scratchpad to keep it up while you use the windows behind it. Clicks and focus reach those windows, the scratchpad stays shown and draws no backdrop, and switching workspace still hides it unless it is sticky.
+
+Set `sticky = true` on a named scratchpad to keep it up when you switch or swipe to another workspace on its output. It keeps focus and stays over the new workspace until you hide it.
+
+```toml
+[[scratchpad]]
+name = "terminal"
+modal = false
+sticky = true
+```
+
+The implicit `default` scratchpad is always modal and never sticky.
 
 A dialog parented to a visible scratchpad window joins that scratchpad unless a window rule explicitly chooses another destination.
 

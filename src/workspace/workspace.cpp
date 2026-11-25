@@ -2036,8 +2036,10 @@ namespace umbriel {
         ring.push_back(unitEntry(column, row));
       }
     }
-    std::ranges::copy_if(m_floatingStack, std::back_inserter(ring), [](const View* view) {
-      return !view->minimized();
+    // Stacking navigation follows workspace membership order, which stays stable when focus raises a window.
+    const auto& floatingOrder = m_layoutMode == LayoutMode::Stacking ? m_views : m_floatingStack;
+    std::ranges::copy_if(floatingOrder, std::back_inserter(ring), [](const View* view) {
+      return view->floating() && !view->minimized();
     });
     if (ring.size() < 2) {
       return nullptr;
@@ -3678,7 +3680,8 @@ namespace umbriel {
       return false;
     }
     // A workspace swipe on a scratchpad's output takes the scratchpad away, as a workspace switch does.
-    if (ScratchpadManager* scratchpads = m_server->scratchpadManager()) {
+    if (ScratchpadManager* scratchpads = m_server->scratchpadManager();
+        scratchpads != nullptr && !scratchpads->stickyOn(m_output)) {
       scratchpads->dismissOn(m_output);
     }
     // A settle still running between neighbours is heading for a whole step, so where it is on screen minus that step
@@ -3885,9 +3888,9 @@ namespace umbriel {
     if (m_active == workspace && config().workspaces.backAndForth && m_previous != nullptr && m_previous != m_active) {
       selected = m_previous;
     }
-    // A scratchpad covers the workspace it was shown over, so switching away from it closes the scratchpad.
+    // A scratchpad covers the workspace it was shown over, so switching away from it closes it unless it is sticky.
     if (ScratchpadManager* scratchpads = m_server->scratchpadManager();
-        scratchpads != nullptr && selected != m_active) {
+        scratchpads != nullptr && selected != m_active && !scratchpads->stickyOn(m_output)) {
       scratchpads->dismissOn(m_output);
     }
     activate(selected);

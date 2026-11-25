@@ -419,6 +419,9 @@ namespace umbriel {
       if (rule.borderEffect) {
         resolved.borderEffect = rule.borderEffect;
       }
+      if (rule.borderUnfocused) {
+        resolved.borderUnfocused = rule.borderUnfocused;
+      }
       if (rule.windowEffect) {
         resolved.windowEffect = rule.windowEffect;
       }
