@@ -4036,7 +4036,8 @@ static bool render_animation_shadow(struct render_list_entry* entry, const struc
   struct wlr_scene_node* stop = source->parent != NULL ? &source->parent->node : NULL;
   // Ancestor (workspace/overview) shaders already enclose both window and
   // shadow. Capture only the window's own effects, never those ancestors twice.
-  // Shape-preserving effects leave the analytic shadow correct as it is.
+  // Closing snapshots follow their captured alpha even when the effect only
+  // fades: the client may already have cleared its content before unmap.
   bool animated = false;
   if (data->effects == NULL) {
     return false;
@@ -4048,7 +4049,9 @@ static bool render_animation_shadow(struct render_list_entry* entry, const struc
     }
     for (unsigned i = 0; i < FX_ANIMATION_SLOTS && !animated; i++) {
       const struct fx_effect_shader* shader = effect->shaders[i];
-      animated = shader != NULL && shader->renderer == pass->buffer->renderer && !shader->shape_preserving;
+      animated = shader != NULL
+          && shader->renderer == pass->buffer->renderer
+          && (i == FX_SLOT_WINDOWS_OUT || !shader->shape_preserving);
     }
     if (animated) {
       break;

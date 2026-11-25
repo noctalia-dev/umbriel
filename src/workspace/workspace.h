@@ -59,6 +59,9 @@ namespace umbriel {
         WorkspaceGroup& group, wlr_ext_workspace_handle_v1* handle, std::string id, std::string name, size_t index,
         bool named, ResolvedLayoutConfig layoutConfig
     );
+    // A scratchpad's workspace: outside every output's inventory and the ext-workspace protocol, drawn in the server's
+    // scratchpad tree. It stays active; ScratchpadManager shows and hides its windows one by one.
+    Workspace(WorkspaceGroup& group, std::string_view scratchpadName, ResolvedLayoutConfig layoutConfig);
     ~Workspace();
 
     Workspace(const Workspace&) = delete;
@@ -76,6 +79,7 @@ namespace umbriel {
     bool transferred() const { return m_transferred; }
     size_t index() const { return m_index; }
     bool active() const { return m_active; }
+    bool scratchpad() const { return m_scratchpad; }
     const std::shared_ptr<const DisplacedWorkspace>& displacedWorkspace() const { return m_displacedWorkspace; }
     std::shared_ptr<WorkspaceLaunchAnchor> reserveForLaunch() const { return m_launchAnchor; }
     bool launchReserved() const { return m_launchAnchor.use_count() > 1; }
@@ -175,9 +179,9 @@ namespace umbriel {
     void layoutDetach(View* view, bool animate = false);
     // Keeps a closed tile's held snapshot until the tiles filling its space have redrawn at their new sizes.
     void holdCloseSnapshot(CloseSnapshotId snapshot);
-    // Focus is about to move with a layout change: to an opening tile, or away from a closing one. With
-    // windows_resize.wait_for_redraw, members keep drawing the focus they show now until the next arrange ends; a
-    // member that arrange freezes for its clients keeps it until the switch, so focus lands with the new layout.
+    // Focus is about to move with a layout change: to an opening tile, or away from a closing one. Members keep drawing
+    // the focus they show now until the next arrange ends; a member that arrange freezes for its clients keeps it until
+    // the switch, so focus lands with the new layout.
     void deferFocusChrome();
     // Whether `view` records focus changes instead of drawing them; see deferFocusChrome.
     bool defersFocusChrome(const View* view) const;
@@ -294,9 +298,13 @@ namespace umbriel {
     const AnimatedValue* layoutMotionValue() const;
     // Advances the motion; true while it is still running.
     bool tickLayoutMotion(double nowMsec);
-    bool layoutMotionActive() const { return m_motion.progress.animating() || !m_motion.views.empty(); }
-    // A resizing reflow held until its clients redraw (windows_resize.wait_for_redraw).
-    bool layoutMotionWaiting() const { return m_motion.waiting; }
+    // The size half of the running motion, while windows_resize animates it.
+    bool layoutSizeAnimating() const { return m_motion.size.animating(); }
+    // Ends a motion held for its clients as soon as the last of them has answered, on the commit that answered it.
+    void releaseAnsweredLayoutHold();
+    bool layoutMotionActive() const {
+      return m_motion.waiting || m_motion.progress.animating() || !m_motion.views.empty();
+    }
     // Explicit strip scrolling defers one hover refresh until its layout motion settles and the pointer moves.
     void deferScrollHoverFocus() { m_scrollHoverFocusDeferred = true; }
     bool scrollHoverFocusDeferred() const { return m_scrollHoverFocusDeferred; }
@@ -306,6 +314,7 @@ namespace umbriel {
     void transferTo(WorkspaceGroup& group);
     void syncFloatingLayer();
     friend class WorkspaceGroup;
+    friend class ScratchpadManager;
 
     void applyPositions(bool animate);
     wlr_box tiledTargetBox(const View* view, const wlr_box& usable, const Layout* layout = nullptr) const;
@@ -334,8 +343,10 @@ namespace umbriel {
     // Snap or animate every tiled member of the layout into its slot from wherever it is presented now.
     void applyTiledMotion(const wlr_box& usable, bool animate);
     void startLayoutTimelines(double positionSpeed, double sizeSpeed);
-    // Advances a motion held by windows_resize.wait_for_redraw; true while it still holds.
+    // Advances a motion held for its clients' redraw; true while it still holds.
     bool tickLayoutMotionWait(double nowMsec);
+    bool layoutHoldAnswered() const;
+    void releaseLayoutHold();
     bool heldOpenerAlive(const View* view) const;
     void resumeHeldOpeners();
     void endLayoutMotion();
@@ -349,6 +360,7 @@ namespace umbriel {
     bool m_named = false;
     bool m_transferred = false;
     bool m_active = false;
+    bool m_scratchpad = false;
     std::shared_ptr<const DisplacedWorkspace> m_displacedWorkspace;
     std::shared_ptr<WorkspaceLaunchAnchor> m_launchAnchor = std::make_shared<WorkspaceLaunchAnchor>();
     std::vector<View*> m_views;
@@ -406,9 +418,11 @@ namespace umbriel {
       AnimatedValue size;
       MonotonicEasing sizeCurve;
       bool sizePhysics = false;
-      // windows_resize.wait_for_redraw: the timelines have not started yet, because a resized member's client has not
-      // redrawn at its new size. waitStartMsec is the animation clock at the first held frame.
+      // The timelines have not started yet, because a resized member's or an opener's client has not redrawn at its
+      // new size. waitStartMsec is the animation clock at the first held frame. animateAfterWait starts windows_move
+      // and windows_resize from the held boxes once the hold ends, instead of switching in one frame.
       bool waiting = false;
+      bool animateAfterWait = false;
       std::optional<double> waitStartMsec;
       // Openers kept hidden, and members whose frame is frozen, until the held motion switches.
       struct Opener {
@@ -514,6 +528,8 @@ namespace umbriel {
     void refreshWorkspaceMetadata();
     bool pruneDisplacedWorkspaces();
     size_t storedWorkspaceCount() const { return m_workspaces.size() + m_reservedWorkspaces.size(); }
+    // The scratchpad workspaces presented on this output. They are in no inventory, so the passes over it add these.
+    std::vector<Workspace*> scratchpadWorkspaces() const;
 
     void beginReveal();
     // The workspace a reveal at `progress` shows coming in; the previous one when progress is held at the base.

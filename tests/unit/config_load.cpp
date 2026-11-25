@@ -342,6 +342,25 @@ UMBRIEL_TEST(rejectsRemovedWidthPresetKey) {
   CHECK(containsDiagnostic(store, "unknown key layout.width_presets"));
 }
 
+UMBRIEL_TEST(misspelledRuleMatchKeyDropsRule) {
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match = { app_id = "foot", titel = "x" }
+default_floating = true
+
+[[layer_rule]]
+match = { namespace = "bar", layerr = "top" }
+blur = true
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(store.config().layerRules.empty());
+}
+
 UMBRIEL_TEST(backgroundDefaultsOpaque) {
   const umbriel::Config config;
   CHECK_EQ(config.colors.background[3], 1.0F);
@@ -1363,41 +1382,6 @@ UMBRIEL_TEST(durationBesideASpringCurveIsReportedAsInert) {
   CHECK(store.reload().success);
   CHECK(!containsDiagnostic(store, "animation.duration_ms has no effect"));
   CHECK_EQ(store.config().animation.workspaces.durationMs, 200);
-}
-
-UMBRIEL_TEST(resizeWaitAppliesOnlyWhileTheSizeDoesNotAnimate) {
-  const TempConfig file;
-  ConfigStore& store = umbriel::configStore();
-  store.setRootPath(file.path(), true);
-
-  file.write(
-      "[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n\n[animation.windows_out]\nenabled = "
-      "false\n"
-  );
-  CHECK(store.reload().success);
-  const auto& animation = store.config().animation;
-  CHECK(animation.windowsResize.waitsForClient(animation.enabled));
-  CHECK(animation.holdsClosedTile());
-  CHECK(!containsDiagnostic(store, "has no effect"));
-
-  // An animated close fills the closed tile's space itself, so it holds no frame.
-  file.write("[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n");
-  CHECK(store.reload().success);
-  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
-  CHECK(!store.config().animation.holdsClosedTile());
-
-  // An animated size has nothing to wait for, so the key is reported as inert.
-  file.write("[animation.windows_resize]\nenabled = true\nwait_for_redraw = true\n");
-  CHECK(store.reload().success);
-  CHECK(containsDiagnostic(store, "animation.windows_resize.wait_for_redraw has no effect"));
-  CHECK(!store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
-
-  // With every animation off, nothing animates the size or the close, so the wait applies and holds closed tiles.
-  file.write("[animation]\nenabled = false\n\n[animation.windows_resize]\nwait_for_redraw = true\n");
-  CHECK(store.reload().success);
-  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
-  CHECK(store.config().animation.holdsClosedTile());
-  CHECK(!containsDiagnostic(store, "has no effect"));
 }
 
 UMBRIEL_TEST(workspaceRevealRequiresAnAnimationShader) {
@@ -4335,6 +4319,30 @@ UMBRIEL_TEST(effectSelectorsLoadAtEveryLevel) {
   CHECK(!containsDiagnostic(store, "unknown key"));
   const umbriel::EffectPreset* ring = umbriel::findEffectPreset(config.effects, "ring");
   CHECK(ring != nullptr && ring->overlay == "lines");
+}
+
+UMBRIEL_TEST(windowRuleBorderEffectUnfocusedAcceptsOnlyBooleans) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[[window_rule]]\nborder_effect_unfocused = true\n"
+      "[[window_rule]]\nborder_effect_unfocused = false\n"
+      "[[window_rule]]\nopacity = 0.9\n"
+      "[[window_rule]]\nborder_effect_unfocused = \"audio\"\n"
+  );
+  CHECK(store.reload().success);
+  const auto& rules = store.config().windowRules;
+  CHECK_EQ(rules.size(), size_t{4});
+  if (rules.size() != 4) {
+    return;
+  }
+  CHECK(rules[0].borderUnfocused == true);
+  CHECK(rules[1].borderUnfocused == false);
+  CHECK(!rules[2].borderUnfocused.has_value());
+  CHECK(!rules[3].borderUnfocused.has_value());
+  CHECK(containsDiagnostic(store, "border_effect_unfocused"));
+  CHECK(!containsDiagnostic(store, "unknown key"));
 }
 
 UMBRIEL_TEST(windowsDragTuningDefaultsAndBounds) {

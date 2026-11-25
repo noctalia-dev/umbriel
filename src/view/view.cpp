@@ -380,11 +380,18 @@ namespace umbriel {
 
   void View::setWorkspace(Workspace* workspace, bool attachToLayout, LayoutAttachOrigin origin) {
     assert(!attached());
-    if (workspace != nullptr
-        && m_server->scratchpadManager() != nullptr
-        && m_server->scratchpadManager()->contains(this)) {
+    if (ScratchpadManager* scratchpad = m_server->scratchpadManager(); workspace != nullptr
+        && scratchpad != nullptr
+        && scratchpad->contains(this)
+        && workspace != scratchpad->workspaceOf(scratchpad->nameFor(this))) {
       return;
     }
+    // Only ScratchpadManager puts a window into a scratchpad's workspace, after recording its membership.
+    assert(
+        workspace == nullptr
+        || !workspace->scratchpad()
+        || (m_server->scratchpadManager() != nullptr && m_server->scratchpadManager()->contains(this))
+    );
     // A pinned window belongs to its output and always joins that output's active workspace. Reconciliation may still
     // name a workspace it is deactivating as the group's active one; only a workspace that is really active qualifies.
     if (m_pinned && workspace != nullptr && !workspace->active() && workspace->group() != nullptr) {
@@ -523,7 +530,7 @@ namespace umbriel {
 
   bool View::assignLaunchOrigin(
       std::string_view token, std::shared_ptr<WorkspaceLaunchAnchor> workspace, uint32_t timeoutMsec,
-      std::string_view scratchpad
+      std::string_view scratchpad, bool floating
   ) {
     Workspace* target = workspace != nullptr ? workspace->workspace : nullptr;
     if (token.empty()
@@ -547,6 +554,7 @@ namespace umbriel {
     m_launchWorkspace = std::move(workspace);
     ++m_launchWorkspace->pendingViews;
     m_launchScratchpad = scratchpad;
+    m_launchFloating = floating;
     m_launchToken = token;
     m_launchWorkspaceId = target->id();
     m_launchPlacementPending = true;
@@ -587,6 +595,7 @@ namespace umbriel {
     }
     m_launchWorkspace.reset();
     m_launchScratchpad.clear();
+    m_launchFloating = false;
     m_launchPlacementPending = false;
     m_launchWorkspaceId.clear();
     if (clearToken) {
@@ -669,13 +678,41 @@ namespace umbriel {
   }
 
   void View::raiseToTop() {
-    View* root = this;
-    while (View* parent = root->transientParent()) {
-      root = parent;
+    View* self = this;
+    raiseInOrder(std::span(&self, 1));
+  }
+
+  void View::raiseInOrder(std::span<View* const> views) {
+    std::vector<wlr_scene_node*> frames;
+    for (View* view : views) {
+      View* root = view;
+      while (View* parent = root->transientParent()) {
+        root = parent;
+      }
+      root->collectTransientTree(frames);
     }
-    root->raiseTransientTree();
-    if (Workspace* home = workspace()) {
-      home->raiseFloatingLayer();
+    // Raising each frame in turn would briefly lift a window over the ones it ends below. Xwayland mirrors every
+    // restack, so the X11 window under the pointer would receive crossing events, and a client can end the drag its
+    // press started. Only a frame's last raise decides its place, so frames are placed from the top down instead: each
+    // one moves only past frames that end below it, and frames already in order stay put.
+    std::vector<wlr_scene_node*> placed;
+    for (wlr_scene_node* frame : std::views::reverse(frames)) {
+      if (std::ranges::contains(placed, frame)) {
+        continue;
+      }
+      // Placement runs downward, so the sibling placed last is the lowest one placed so far.
+      const auto above = std::ranges::find(placed.rbegin(), placed.rend(), frame->parent, &wlr_scene_node::parent);
+      if (above != placed.rend()) {
+        wlr_scene_node_place_below(frame, *above);
+      } else {
+        wlr_scene_node_raise_to_top(frame);
+      }
+      placed.push_back(frame);
+    }
+    for (View* view : views) {
+      if (Workspace* home = view->workspace()) {
+        home->raiseFloatingLayer();
+      }
     }
   }
 
@@ -774,19 +811,19 @@ namespace umbriel {
     setSceneParent(target);
   }
 
-  void View::raiseTransientTree() {
+  void View::collectTransientTree(std::vector<wlr_scene_node*>& frames) {
     // An attached dialog stacks inside its parent's frame, which its parent's own raise already carried.
     if (attached()) {
       return;
     }
     syncTransientSceneParent();
-    wlr_scene_node_raise_to_top(&m_sceneTree->node);
+    frames.push_back(&m_sceneTree->node);
 
     const auto views = m_server->registry().all();
     for (const auto& view : std::views::reverse(views)) {
       View* child = view.get();
       if (child != nullptr && child != this && child->transientParent() == this) {
-        child->raiseTransientTree();
+        child->collectTransientTree(frames);
       }
     }
   }
@@ -1059,9 +1096,6 @@ namespace umbriel {
     if (m_workspace != nullptr) {
       return fs || m_workspace->liftedAboveFullscreen(this) ? m_workspace->fullscreenTree()
                                                             : m_workspace->viewLayer(m_tiled);
-    }
-    if (m_inScratchpad) {
-      return fs ? m_server->fullscreenTree() : m_server->scratchpadTree();
     }
     return fs ? m_server->fullscreenTree() : m_server->xdgTree();
   }

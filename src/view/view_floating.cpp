@@ -482,15 +482,11 @@ namespace umbriel {
   void View::clearFloatingSizeRequest() {
     m_floating.clearSizeRequest();
     m_floatingSizeConfigure.reset();
-    m_openingFloatingSize.reset();
     m_xwaylandResizeConfigurePending = false;
     m_pointerResizeSettling = false;
   }
 
   std::array<int, 2> View::floatingSize() const {
-    if (openingAnimationActive() && m_openingFloatingSize) {
-      return *m_openingFloatingSize;
-    }
     if (const auto& pending = m_floating.pendingSize()) {
       return *pending;
     }
@@ -694,13 +690,7 @@ namespace umbriel {
   }
 
   void View::adoptFloatingClientSize() {
-    if (m_tiled
-        || !m_mapped
-        || scheduledFullscreen()
-        || scheduledMaximized()
-        || m_region
-        || sizeGrabTracksPointer()
-        || openingAnimationActive()) {
+    if (m_tiled || !m_mapped || scheduledFullscreen() || scheduledMaximized() || m_region || sizeGrabTracksPointer()) {
       return;
     }
     const auto requested = m_floating.pendingSize();
@@ -713,10 +703,8 @@ namespace umbriel {
     if (geo.width <= 0 || geo.height <= 0) {
       return;
     }
-    const auto openingSize = m_openingFloatingSize;
-    m_openingFloatingSize.reset();
-    if ((requested && (geo.width != (*requested)[0] || geo.height != (*requested)[1]))
-        || (openingSize && (geo.width != (*openingSize)[0] || geo.height != (*openingSize)[1]))) {
+    // An opener's inset already scales from the size its client draws.
+    if (!openingAnimationActive() && requested && (geo.width != (*requested)[0] || geo.height != (*requested)[1])) {
       beginResizeAnimation(geo.width, geo.height);
       if (anchor && !attached()) {
         const FloatingPoint origin = anchoredContentOrigin(*anchor, edges, geo);
@@ -729,17 +717,11 @@ namespace umbriel {
       adoptScheduledSize(geo.width, geo.height);
       const wlr_box usable = floatingUsableArea();
       if (!requested
-          && !openingSize
           && m_workspace != nullptr
           && m_workspace->layoutMode() == LayoutMode::Stacking
           && !m_floating.restoredOrigin(usable)
           && transientParent() == nullptr) {
         placeInUsableArea();
-      } else if (openingSize) {
-        if (const auto clamped =
-                floatingClampTarget({layoutTargetX(), layoutTargetY()}, geo.width, geo.height, false)) {
-          animateTo(clamped->x, clamped->y);
-        }
       } else {
         clampFloatingPosition();
       }

@@ -89,6 +89,10 @@ namespace umbriel {
             "workspace switch trigger=focus reason={} app_id='{}' output='{}' from='{}' to='{}'",
             focusReasonName(reason), appId, outputName, current, workspace->name()
         );
+        // Switching away takes a scratchpad shown over the workspace with it, as a workspace switch does.
+        if (ScratchpadManager* pad = m_server.scratchpadManager(); pad != nullptr && !pad->stickyOn(group->output())) {
+          pad->dismissOn(group->output());
+        }
         group->activate(workspace);
       }
     }
@@ -366,8 +370,13 @@ namespace umbriel {
     if (m_server.sessionLocked()) {
       return;
     }
+    Output* output = preferred != nullptr ? preferred : m_server.outputFromWlr(m_server.preferredOutput());
     if (ScratchpadManager* pad = m_server.scratchpadManager()) {
-      pad->deactivateOn(preferred != nullptr ? preferred : m_server.outputFromWlr(m_server.preferredOutput()));
+      // A modal scratchpad owns its output's input, so explicit focus lands in it rather than behind it.
+      if (exclusiveKeyboardLayer() == nullptr && pad->modalOn(output) && pad->focusOn(output)) {
+        return;
+      }
+      pad->deactivateOn(output);
     }
     if (LayerSurface* layer = exclusiveKeyboardLayer()) {
       layer->focus();
@@ -403,7 +412,9 @@ namespace umbriel {
           return true;
         }
       }
-      return false;
+      // A scratchpad shown over an empty workspace is all that is left to focus there.
+      ScratchpadManager* pad = m_server.scratchpadManager();
+      return pad != nullptr && pad->focusOn(output);
     };
 
     if (preferred != nullptr) {
@@ -542,6 +553,14 @@ namespace umbriel {
     // Workspace transitions and scratchpad fade-outs keep an inactive view's scene enabled until the animation
     // finishes. They are visual snapshots, not interactive windows.
     if (!view->pinned() && !view->onActiveWorkspace()) {
+      *surface = nullptr;
+      return nullptr;
+    }
+    // A modal scratchpad owns its output's pointer: the windows behind it are reached by dismissing it.
+    if (ScratchpadManager* pad = m_server.scratchpadManager(); pad != nullptr
+        && !view->pinned()
+        && !pad->contains(view)
+        && pad->modalOn(m_server.outputFromWlr(wlr_output_layout_output_at(m_server.outputLayout(), lx, ly)))) {
       *surface = nullptr;
       return nullptr;
     }

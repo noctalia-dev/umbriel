@@ -118,7 +118,7 @@ namespace umbriel {
   // game/network loop on the frame callback stalls. A suspended view gets none: clients such as Firefox detect
   // occlusion only from a long callback gap, and a slow tick reads as a slow display that drops video frames.
   inline constexpr int kBackgroundFrameIntervalMs = 100;
-  // Longest windows_resize.wait_for_redraw holds a reflow for its clients before it switches without them.
+  // Longest a resizing reflow holds for its clients' redraw before it moves on without them.
   inline constexpr double kRedrawWaitMs = 150.0;
   // Longest a held close snapshot stays: a safety net well past kRedrawWaitMs, released by the switch before then.
   inline constexpr double kMaxCloseHoldMs = 1000.0;
@@ -358,7 +358,9 @@ namespace umbriel {
     void relayoutBanner();
     void relayoutCheatsheet();
     void relayoutQuitConfirm();
-    void spawn(const char* command, const char* description = nullptr, bool withActivationToken = false);
+    void spawn(
+        const char* command, const char* description = nullptr, bool withActivationToken = false, bool floating = false
+    );
     void completeIpcLaunch(std::string_view tokenName, pid_t pid);
     void handleConfigReload(const ConfigReloadResult& result);
     // Re-evaluate application idle inhibitors after a surface's presentation
@@ -622,7 +624,9 @@ namespace umbriel {
     static void onDisplacedRestoreIdle(void* data);
     static void onSuspensionSyncIdle(void* data);
 
-    void trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid = 0);
+    void trackActivationToken(
+        wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid = 0, bool launchFloating = false
+    );
     void assignLaunchOriginFromEnvironment(View& view);
     bool claimLaunchOrigin(View& view, wlr_xdg_activation_token_v1* token);
 
@@ -743,6 +747,7 @@ namespace umbriel {
       bool inputBacked = false;
       bool pointerBacked = false;
       bool launchClaimed = false;
+      bool launchFloating = false;
       pid_t launchPid = 0;
       std::shared_ptr<WorkspaceLaunchAnchor> launchWorkspace;
       std::string launchScratchpad;

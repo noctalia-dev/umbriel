@@ -111,6 +111,7 @@ namespace umbriel {
         wlr_surface* target;
         int x = 0;
         int y = 0;
+        wlr_box clip{};
         bool found = false;
       } position{target};
 
@@ -125,6 +126,7 @@ namespace umbriel {
             if (sceneSurface != nullptr && sceneSurface->surface == position->target) {
               position->x = x;
               position->y = y;
+              wlr_scene_surface_get_clip(sceneSurface, &position->clip);
               position->found = true;
             }
           },
@@ -134,9 +136,21 @@ namespace umbriel {
       if (!position.found) {
         return false;
       }
-      *sx = (lx - position.x) * scale;
-      *sy = (ly - position.y) * scale;
+      // A clipped surface's buffer starts at the clip origin; add the clip back, as the scene hit test does, so motion
+      // matches the coordinates the surface got on press.
+      *sx = (lx - position.x + position.clip.x) * scale;
+      *sy = (ly - position.y + position.clip.y) * scale;
       return true;
+    }
+
+    // The workspace a drag drops `view` into: a scratchpad window's own, wherever the pointer is, else the active
+    // workspace of the pointer's output.
+    Workspace* dropWorkspace(Server& server, View& view, Output* output) {
+      if (const ScratchpadManager* scratchpad = server.scratchpadManager();
+          scratchpad != nullptr && scratchpad->contains(&view)) {
+        return view.workspace();
+      }
+      return output != nullptr && output->workspaceGroup() != nullptr ? output->workspaceGroup()->active() : nullptr;
     }
 
   } // namespace
@@ -305,6 +319,7 @@ namespace umbriel {
       forwardEffectPointer();
       if (m_compositorOwnsCursor) {
         setXcursor(m_compositorCursorName.c_str());
+        refreshPointerFocus();
       } else {
         restoreClientCursor();
       }
@@ -329,6 +344,7 @@ namespace umbriel {
         forwardEffectPointer();
         if (m_compositorOwnsCursor) {
           setXcursor(m_compositorCursorName.c_str());
+          refreshPointerFocus();
         } else {
           restoreClientCursor();
         }
@@ -357,6 +373,13 @@ namespace umbriel {
     m_cursorHidden = true;
     forwardEffectPointer();
     wlr_cursor_set_surface(m_cursor, nullptr, 0, 0);
+    // An invisible cursor must not keep a client looking pointed at: drop pointer focus so the surface under it
+    // receives leave and stops drawing hover state. A pointer constraint (a game's lock or confinement) owns that
+    // focus instead: clearing it would strand the lock and churn leave/enter on every hide, so setPointerFocus keeps
+    // focus on the constrained surface while hidden.
+    if (m_activeConstraint == nullptr) {
+      clearPointerFocus();
+    }
   }
 
   void Cursor::forwardEffectPointer() const {
@@ -1083,10 +1106,8 @@ namespace umbriel {
     }
     bool tiled = view->tiled();
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
-        scratchpad != nullptr && scratchpad->contains(view)) {
+        scratchpad != nullptr && !tiled && scratchpad->contains(view)) {
       view->restoreMaximizedForMove();
-      view->setFloating(true);
-      tiled = false;
     }
 
     if (!tiled && (view->region() || view->floatingMaximized())) {
@@ -1178,11 +1199,6 @@ namespace umbriel {
       resetMode();
     }
     bool tiled = view->tiled();
-    if (ScratchpadManager* scratchpad = m_server->scratchpadManager();
-        scratchpad != nullptr && !view->attached() && scratchpad->contains(view)) {
-      view->setFloating(true);
-      tiled = false;
-    }
 
     if (tiled) {
       Workspace* workspace = view->workspace();
@@ -1855,11 +1871,6 @@ namespace umbriel {
         return;
       }
       if (auto* grab = std::get_if<TiledResizeGrab>(&m_grab)) {
-        if (grab->deferred && grab->session != nullptr && grab->workspace != nullptr) {
-          grab->session->applyDelta(
-              m_cursor->x - grab->startX, m_cursor->y - grab->startY, grab->workspace->tiledArea()
-          );
-        }
         if (grab->workspace != nullptr) {
           if (grab->workspace->focusedView() == grab->view) {
             grab->workspace->reevaluateFocusedColumn();
@@ -2077,7 +2088,12 @@ namespace umbriel {
       } else if (surface == nullptr || wlr_xwayland_surface_try_from_wlr_surface(surface) == nullptr) {
         // A press on an override-redirect X11 menu leaves the keyboard with the menu.
         wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
-        m_server->refocusExplicit(m_server->outputFromWlr(wlrOutput));
+        Output* output = m_server->outputFromWlr(wlrOutput);
+        // A press on a modal scratchpad's backdrop dismisses it.
+        if (ScratchpadManager* pad = m_server->scratchpadManager(); pad != nullptr && pad->modalOn(output)) {
+          pad->dismissOn(output);
+        }
+        m_server->refocusExplicit(output);
       }
     }
   }
@@ -2285,6 +2301,9 @@ namespace umbriel {
     m_server->notifyInputActivity();
     m_server->cancelModifierTap();
     m_server->remapTouches();
+    if (config().input.cursor.hideOnTouch) {
+      hideCursor();
+    }
 
     double lx = 0;
     double ly = 0;
@@ -2377,22 +2396,12 @@ namespace umbriel {
 
   void Cursor::handleTouchCancel(void* data) {
     auto* event = static_cast<wlr_touch_cancel_event*>(data);
-    (void)event;
     m_server->notifyIdleActivity();
 
     wlr_seat* seat = m_server->seat()->wlr();
-    // Find the first client with an active touch point, then cancel outside
-    // the iteration: wlr_seat_touch_notify_cancel may mutate the list.
-    wlr_seat_client* client = nullptr;
-    wlr_touch_point* point;
-    wl_list_for_each(point, &seat->touch_state.touch_points, link) {
-      if (point->client != nullptr) {
-        client = point->client;
-        break;
-      }
-    }
-    if (client != nullptr) {
-      wlr_seat_touch_notify_cancel(seat, client);
+    wlr_touch_point* point = wlr_seat_touch_get_point(seat, event->touch_id);
+    if (point != nullptr && point->client != nullptr) {
+      wlr_seat_touch_notify_cancel(seat, point->client);
     }
   }
 
@@ -2709,6 +2718,7 @@ namespace umbriel {
     // The same gates as hover: grabs, lock, exclusive layers, and the overview keep their focus.
     wlr_seat* seat = m_server->seat()->wlr();
     if (!isPassthrough()
+        || m_cursorHidden
         || seat->drag != nullptr
         || seat->pointer_state.button_count != 0
         || wlr_seat_pointer_has_grab(seat)
@@ -3135,7 +3145,10 @@ namespace umbriel {
       return;
     }
 
-    Workspace* workspace = output->workspaceGroup()->active();
+    Workspace* workspace = dropWorkspace(*m_server, *grab->view, output);
+    if (workspace == nullptr) {
+      return;
+    }
     grab->drop = computeDropTarget(
         *workspace, m_cursor->x, m_cursor->y, grab->view,
         DropTargetOptions{
@@ -3196,7 +3209,7 @@ namespace umbriel {
       clearDropZonePreview();
       return;
     }
-    const Workspace* workspace = output->workspaceGroup()->active();
+    const Workspace* workspace = dropWorkspace(*m_server, *grab->view, output);
     if (workspace == nullptr || !workspace->layoutConfig().stacking.dropZones || !grab->view->canSetRegion(workspace)) {
       clearDropZonePreview();
       return;
@@ -3279,7 +3292,7 @@ namespace umbriel {
     // into the layout rather than staying detached.
     Output* destination =
         m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
-    Workspace* workspace = destination != nullptr ? destination->workspaceGroup()->active() : nullptr;
+    Workspace* workspace = dropWorkspace(*m_server, *view, destination);
     if (grab->target == DragTarget::Tiled && workspace != nullptr && workspace->layoutMode() == LayoutMode::Stacking) {
       view->floatForStackingLayout();
     } else {
@@ -3682,6 +3695,13 @@ namespace umbriel {
   }
 
   void Cursor::setPointerFocus(wlr_surface* surface, double sx, double sy, uint32_t timeMsec) {
+    // Compositor warps and refreshes run while the cursor is hidden; none of them may hand pointer focus to the
+    // surface under the invisible cursor. The constrained surface is the exception: the locking client keeps its
+    // focus across hides so the lock is not stranded, but a warp elsewhere still releases it.
+    if (m_cursorHidden && (m_activeConstraint == nullptr || surface != m_activeConstraint->surface)) {
+      clearPointerFocus();
+      return;
+    }
     if (surface == nullptr) {
       clearPointerFocus();
       return;
@@ -3890,27 +3910,10 @@ namespace umbriel {
       resetMode();
       return;
     }
-    // With windows_resize.wait_for_redraw each step is a held switch, like any other resizing reflow: the next step
-    // waits until the clients have redrawn at the last one, so no frame shows a buffer stretched to a box it was not
-    // drawn for.
-    const auto& animation = config().animation;
-    const bool lockstep = animation.windowsResize.waitsForClient(animation.enabled);
-    if (lockstep && grab->workspace->layoutMotionWaiting()) {
-      grab->deferred = true;
-      return;
-    }
-    grab->deferred = false;
     const wlr_box usable = grab->workspace->tiledArea();
     grab->session->applyDelta(m_cursor->x - grab->startX, m_cursor->y - grab->startY, usable);
     grab->view->setMaximizedState(false);
-    grab->workspace->markArrange(lockstep);
-  }
-
-  void Cursor::resumeTiledResize(const Workspace* workspace) {
-    const auto* grab = std::get_if<TiledResizeGrab>(&m_grab);
-    if (grab != nullptr && grab->workspace == workspace && grab->deferred) {
-      processResizeTile();
-    }
+    grab->workspace->markArrange(false);
   }
 
 } // namespace umbriel

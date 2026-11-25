@@ -84,6 +84,22 @@ if request(b"{}\n").get("err") != "malformed request":
 if request(b"x" * 65537).get("err") != "request too long":
     raise SystemExit("oversized request did not return its protocol error")
 
+# A subscriber that sends an over-long request gets the error and is closed, not left buffering.
+subscriber = connect()
+subscriber.settimeout(5)
+subscriber.sendall(b'{"cmd":"subscribe","events":["submap"]}\n')
+subscriber.sendall(b"x" * 65537)
+received = b""
+try:
+    while chunk := subscriber.recv(4096):
+        received += chunk
+except socket.timeout:
+    raise SystemExit("subscriber stayed open after an oversized request")
+finally:
+    subscriber.close()
+if json.loads(received.strip().splitlines()[-1]).get("err") != "request too long":
+    raise SystemExit(f"subscriber did not get the oversized request error: {received!r}")
+
 two = request(b'{"cmd":"windows"}\n{"cmd":"layers"}\n')
 if "ok" not in two or not isinstance(two["ok"], list):
     raise SystemExit("one-request connection returned a malformed response")

@@ -266,6 +266,14 @@ namespace umbriel {
     return surface->configure_idle != nullptr || surface->current.configure_serial != surface->scheduled_serial;
   }
 
+  bool View::configureAcknowledged() const {
+    if (m_toplevel == nullptr) {
+      return true;
+    }
+    const wlr_xdg_surface* surface = m_toplevel->base;
+    return surface->configure_idle == nullptr && surface->pending.configure_serial == surface->scheduled_serial;
+  }
+
   bool View::configureSettled(uint32_t serial) const {
     return m_toplevel == nullptr || serialSettled(m_toplevel->base->current.configure_serial, serial);
   }

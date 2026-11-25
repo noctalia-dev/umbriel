@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# A tiled close keeps its captured box for its whole windows_out while survivors begin windows_move at once. Both
-# clocks keep their configured durations for every duration ordering.
+# A tiled close keeps its captured box for its whole windows_out. Its survivor never redraws, so its reflow is held for
+# the full redraw wait before windows_move starts, and the move shader then binds for the released motion. Both clocks
+# keep their configured durations for every duration ordering.
 set -euo pipefail
 
 readonly SHOTS="$UMBRIEL_RUNTIME_DIR/tiled-close-duration-alignment"
@@ -67,7 +68,20 @@ EOF
 # Animation time only moves by clock-advance. Frames are sampled every STEP_MS from the frozen instant the closer
 # unmapped, so each sample time is exact.
 readonly STEP_MS=50
+# How long a reflow waits for a client that never redraws.
+readonly HOLD_MS=150
 "$UMBRIEL" clock-freeze
+
+# Runs every started animation and held reflow to its end. A hold times out only on a tick after its first, so one
+# advance may not reach the motion it releases.
+finish() {
+  for _ in $(seq 10); do
+    "$UMBRIEL" clock-advance 2000
+    "$UMBRIEL" settle 2> /dev/null && return 0
+  done
+  echo "animations did not finish"
+  return 1
+}
 
 # Writes the green, blue, and red pixel counts and the green bounding box of one frame. Frames are analyzed in the
 # background while capture continues.
@@ -81,8 +95,8 @@ analyze_frame() {
 }
 
 spawn() {
-  local title=$1 color=$2
-  FILL_COLOR="$color" "$UMBRIEL_UNMAP_CLIENT" "$title" 1280 720 \
+  local title=$1 color=$2 width=$3
+  FILL_COLOR="$color" "$UMBRIEL_UNMAP_CLIENT" "$title" "$width" 720 \
     > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
   for _ in $(seq 100); do
     window=$("$UMBRIEL" windows --json | jq -c --arg title "$title" '.[] | select(.title == $title)')
@@ -118,25 +132,28 @@ run_case() {
   local survivor_title="duration-$phase-survivor"
   local closer_title="duration-$phase-close"
   local max_duration=$close_ms
-  ((move_ms > max_duration)) && max_duration=$move_ms
+  ((move_ms + HOLD_MS > max_duration)) && max_duration=$((move_ms + HOLD_MS))
 
   set_durations "$close_ms" "$move_ms"
   "$UMBRIEL" msg workspace-switch "$workspace" > /dev/null
   "$UMBRIEL" clock-advance 100
 
-  spawn "$survivor_title" 0xFFFF0000
-  spawn "$closer_title" 0xFF000000
+  # The survivor draws only its half-width tile, so the full width the close gives it is a resize it never answers.
+  spawn "$survivor_title" 0xFFFF0000 640
+  spawn "$closer_title" 0xFF000000 1280
   local closer_id
   closer_id=$(jq -r .id <<< "$window")
 
   # Opening the second tile also reflows the survivor. Let that independent movement finish before measuring close.
-  "$UMBRIEL" clock-advance "$((move_ms + 200))"
+  finish
 
   "$UMBRIEL" msg window-close "$closer_id" > /dev/null
   for _ in $(seq 100); do
     "$UMBRIEL" windows --json | jq -e --arg title "$closer_title" 'any(.[]; .title == $title)' > /dev/null || break
     sleep 0.02
   done
+  # The survivor acknowledges its target configure but keeps its buffer, so the reflow waits HOLD_MS while windows_out
+  # already runs, then windows_move starts.
 
   local elapsed=1 count=0
   local -a sample_times=()
@@ -216,8 +233,14 @@ run_case() {
   local last_time=${sample_times[close_last]}
   ((sample_times[move_last] > last_time)) && last_time=${sample_times[move_last]}
   local total_span=$((last_time - first_time))
-  local expected_start=0
-  local expected_end=$((move_ms - close_ms))
+  local expected_start=$HOLD_MS
+  local expected_end=$((move_ms + HOLD_MS - close_ms))
+
+  # The hold times out no earlier than HOLD_MS after its first tick, which is no earlier than the close.
+  if ((start_offset < HOLD_MS)); then
+    echo "$phase: windows_move started ${start_offset} ms after the close, before the ${HOLD_MS} ms redraw wait"
+    return 1
+  fi
 
   assert_near "$phase" "windows_out span" "$close_span" "$close_ms" "$tolerance"
   assert_near "$phase" "windows_move span" "$move_span" "$move_ms" "$tolerance"
@@ -225,8 +248,9 @@ run_case() {
   assert_near "$phase" "windows_move end offset" "$end_offset" "$expected_end" "$tolerance"
   assert_near "$phase" "total transition span" "$total_span" "$max_duration" "$tolerance"
 
-  if ((final_green >= MARKER_PIXELS || final_blue >= MARKER_PIXELS || final_red < 800000)); then
-    echo "$phase: final frame did not contain one settled full-width survivor: red=$final_red green=$final_green blue=$final_blue"
+  # The survivor never redrew, so it rests drawn 1:1 at the 640x720 it drew.
+  if ((final_green >= MARKER_PIXELS || final_blue >= MARKER_PIXELS || final_red < 455000 || final_red > 466000)); then
+    echo "$phase: final frame did not contain one settled 640x720 survivor: red=$final_red green=$final_green blue=$final_blue"
     return 1
   fi
 
@@ -238,4 +262,4 @@ run_case long-close 1 1200 600
 run_case equal 2 900 900
 run_case long-move 3 600 1200
 
-echo "close snapshot held its captured box while survivors moved immediately, for every duration ordering"
+echo "close snapshot held its captured box while survivors moved after the redraw wait, for every duration ordering"

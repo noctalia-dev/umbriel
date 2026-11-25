@@ -43,6 +43,9 @@ namespace umbriel {
   // Direction the output arranges its workspaces along; vertical when no rule matches.
   WorkspaceAxis resolveWorkspaceAxis(const Config& config, const OutputIdentity& identity);
   ResolvedLayoutConfig resolveGlobalLayout(const Config& config);
+  // A scratchpad's layout: [layout] with `stacking` as the mode, then the pad's own `layout` keys. A name without a
+  // definition, as the implicit pad has, gets only the first part.
+  ResolvedLayoutConfig resolveScratchpadLayout(const Config& config, std::string_view name);
   ResolvedLayoutConfig
   resolveWorkspaceLayout(const Config& config, const OutputIdentity& identity, std::string_view name, size_t index);
   // Resolve an unnamed dynamic workspace. Its numeric protocol label is not an

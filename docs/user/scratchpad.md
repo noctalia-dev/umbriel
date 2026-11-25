@@ -1,6 +1,6 @@
 # Scratchpads
 
-A scratchpad stores windows outside normal workspaces so they can be shown or hidden quickly. Its windows float and appear together.
+A scratchpad stores windows outside normal workspaces so they can be shown or hidden quickly. Its windows float by default, or [tile with a layout](#layout), and appear together.
 
 - Moving a window to a scratchpad stores it.
 - Toggling a scratchpad shows or hides its stored windows.
@@ -46,6 +46,22 @@ You can also press `Mod+Space` before opening any windows, then use your normal 
 
 Both styles work on the same scratchpad, so each binding can pick the one it wants.
 
+## One key to show and hide
+
+`scratchpad-window-cycle` shows and hides one window at a time on a single key:
+
+```toml
+[keybinds]
+"Mod+S" = "scratchpad-window-cycle"
+"Mod+Ctrl+S" = "scratchpad-window-cycle-previous"
+```
+
+- If a scratchpad window has focus, it hides the scratchpad.
+- If the scratchpad is shown but another window has focus, such as a pinned window or one on another output, it focuses the scratchpad, moving it to this output if needed.
+- Otherwise it shows the window after the one you used last, or before it with `scratchpad-window-cycle-previous`. If the scratchpad was dismissed some other way, such as by focusing a window behind it, it shows the same window again.
+
+With windows A, B and C, repeated presses show A, hide, show B, hide, show C, hide, and start again at A. The order is the same as `scratchpad-window-show-next`, so both can be bound together.
+
 ## Named scratchpads
 
 Define names when you want several independent scratchpads:
@@ -68,13 +84,30 @@ Defining any named scratchpad removes the implicit `default`. Every scratchpad a
 
 Removing a scratchpad on reload restores its windows to their saved destinations.
 
+## Layout
+
+A scratchpad arranges its windows like a workspace of its own, outside every monitor's workspace list. Its windows float by default, as in the `stacking` layout. A named scratchpad accepts the `layout` keys of a [`[[workspace]]` rule](workspaces.md#available-fields), so it can tile its windows instead:
+
+```toml
+[[scratchpad]]
+name = "terminals"
+layout.mode = "dwindle"
+layout.struts = { left = 200, right = 200, top = 100, bottom = 100 }
+```
+
+Without `layout.mode` the scratchpad uses `stacking`, not the global `[layout]` mode; its other `layout` keys default to the global `[layout]` values. The implicit `default` scratchpad always uses `stacking`. Tiles fill the usable area of the scratchpad's monitor, less its struts.
+
+Window and layout actions on a focused scratchpad window act on the scratchpad's layout, as they would on a workspace. `workspace-set-layout` changes the layout of a focused scratchpad until the next configuration reload. A window moved into a tiling scratchpad tiles unless it was explicitly floating.
+
+While the scratchpad [shows one window at a time](#one-window-at-a-time), that window keeps its place in the layout.
+
 ## Assigning new windows automatically
 
 ### Launching into the open scratchpad
 
 Opening a scratchpad makes it the launch destination on that output, even when it is empty. Its backdrop appears immediately; an empty pad has no window receiving keyboard input. Window-relative bindings leave the workspace windows behind it untouched. Applications opened through `spawn` join that pad without a window rule. Launchers that pass a trusted XDG activation token can also carry this destination to a new window.
 
-The destination is recorded at launch. Hiding the pad before the application maps leaves its new window hidden in that pad. Replacing it with another pad does not redirect the pending launch or give its arriving window focus. Focusing a workspace window or clicking the exposed workspace background makes subsequent launches use the workspace again, while the scratchpad stays visible.
+The destination is recorded at launch. Hiding the pad before the application maps leaves its new window hidden in that pad. Replacing it with another pad does not redirect the pending launch or give its arriving window focus.
 
 Closing the last member leaves the empty pad open. Toggle it to dismiss it, or set [`hide_when_empty`](#hiding-an-emptied-scratchpad) to hide it automatically. Restoring the last member to its workspace hides the pad. A pad showing one window at a time also hides when that selected window closes.
 
@@ -130,15 +163,17 @@ Only losing the last window hides the pad. An empty pad you open explicitly stay
 
 ## Actions
 
-| Action                                           | What it does                                                                                                                               |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `window-move-to-scratchpad [<scratchpad>]`       | Store the focused workspace window.                                                                                                        |
-| `scratchpad-toggle [<scratchpad>]`               | Show or hide the selected scratchpad, including when empty. Opening an empty pad also runs its `spawn_when_empty` command when configured. |
-| `window-restore-from-scratchpad [<scratchpad>]`  | Restore one remembered window.                                                                                                             |
-| `window-toggle-scratchpad [<scratchpad>]`        | Store the focused window or restore it when already selected.                                                                              |
-| `scratchpad-focus-next [<scratchpad>]`           | Focus the next visible member.                                                                                                             |
-| `scratchpad-window-show-next [<scratchpad>]`     | Show only the next member, hiding the one on show.                                                                                         |
-| `scratchpad-window-show-previous [<scratchpad>]` | Show only the previous member, hiding the one on show.                                                                                     |
+| Action                                            | What it does                                                                                                                               |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `window-move-to-scratchpad [<scratchpad>]`        | Store the focused workspace window.                                                                                                        |
+| `scratchpad-toggle [<scratchpad>]`                | Show or hide the selected scratchpad, including when empty. Opening an empty pad also runs its `spawn_when_empty` command when configured. |
+| `window-restore-from-scratchpad [<scratchpad>]`   | Restore one remembered window.                                                                                                             |
+| `window-toggle-scratchpad [<scratchpad>]`         | Store the focused window or restore it when already selected.                                                                              |
+| `scratchpad-focus-next [<scratchpad>]`            | Focus the next visible member.                                                                                                             |
+| `scratchpad-window-show-next [<scratchpad>]`      | Show only the next member, hiding the one on show.                                                                                         |
+| `scratchpad-window-show-previous [<scratchpad>]`  | Show only the previous member, hiding the one on show.                                                                                     |
+| `scratchpad-window-cycle [<scratchpad>]`          | Show only the next member, or hide the scratchpad when it has focus.                                                                       |
+| `scratchpad-window-cycle-previous [<scratchpad>]` | Show only the previous member, or hide the scratchpad when it has focus.                                                                   |
 
 The argument is optional only for the implicit `default` scratchpad. Restore and focus-next require the scratchpad to be visible.
 
@@ -168,15 +203,34 @@ Fullscreen and maximized windows continue to fit their monitor, and their saved 
 
 Showing a populated scratchpad focuses its most recently focused member. Hiding it returns focus to a workspace window. Opening the workspace overview hides every visible scratchpad without removing its stored windows. While the overview is open, including its closing animation, scratchpad actions and window rules do not show a scratchpad.
 
+A visible scratchpad owns its output's input. The pointer reaches only its windows, pinned windows, and layer surfaces such as panels; the workspace windows behind it get neither clicks, hover, nor Mod-drags. Clicking the backdrop hides the scratchpad and focuses the workspace. Any other focus change to a workspace window there also hides it, such as `window-focus` or an application activating, and so does switching or swiping to another workspace on that output unless the scratchpad is sticky. With focus following the mouse, moving the pointer onto the scratchpad's output focuses the scratchpad.
+
+Set `modal = false` on a named scratchpad to keep it up while you use the windows behind it. Clicks and focus reach those windows, the scratchpad stays shown and draws no backdrop, and switching workspace still hides it unless it is sticky.
+
+Set `sticky = true` on a named scratchpad to keep it up when you switch or swipe to another workspace on its output. It keeps focus and stays over the new workspace until you hide it.
+
+```toml
+[[scratchpad]]
+name = "terminal"
+modal = false
+sticky = true
+```
+
+The implicit `default` scratchpad is always modal and never sticky.
+
 A dialog parented to a visible scratchpad window joins that scratchpad unless a window rule explicitly chooses another destination.
 
 Backdrop dim and blur affect only the output showing the scratchpad.
+
+A shown scratchpad sits above workspace windows and below panels. When a fullscreen window is on its output, or one of its own windows is fullscreen, the scratchpad and its backdrop draw above fullscreen windows instead, until it has faded out. This applies to every shown scratchpad at once, so a scratchpad shown on another output at the same time also draws above that output's panels. Pinned windows, overlay-layer surfaces such as notifications, and the lock screen stay above it.
+
+Showing a scratchpad never moves a floating window it holds: the window stays where it was left, even hanging off an output edge as far as a floating window may. A pad that moves to another output carries its floating windows' positions proportionally, and a window moved into a pad that shows on another output joins that output.
 
 ## Restoring windows
 
 Each member remembers its source output, workspace, and tiled or floating state. If that output or workspace no longer exists, Umbriel restores the window to the scratchpad's current output and active workspace.
 
-Fullscreen, pinned, and maximize-to-edges state are cleared when a window enters a scratchpad, and the window floats at its current size. A window that opens into a scratchpad through `default_scratchpad` takes its size, position, fullscreen, and maximize-to-edges state from its [window rules](window-rules.md#scratchpad-placement).
+Fullscreen, pinned, and maximize-to-edges state are cleared when a window enters a scratchpad. In a floating scratchpad the window floats at its current size. A window that opens into a scratchpad through `default_scratchpad` takes its size, position, fullscreen, and maximize-to-edges state from its [window rules](window-rules.md#scratchpad-placement).
 
 ## Moving scratchpad windows
 
@@ -199,7 +253,7 @@ border_color_unfocused = "#5C4A2AFF"
 
 Show and hide transitions and backdrop dimming and blur are configured under [`animation.scratchpad`](animation.md#animation).
 
-Normal window size, centering, fullscreen, maximize, and close actions work on a focused scratchpad window. Layout-relative actions require restoring it to a workspace first.
+Window state, size, and [layout](#layout) actions work on a focused scratchpad window. `window-toggle-pinned` takes the window out of the scratchpad and pins it on the workspace under the scratchpad; unpinning it later returns it to its saved tiled or floating state there. Minimizing and moving a single window to another monitor do not work: a scratchpad moves between monitors as a whole.
 
 ## Troubleshooting
 
@@ -207,4 +261,4 @@ Normal window size, centering, fullscreen, maximize, and close actions work on a
 - If restore or focus-next does nothing, show the scratchpad first.
 - If a named action does nothing, check its suffix against configured names.
 - If it appears on the wrong monitor, move the pointer before showing it.
-- Restore a window before using tiling, pinning, or layout-relative actions.
+- Restore a window before minimizing it.

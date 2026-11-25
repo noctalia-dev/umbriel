@@ -609,7 +609,9 @@ namespace umbriel {
     const bool repeatable = bind.action != KeybindAction::ScratchpadToggle
         && bind.action != KeybindAction::ScratchpadFocusNext
         && bind.action != KeybindAction::ScratchpadWindowShowNext
-        && bind.action != KeybindAction::ScratchpadWindowShowPrevious;
+        && bind.action != KeybindAction::ScratchpadWindowShowPrevious
+        && bind.action != KeybindAction::ScratchpadWindowCycle
+        && bind.action != KeybindAction::ScratchpadWindowCyclePrevious;
     if (!bind.repeat || !repeatable || rate <= 0 || delay <= 0) {
       cancelRepeat();
       return;
