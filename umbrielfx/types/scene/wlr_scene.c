@@ -6471,6 +6471,53 @@ static void render_background(
   );
 }
 
+static bool
+capture_blur_iterator(struct wlr_scene_node* node, int lx, int ly, const pixman_region32_t* clip, void* data) {
+  return node->type == WLR_SCENE_NODE_BLUR && !umbrielfx_scene_node_capture_excluded(node);
+}
+
+static bool capture_list_has_blur(struct wlr_scene_output* scene_output, struct wlr_box box) {
+  return scene_nodes_in_box(&scene_output->scene->tree.node, &box, capture_blur_iterator, NULL);
+}
+
+static bool node_in_drag_animation(struct wlr_scene_node* node) {
+  for (; node != NULL; node = node->parent != NULL ? &node->parent->node : NULL) {
+    const struct scene_animation* animation = scene_animation_get(node);
+    if (animation != NULL && animation->shaders[FX_SLOT_DRAG] != NULL) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool blur_samples_composition(
+    struct wlr_scene_output* scene_output, struct wlr_buffer* buffer, const struct render_list_entry* list,
+    int list_len, bool linear, bool reads_composition
+) {
+  bool has_marker = false, has_blur = false;
+  for (int i = 0; i < list_len; i++) {
+    struct wlr_scene_node* node = list[i].node;
+    if (node->type == WLR_SCENE_NODE_OPTIMIZED_BLUR) {
+      if (wlr_scene_optimized_blur_from_node(node)->dirty) {
+        return true;
+      }
+      has_marker = true;
+    } else if (node->type == WLR_SCENE_NODE_BLUR) {
+      if (!wlr_scene_blur_from_node(node)->should_only_blur_bottom_layer || node_in_drag_animation(node)) {
+        return true;
+      }
+      has_blur = true;
+    }
+  }
+  if (!has_marker && !has_blur) {
+    return false;
+  }
+  return linear
+      || reads_composition
+      || !fx_renderer_sdr_direct_matches_composition(buffer)
+      || (has_blur && !fx_renderer_optimized_blur_ready(scene_output->output, buffer));
+}
+
 static bool scene_output_build_state(
     struct wlr_scene_output* scene_output, struct wlr_output_state* state,
     const struct wlr_scene_output_state_options* options
@@ -6826,16 +6873,13 @@ static bool scene_output_build_state(
       .signal_point = scene_output->in_point,
   };
 
-  bool blur_composition = false;
-  if (is_scene_blur_enabled(&scene_output->scene->blur_data)) {
-    for (int i = 0; i < list_len; i++) {
-      const enum wlr_scene_node_type type = list_data[i].node->type;
-      if (type == WLR_SCENE_NODE_BLUR || type == WLR_SCENE_NODE_OPTIMIZED_BLUR) {
-        blur_composition = true;
-        break;
-      }
-    }
-  }
+  const bool blur_composition = wlr_renderer_is_fx(output->renderer)
+      && is_scene_blur_enabled(&scene_output->scene->blur_data)
+      && (blur_samples_composition(
+              scene_output, buffer, list_data, list_len, pass_options.color_transform != NULL,
+              unfiltered_pass || render_data.transient_effects || render_data.persistent_visible
+          )
+          || (unfiltered_pass && capture_exclusion && capture_list_has_blur(scene_output, render_data.logical)));
 
   struct wlr_render_pass* render_pass;
   if (wlr_renderer_is_fx(output->renderer)) {
@@ -6909,6 +6953,11 @@ static bool scene_output_build_state(
       struct wlr_scene_node* node = entry->node;
       struct blur_data blur_data = scene_output->scene->blur_data;
       if (!should_blur_node_extend_damage(node, fx_pass, &blur_data)) {
+        continue;
+      }
+
+      if (!blur_composition && node->type == WLR_SCENE_NODE_BLUR) {
+        fx_pass->has_blur = true;
         continue;
       }
 

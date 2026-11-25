@@ -82,23 +82,69 @@ bool fx_render_pass_init_offscreen_buffers(struct wlr_render_pass* render_pass, 
   return true;
 }
 
-// Returns the DRM format that offscreen effect buffers should use for the
-// current pass.
-static uint32_t offscreen_buffer_format(const struct fx_gles_render_pass* pass, bool alpha) {
-  struct fx_renderer* renderer = pass->buffer->renderer;
-  const bool ten_bit_output = pass->output_buffer != NULL
-      && (pass->output_buffer->drm_format == DRM_FORMAT_XRGB2101010
-          || pass->output_buffer->drm_format == DRM_FORMAT_XBGR2101010);
+// Returns the DRM format that offscreen effect buffers should use for an
+// output buffer format.
+static uint32_t effect_buffer_format(struct fx_renderer* renderer, uint32_t output_format, bool linear, bool alpha) {
+  const bool ten_bit_output = output_format == DRM_FORMAT_XRGB2101010 || output_format == DRM_FORMAT_XBGR2101010;
 
   const bool fp16_renderable = renderer->wlr_renderer.features.output_color_transform;
   const bool sdr10_fp16 = ten_bit_output && fp16_renderable && renderer->exts.half_float_linear;
 
-  const bool use_fp16 = pass->has_color_transform || sdr10_fp16;
+  const bool use_fp16 = linear || sdr10_fp16;
   if (use_fp16) {
     return DRM_FORMAT_ABGR16161616F;
   }
 
   return alpha ? DRM_FORMAT_ABGR8888 : DRM_FORMAT_XBGR8888;
+}
+
+static uint32_t offscreen_buffer_format(const struct fx_gles_render_pass* pass, bool alpha) {
+  return effect_buffer_format(
+      pass->buffer->renderer, pass->output_buffer != NULL ? pass->output_buffer->drm_format : DRM_FORMAT_INVALID,
+      pass->has_color_transform, alpha
+  );
+}
+
+bool fx_renderer_sdr_direct_matches_composition(struct wlr_buffer* buffer) {
+  struct wlr_dmabuf_attributes dmabuf;
+  if (!wlr_buffer_get_dmabuf(buffer, &dmabuf)) {
+    return false;
+  }
+  switch (dmabuf.format) {
+  case DRM_FORMAT_XRGB8888:
+  case DRM_FORMAT_ARGB8888:
+  case DRM_FORMAT_XBGR8888:
+  case DRM_FORMAT_ABGR8888:
+  case DRM_FORMAT_RGBX8888:
+  case DRM_FORMAT_RGBA8888:
+  case DRM_FORMAT_BGRX8888:
+  case DRM_FORMAT_BGRA8888:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool fx_renderer_optimized_blur_ready(struct wlr_output* output, struct wlr_buffer* buffer) {
+  const struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_try_get(output);
+  struct wlr_dmabuf_attributes dmabuf;
+  if (fbos == NULL
+      || !wlr_buffer_get_dmabuf(buffer, &dmabuf)
+      || !fbos->optimized_blur_valid
+      || fbos->optimized_blur_sdr_tf != 0) {
+    return false;
+  }
+  const uint32_t format = effect_buffer_format(fbos->renderer, dmabuf.format, false, false);
+  const struct fx_framebuffer* cached[] = {fbos->optimized_blur_buffer, fbos->optimized_no_blur_buffer};
+  for (size_t i = 0; i < sizeof(cached) / sizeof(cached[0]); i++) {
+    if (cached[i] == NULL
+        || cached[i]->buffer->width != buffer->width
+        || cached[i]->buffer->height != buffer->height
+        || cached[i]->drm_format != format) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Allocates or reuses *slot at the requested size. Restores the pass target;
@@ -371,14 +417,17 @@ static bool render_pass_apply_output_transform(struct fx_gles_render_pass* pass)
   glTexParameteri(texture->target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glUniform1i(shader->tex, 0);
 
-  glUniformMatrix3fv(shader->matrix, 1, GL_FALSE, pass->output_matrix);
-  glUniform1i(shader->inverse_eotf, pass->output_tf);
-  glUniform1i(shader->has_lut, pass->output_lut != 0);
-  glUniform1f(shader->lut_dim, pass->output_lut_dim);
-  if (pass->output_lut != 0) {
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, pass->output_lut);
-    glUniform1i(shader->lut, 1);
+  glUniform1i(shader->copy_encoded_sdr, pass->offscreen_composition);
+  if (!pass->offscreen_composition) {
+    glUniformMatrix3fv(shader->matrix, 1, GL_FALSE, pass->output_matrix);
+    glUniform1i(shader->inverse_eotf, pass->output_tf);
+    glUniform1i(shader->has_lut, pass->output_lut != 0);
+    glUniform1f(shader->lut_dim, pass->output_lut_dim);
+    if (pass->output_lut != 0) {
+      glActiveTexture(GL_TEXTURE1);
+      glBindTexture(GL_TEXTURE_2D, pass->output_lut);
+      glUniform1i(shader->lut, 1);
+    }
   }
 
   set_proj_matrix(shader->proj, pass->projection_matrix, &box);
