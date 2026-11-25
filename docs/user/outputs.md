@@ -45,6 +45,7 @@ Locking the session or switching away from its active VT revokes outstanding lea
 | `position`                                 | `[x, y]`                          | automatic    | Top-left position in logical coordinates.                                                             |
 | `scale`                                    | float                             | `1.0`        | Output scale from 0.25 to 4.0.                                                                        |
 | `render_scale`                             | float                             | unset        | Scale clients render at (0.25 to 4.0); unset follows `scale`. The compositor samples down to `scale`. |
+| `supersample_fullscreen`                   | bool                              | `false`      | Apply `render_scale` to fullscreen windows, subject to content type and window rules.                 |
 | `transform`                                | string                            | `"normal"`   | Rotation or reflection.                                                                               |
 | `vrr`                                      | string                            | `"disabled"` | Variable refresh rate policy.                                                                         |
 | `tearing`                                  | bool                              | `false`      | Allow eligible fullscreen windows to use asynchronous page flips.                                     |
@@ -149,14 +150,14 @@ Omit `position` to place outputs automatically from left to right. Explicitly po
 
 Which windows render at `render_scale`:
 
-| Window                                                                    | Renders at                                                          |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Wayland window                                                            | `render_scale`                                                      |
-| Fullscreen Wayland window                                                 | `scale`, so its buffer matches the mode and direct scanout can work |
-| Wayland window whose [content type](window-rules.md) is `game` or `video` | `scale`                                                             |
-| X11 window, default                                                       | unchanged: X11 applications ignore the scale hints                  |
-| X11 window with [`force_x11_supersample`](configuration.md#general)       | `render_scale`, fullscreen included; no window rule exempts it      |
-| Wayland window with a `supersample` [window rule](window-rules.md)        | `render_scale` with `true`, `scale` with `false`                    |
+| Window                                                                    | Renders at                                                                 |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Wayland window                                                            | `render_scale`                                                             |
+| Fullscreen Wayland window                                                 | `scale` by default, or `render_scale` when `supersample_fullscreen = true` |
+| Wayland window whose [content type](window-rules.md) is `game` or `video` | `scale`                                                                    |
+| X11 window, default                                                       | unchanged: X11 applications ignore the scale hints                         |
+| X11 window with [`force_x11_supersample`](configuration.md#general)       | `render_scale`, fullscreen included; no window rule exempts it             |
+| Wayland window with a `supersample` [window rule](window-rules.md)        | `render_scale` with `true`, `scale` with `false`                           |
 
 Supersampling a game or a video only costs GPU time, since both draw at a resolution of their own. Games therefore need attention only as Wayland windows that are neither fullscreen nor tagged `game`, such as a game in windowed mode. Exempt those by app ID; a list covers several at once:
 
@@ -167,6 +168,8 @@ supersample = false
 ```
 
 Games that run through Xwayland need no rule while `force_x11_supersample` is off.
+
+Fullscreen windows use `scale` by default, while windowed and maximized windows use `render_scale` unless their content type is `game` or `video`. For a 3D application such as Blender that does not advertise either content type, this can make windowed rendering more demanding and less responsive than fullscreen. Set `supersample_fullscreen = true` on an output to keep the higher rendering resolution in fullscreen as well. This increases fullscreen rendering cost and can prevent direct scanout. To reduce rendering cost in every mode for a particular application, use a `supersample = false` window rule instead. Window rules take precedence over both the fullscreen setting and content-type exemptions.
 
 Layer surfaces supersample too, with no exemption of their own. A `supersample = false` [layer rule](layer-rules.md) keeps a surface and its popups at `scale`, for example a screenshot overlay that shows a frozen capture of the output, which supersampling would scale up and back down:
 

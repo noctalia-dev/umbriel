@@ -215,6 +215,7 @@ namespace umbriel {
           ),
           registry::real("scale", 0.25, 4.0, &O::scale),
           registry::real("render_scale", 0.25, 4.0, &O::renderScale),
+          boolean("supersample_fullscreen", &O::supersampleFullscreen),
           registry::choice("vrr", &O::vrr, outputVrrModes()),
           registry::choice("hdr", &O::hdr, hdrModes()),
           registry::real("sdr_white", 80.0, 1000.0, &O::sdrWhite),

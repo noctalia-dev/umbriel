@@ -28,6 +28,8 @@ An explicit `-c` path stays fixed. A missing or invalid explicit file keeps the 
 
 ## Selective runtime effects
 
+Changing an output's `supersample_fullscreen` refreshes surface scale hints without reapplying output state.
+
 Output state and workspace inventory are independent effects.
 
 - Changing mode, scale, transform, or position reapplies output state.

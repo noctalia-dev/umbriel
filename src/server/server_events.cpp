@@ -873,6 +873,9 @@ namespace umbriel {
         output->resetTearingState();
       }
     }
+    if (effects.surfaceScalePolicy && !effects.outputState) {
+      refreshSurfaceScales();
+    }
     if (effects.directScanoutPolicy) {
       for (const auto& output : m_outputs) {
         output->applyDirectScanoutConfig();
