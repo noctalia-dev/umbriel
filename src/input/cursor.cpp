@@ -375,8 +375,8 @@ namespace umbriel {
     wlr_cursor_set_surface(m_cursor, nullptr, 0, 0);
     // An invisible cursor must not keep a client looking pointed at: drop pointer focus so the surface under it
     // receives leave and stops drawing hover state. A pointer constraint (a game's lock or confinement) owns that
-    // focus instead: clearing it would strand the lock and churn leave/enter on every hide, so the hidden gate in
-    // setPointerFocus keeps the focus until the constraint releases.
+    // focus instead: clearing it would strand the lock and churn leave/enter on every hide, so setPointerFocus keeps
+    // focus on the constrained surface while hidden.
     if (m_activeConstraint == nullptr) {
       clearPointerFocus();
     }
@@ -3701,9 +3701,9 @@ namespace umbriel {
 
   void Cursor::setPointerFocus(wlr_surface* surface, double sx, double sy, uint32_t timeMsec) {
     // Compositor warps and refreshes run while the cursor is hidden; none of them may hand pointer focus to the
-    // surface under the invisible cursor. An active pointer constraint is the exception: the locking client keeps
-    // its focus across hides so the lock is not stranded.
-    if (m_cursorHidden && m_activeConstraint == nullptr) {
+    // surface under the invisible cursor. The constrained surface is the exception: the locking client keeps its
+    // focus across hides so the lock is not stranded, but a warp elsewhere still releases it.
+    if (m_cursorHidden && (m_activeConstraint == nullptr || surface != m_activeConstraint->surface)) {
       clearPointerFocus();
       return;
     }

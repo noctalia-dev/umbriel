@@ -100,6 +100,22 @@ if [[ $(events pointer-leave) -ne 0 || $(events pointer-unconfined) -ne 0 ]]; th
   echo "hiding the cursor under confinement dropped pointer focus or the confinement: $(tail -10 "$LOG")"
   exit 1
 fi
+
+# The exception covers only the constrained surface: a warp onto another window while hidden still hands it nothing.
+LOG_POINTER_INPUT=1 "$SEAT_LOG" "$GAME-other" > "$UMBRIEL_RUNTIME_DIR/$GAME-other.log" 2>&1 &
+for _ in $(seq 60); do
+  other=$("$UMBRIEL" windows --json | jq -r --arg title "$GAME-other" '.[] | select(.title == $title) | .id')
+  [[ -n $other ]] && break
+  sleep 0.1
+done
+[[ -n $other ]] || { echo "the second window never appeared"; exit 1; }
+"$UMBRIEL" settle
+"$UMBRIEL" msg window-focus-warp "$other" > /dev/null
+"$UMBRIEL" settle
+if grep -qE '^pointer-(enter|motion)' "$UMBRIEL_RUNTIME_DIR/$GAME-other.log"; then
+  echo "a warp while hidden under a constraint handed pointer focus to another window"
+  exit 1
+fi
 control u
 kill "$game_pid" 2>/dev/null || true
 
