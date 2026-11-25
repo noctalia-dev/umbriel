@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# While windows_resize.wait_for_redraw holds the reflow an opening window causes, the screen keeps showing the lone
+# While the reflow an opening window causes is held for its clients' redraw, the screen keeps showing the lone
 # window exactly as it was before the open: its focused border and its shadow, not the unfocused ring focus moving to
 # the still-hidden opener would give it, and not a second shadow stacked under the frozen frame. Closing the focused
 # tile is the same switch the other way: the survivor's ring stays unfocused until it lands, focused, at full width.
@@ -47,11 +47,10 @@ enabled = false
 enabled = false
 
 [animation.windows_move]
-enabled = true
+enabled = false
 
 [animation.windows_resize]
 enabled = false
-wait_for_redraw = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" clock-freeze

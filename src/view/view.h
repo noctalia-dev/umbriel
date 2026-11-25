@@ -100,6 +100,8 @@ namespace umbriel {
     // True while the latest configure is still queued, or sent but not yet acknowledged and committed. Always false for
     // X11 windows, which acknowledge nothing.
     bool configureOutstanding() const;
+    // True once the latest configure has been sent and acknowledged, whether or not a commit has applied it yet.
+    bool configureAcknowledged() const;
     // True while the shared scene draws the window: its frame and every ancestor are enabled.
     bool presented() const;
     void updateDimBehind();
@@ -699,14 +701,15 @@ namespace umbriel {
     // Refresh a finished/cancelled resize, retaining layout and pending floating frame ownership.
     void finishSizeAnimation();
     bool sizeAnimating() const {
-      return m_presentation.animating() || m_layoutMotion || tiledOpeningActive() || fullscreenOpeningActive();
+      return m_presentation.animating()
+          || m_layoutMotion
+          || tiledOpeningActive()
+          || fullscreenOpeningActive()
+          || openingInsetActive();
     }
     bool layoutPresentationOwned() const { return sizeAnimating() || m_layoutPresentationHeld; }
     void requestTiledSize(int width, int height);
     [[nodiscard]] bool settleTiledSizeRequest();
-    // Answers a tiled client that settled on a size of its own: the layout size is sent once per such size, and a
-    // client that takes it and then returns to its own size is floated at it.
-    void reassertTiledClientSize();
     // A layout size configure the client has not yet answered with a commit at that size.
     bool tiledSizeRequestPending() const { return m_tiledSizeRequest.has_value(); }
     // While windows_in owns a freshly admitted tiled view, presentation follows its final layout slot rather than the
@@ -715,11 +718,15 @@ namespace umbriel {
     // The same for a window that opens fullscreen: the layout owns the output box it rests in, windows_in owns the
     // scaled box it is presented at until the fade ends.
     bool fullscreenOpeningActive() const;
+    // A floating window that opens with an inset scales from the box it rests in at the size its client last drew, so
+    // a client that resizes itself while opening grows toward its new size instead of being squeezed into the old one.
+    bool floatingOpeningActive() const;
+    wlr_box floatingOpeningBox() const;
     // A built-in popin, zoom, or slide open offsets the presented box inside the box the layout assigned it, until
     // the fade that drives it reaches rest.
     bool openingInsetPending() const { return m_openingScale < 1.0 || m_openingSlide != 0; }
     bool openingInsetActive() const {
-      return openingInsetPending() && (tiledOpeningActive() || fullscreenOpeningActive());
+      return openingInsetPending() && (tiledOpeningActive() || fullscreenOpeningActive() || floatingOpeningActive());
     }
     // `box` with that inset applied, else `box` itself. Both extents are at least 1.
     wlr_box openingInsetBox(const wlr_box& box) const;
@@ -752,8 +759,6 @@ namespace umbriel {
     // A pointer resize, and the final request it flushes on release until the client answers, shows the client's frame
     // as drawn: never scaled, cropped 1:1 to a smaller tile, with the opposite edges of a float held in place.
     bool presentsCommittedSize() const;
-    // A tiled resize grab steps through held switches (windows_resize.wait_for_redraw) instead of stretching buffers.
-    bool tiledResizeWaitsForClient() const;
     // Cursor owns when a drag starts and ends; View owns the scene invariants
     // for the temporary global presentation and its resting presentation.
     void enterDragPresentation();
@@ -781,7 +786,7 @@ namespace umbriel {
     // Kick the owning output so an animation started outside a frame gets ticked.
     void scheduleFrame();
     void cancelSizeAnimation();
-    void updateFullscreenPresentation(int width, int height);
+    void updateFullscreenPresentation(int width, int height, bool centerDrawn = false);
     // Apply subsurface clip to the toplevel surface only, not xdg popup children.
     void setSurfaceTreeClip(const wlr_box* clip);
     void unconstrainPopup(wlr_xdg_popup* popup);
@@ -1067,15 +1072,11 @@ namespace umbriel {
       ClientSize baseBuffer;
     };
     std::optional<TiledSizeRequest> m_tiledSizeRequest;
-    std::optional<ClientSize> m_reassertedClientSize;
-    // The layout size the client last drew exactly.
-    std::optional<ClientSize> m_layoutFitSize;
     float m_layoutMotionDirection = 1.0F;
     bool m_tiledOpeningDeferred = false;
     // Inset a built-in windows_in style starts an opener at, interpolated to rest by the fade: a popin or zoom scale
     // (1.0 = none) and a slide offset in logical pixels (0 = none).
     double m_openingScale = 1.0;
-    std::optional<std::array<int, 2>> m_openingFloatingSize;
     int m_openingSlide = 0;
     bool m_tiled = false;
     // Floating because its workspace uses stacking; tiles again when moved to a tiling layout.
