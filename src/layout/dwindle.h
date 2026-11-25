@@ -101,6 +101,9 @@ namespace umbriel {
     double heightFraction(const View* view) const override;
     bool setHeightFraction(View* view, double fraction) override;
 
+    // The maximized window fills the layout area but keeps its tile, so directional focus still finds its neighbors.
+    const View* maximizedView() const { return m_maximized; }
+
   private:
     struct Split {
       Node* node = nullptr;
@@ -128,8 +131,16 @@ namespace umbriel {
     // arrange() in between would otherwise silently drop the second view.
     void rebuildFlatColumns();
     void detachNode(Node* node);
+    // Ends the maximize when `view` holds it.
+    void clearMaximized(const View* view);
 
     std::unique_ptr<Node> m_root;
+    const View* m_maximized = nullptr;
+    // The area of the last arrange, which the maximized leaf fills.
+    int m_areaX = 0;
+    int m_areaY = 0;
+    int m_areaW = 0;
+    int m_areaH = 0;
     mutable std::vector<Column> m_flatColumns;
     mutable std::vector<LayoutTarget> m_targets;
   };
