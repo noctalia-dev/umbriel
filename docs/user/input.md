@@ -330,11 +330,13 @@ hover_raises = true
 
 | Value    | Behavior                                                                                                                                                         |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `off`    | Only clicks, keybinds, and activation move focus.                                                                                                                |
+| `off`    | Only clicks, keybinds, activation, and an accepted data drop onto a window move focus.                                                                           |
 | `sloppy` | Moving the pointer onto a window focuses it. Focus given elsewhere by a keybind, a new window, or an activation stays while the pointer remains over its window. |
 | `always` | Every pointer motion focuses the window under the pointer, and so does a scene change that leaves another window under a still pointer.                          |
 
 Scrolling or dragging a layout beneath a stationary pointer does not change focus, and neither does pointer motion during scrolling. This follows the actual seat focus across tiled, floating, and pinned windows, including a pinned window that kept focus across a workspace switch.
+
+Dropping files or another payload onto a window focuses that window even with `follows_mouse = off`. A cancelled or unaccepted drop leaves focus where it was.
 
 With `sloppy`, real pointer motion onto another window focuses it, and a still pointer never changes focus. When explicit layout scrolling, a layout command such as a move, swap, consume, or expel, a workspace switch, or leaving fullscreen puts a different window beneath the pointer, the next real pointer motion focuses it without a border crossing. A window that opens or takes focus away from the pointer keeps that focus while the pointer moves within the window it was already over.
 

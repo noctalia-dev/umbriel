@@ -5,6 +5,7 @@
 #include "input/input_capture.h"
 #include "input/toplevel_drag.h"
 #include "server/server.h"
+#include "view/view.h"
 #include "wlr.h"
 
 namespace {
@@ -17,6 +18,14 @@ namespace {
             && drag->grab_type == WLR_DRAG_GRAB_KEYBOARD_POINTER
         ? drag
         : nullptr;
+  }
+
+  bool acceptedDrop(const wlr_drag* drag) {
+    return drag != nullptr
+        && drag->focus_client != nullptr
+        && drag->source != nullptr
+        && drag->source->accepted
+        && drag->source->current_dnd_action != 0;
   }
 } // namespace
 
@@ -90,7 +99,11 @@ namespace umbriel {
     notifyPointerModifiers();
   }
 
-  void Seat::handleDragDrop() { updateDragModifierClient(nullptr); }
+  void Seat::handleDragDrop() {
+    updateDragModifierClient(nullptr);
+    wlr_drag* drag = m_seat->drag;
+    m_dropTarget = !m_toplevelDrags->active() && acceptedDrop(drag) ? View::fromSurface(drag->focus) : nullptr;
+  }
 
   void Seat::handleDragModifierClientDestroy() {
     wl_list_remove(&m_dragModifierClientDestroy.link);
@@ -322,6 +335,7 @@ namespace umbriel {
 
   void Seat::handleStartDrag(void* data) {
     auto* drag = static_cast<wlr_drag*>(data);
+    m_dropTarget = nullptr;
     updateDragModifierClient(nullptr);
     for (auto* listener : {&m_dragFocus, &m_dragDrop}) {
       if (listener->link.next != nullptr) {
@@ -364,7 +378,9 @@ namespace umbriel {
     m_dragDestroy.link.prev = nullptr;
     m_toplevelDrags->finish();
     m_server->cursor()->handleDataDragEnded();
-    m_server->restoreActivatedViewKeyboardFocus();
+    if (m_dropTarget == nullptr) {
+      m_server->restoreActivatedViewKeyboardFocus();
+    }
   }
 
 } // namespace umbriel

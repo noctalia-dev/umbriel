@@ -1,5 +1,6 @@
 // By default, maps a small layer surface and starts a Wayland data-device drag when its left mouse button is pressed.
-// Target mode maps an xdg toplevel that accepts the offered text and reports enter and drop events. Tear-off mode maps
+// Target mode maps an xdg toplevel that accepts the offered text and reports enter and drop events. With
+// UMBRIEL_DRAG_TARGET_KEEP_ALIVE set, it stays mapped after the drop and logs keyboard keys. Tear-off mode maps
 // an xdg source, then requests an input activation token with the saved press serial and maps another toplevel after
 // the drag is cancelled over empty space. Toplevel mode attaches a real window
 // and accepts stdin commands: o unmaps the origin, u unmaps the carried window,
@@ -92,6 +93,8 @@ namespace {
     const char* title = "drag-target";
     bool targetMode = false;
     bool modifierMode = false;
+    bool keepTargetAfterDrop = false;
+    bool keyboardFocused = false;
     wl_keyboard* keyboard = nullptr;
     xkb_context* xkb = nullptr;
     xkb_keymap* keymap = nullptr;
@@ -254,19 +257,36 @@ namespace {
     state.failed = state.failed || state.keyState == nullptr;
   }
 
-  void keyboardEnter(void* data, wl_keyboard*, uint32_t, wl_surface*, wl_array*) {
+  void keyboardEnter(void* data, wl_keyboard*, uint32_t, wl_surface* surface, wl_array*) {
     auto& state = *static_cast<State*>(data);
+    state.keyboardFocused = surface == state.surface;
     if (state.activeOffer != nullptr) {
       state.failed = true;
       std::println("unexpected-keyboard-enter");
       std::fflush(stdout);
+    } else if (state.keepTargetAfterDrop && state.keyboardFocused) {
+      std::println("keyboard-enter");
+      std::fflush(stdout);
     }
   }
-  void keyboardLeave(void*, wl_keyboard*, uint32_t, wl_surface*) {}
-  void keyboardKey(void* data, wl_keyboard*, uint32_t, uint32_t, uint32_t, uint32_t) {
-    static_cast<State*>(data)->failed = true;
-    std::println("unexpected-keyboard-key");
-    std::fflush(stdout);
+  void keyboardLeave(void* data, wl_keyboard*, uint32_t, wl_surface* surface) {
+    auto& state = *static_cast<State*>(data);
+    if (surface == state.surface) {
+      state.keyboardFocused = false;
+    }
+  }
+  void keyboardKey(void* data, wl_keyboard*, uint32_t, uint32_t, uint32_t key, uint32_t keyState) {
+    auto& state = *static_cast<State*>(data);
+    if (state.activeOffer != nullptr || !state.keepTargetAfterDrop) {
+      state.failed = true;
+      std::println("unexpected-keyboard-key");
+      std::fflush(stdout);
+      return;
+    }
+    if (state.keyboardFocused) {
+      std::println("key {} {}", key, keyState);
+      std::fflush(stdout);
+    }
   }
   void keyboardModifiers(
       void* data, wl_keyboard*, uint32_t, uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group
@@ -327,7 +347,7 @@ namespace {
     wl_data_offer_finish(state.activeOffer->resource);
     wl_display_flush(state.display);
     state.activeOffer = nullptr;
-    state.complete = true;
+    state.complete = !state.keepTargetAfterDrop;
     std::println("drop-received");
     std::fflush(stdout);
   }
@@ -466,7 +486,9 @@ namespace {
 
   void seatCapabilities(void* data, wl_seat* seat, uint32_t capabilities) {
     auto& state = *static_cast<State*>(data);
-    if (state.modifierMode && (capabilities & WL_SEAT_CAPABILITY_KEYBOARD) != 0 && state.keyboard == nullptr) {
+    if ((state.modifierMode || state.keepTargetAfterDrop)
+        && (capabilities & WL_SEAT_CAPABILITY_KEYBOARD) != 0
+        && state.keyboard == nullptr) {
       state.keyboard = wl_seat_get_keyboard(seat);
       wl_keyboard_add_listener(state.keyboard, &kKeyboardListener, &state);
     }
@@ -651,7 +673,8 @@ int main(int argc, char* argv[]) {
 
   State state;
   state.modifierMode = modifierMode;
-  state.xkb = modifierMode ? xkb_context_new(XKB_CONTEXT_NO_FLAGS) : nullptr;
+  state.keepTargetAfterDrop = targetMode && std::getenv("UMBRIEL_DRAG_TARGET_KEEP_ALIVE") != nullptr;
+  state.xkb = (modifierMode || state.keepTargetAfterDrop) ? xkb_context_new(XKB_CONTEXT_NO_FLAGS) : nullptr;
   state.toplevelMode = toplevelMode;
   state.existingToplevel = toplevelMode && argc == 3 && std::string_view(argv[2]) == "existing";
   state.attachAfterMap = toplevelMode && argc == 3 && std::string_view(argv[2]) == "after-map";

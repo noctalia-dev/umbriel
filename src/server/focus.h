@@ -31,7 +31,7 @@ namespace umbriel {
     PointerHover, // follows_mouse enter
     PointerScene, // follows_mouse = "always": a scene change left another window under a stationary pointer
     Grab,         // Mod+drag / Mod+resize start
-    DragDrop,     // tile/float drag finished
+    DragDrop,     // completed window move or accepted data drop
     Gesture,      // touchpad pan finished: the gesture already placed the strip
     Startup,      // map, setFloating, refocus fallback
     XdgActivation,
@@ -52,8 +52,8 @@ namespace umbriel {
     void xwaylandHintsChanged(View* view);
 
     // A data-device drag suppresses seat keyboard enters while its grab is
-    // active. Replay the view whose activation chrome already won once that
-    // grab ends, without choosing a new focus target.
+    // active. Without an accepted drop target, replay the view whose activation
+    // chrome already won once that grab ends, without choosing a new target.
     void restoreActivatedViewKeyboardFocus();
 
     // Reconcile focus after infrastructure changes. A still-valid keyboard
