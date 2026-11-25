@@ -866,20 +866,26 @@ namespace umbriel {
     }
   }
 
+  void View::syncCaptureClip() {
+    if (m_captureScene == nullptr) {
+      return;
+    }
+    // Restrict the capture to the committed content box so tiled clients that
+    // leave xdg_surface.set_window_geometry stale after a resize (such as
+    // Electron) are not cropped in toplevel captures. Client subsurfaces remain
+    // visible, while buffer content outside the window is excluded. Window-owned
+    // popups are separate children and remain part of the isolated scene.
+    const wlr_box captureClip = committedContentBox();
+    wlr_scene_subsurface_tree_set_clip(&m_captureScene->tree.node, &captureClip);
+  }
+
   void View::handleCommit(bool reconfigureOpeningState) {
     UMBRIEL_ZONE("View::handleCommit");
     // Client transparency can change on any commit. An unmap commit reaches here after handleUnmap hid the backdrop.
     if (m_mapped) {
       m_presentation.setFullscreenOpaque(fullscreenOpaque());
     }
-    if (m_captureScene != nullptr) {
-      // Restrict the capture to the window geometry. Client subsurfaces
-      // remain visible, while buffer content outside the declared window is
-      // excluded. Window-owned popups are separate children and remain part
-      // of the isolated scene.
-      const wlr_box captureClip = geometryBox();
-      wlr_scene_subsurface_tree_set_clip(&m_captureScene->tree.node, &captureClip);
-    }
+    syncCaptureClip();
     syncXwaylandShape();
     if (openingConfigurePending() || reconfigureOpeningState) {
       m_openingFloatingRuleSize = {};

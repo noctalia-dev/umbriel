@@ -453,6 +453,8 @@ namespace umbriel {
     // Re-derive the surface clip from committed state alone (tile geometry when tiled, none otherwise), for the paths
     // that leave presentation-driven cropping behind: map, drag entry, drag drop.
     void resetSurfaceClip();
+    // Keep the isolated toplevel capture scene clipped to the window's committed content bounds.
+    void syncCaptureClip();
     void setFadeAlpha(float alpha);
     void cancelFadeAnimation();
     void cancelPositionAnimation();
