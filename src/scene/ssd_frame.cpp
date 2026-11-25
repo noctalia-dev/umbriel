@@ -534,24 +534,40 @@ namespace umbriel {
     return palette;
   }
 
+  std::array<float, 4> SsdFrame::fillAsShown(const std::array<float, 4>& fill) const {
+    const auto& colors = config().colors.titleBar;
+    const std::array<float, 4>& palette = m_focused ? colors.background : colors.backgroundUnfocused;
+    // Only an adaptive fill is drawn dimmed over the palette when the window is inactive; a fixed bar is the palette
+    // itself, drawn over itself, and the palette is what shows through a fill with nothing in it.
+    const bool dimmed = colorSource() != TitleBarColorSource::Fixed && !m_focused;
+    return asShownBarColor(fill, dimmed ? kAdaptiveUnfocusedOpacity : 1.0F, palette);
+  }
+
+  std::optional<std::array<float, 4>> SsdFrame::displayedBarColor() const {
+    const auto fill = barFillColor();
+    return fill.has_value() ? std::optional(fillAsShown(*fill)) : std::nullopt;
+  }
+
   std::optional<std::array<float, 4>> SsdFrame::glyphBackground(TitleBarButton which) const {
     const auto index = static_cast<size_t>(which);
     if (m_glyphSamples[index].has_value()) {
-      return m_glyphSamples[index];
+      return fillAsShown(*m_glyphSamples[index]);
     }
     if (m_glyphSampleEmpty[index]) {
       // A transparent edge shows the palette through the mirrored bar, which is what the symbol sits on.
       const auto& colors = config().colors.titleBar;
       return m_focused ? colors.background : colors.backgroundUnfocused;
     }
-    return barFillColor();
+    return displayedBarColor();
   }
 
   std::array<float, 4> SsdFrame::resolvedTitleColor() const {
     const auto& style = config().appearance.titleBar;
     const auto& colors = config().colors.titleBar;
     const std::array<float, 4>& configured = m_focused ? colors.text : colors.textUnfocused;
-    const auto background = barFillColor();
+    // Judged against the bar as shown — the fill dimmed over the unfocused palette when the window is inactive — so
+    // the title cannot sink into the dimming the verdict never saw.
+    const auto background = displayedBarColor();
     return style.titleContrast && background.has_value() ? contrastAdjusted(configured, *background) : configured;
   }
 
@@ -1017,9 +1033,17 @@ namespace umbriel {
       wlr_scene_rect_set_color(rect, color);
       const std::array<float, 4>& configured = enabled && (hovered || pressed) ? hoverGlyph : idleGlyph;
       // A symbol sits on its own button color when backgrounds are painted, and on the bar when they are not or when
-      // that color is fully transparent. On a mirrored bar that spot is sampled separately, so a symbol is judged
+      // that color is fully transparent. A translucent button color shows over the bar beneath it, so the symbol is
+      // judged against that composite; on a mirrored bar that spot is sampled separately, so a symbol is judged
       // against the edge under its own button rather than the one under the title.
-      const auto symbolBackground = backgrounds && value[3] > 0.0F ? std::optional(value) : glyphBackground(which);
+      std::optional<std::array<float, 4>> symbolBackground;
+      if (backgrounds && value[3] > 0.0F) {
+        const auto bar = displayedBarColor();
+        symbolBackground = value[3] < 1.0F && bar.has_value() ? std::optional(asShownBarColor(value, 1.0F, *bar))
+                                                              : std::optional(value);
+      } else {
+        symbolBackground = glyphBackground(which);
+      }
       const std::array<float, 4> glyphColor = style.titleContrast && symbolBackground.has_value()
           ? contrastAdjusted(configured, *symbolBackground)
           : configured;

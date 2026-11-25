@@ -23,9 +23,11 @@ fail() {
 }
 
 # $1 color_source, $2 bar color, $3 title color, $4 extra [appearance.title_bar] lines, $5 extra [colors.title_bar],
-# $6 button glyph visibility, $7 painted button backgrounds.
+# $6 button glyph visibility, $7 painted button backgrounds, $8 unfocused bar color (defaults to $2), $9 unfocused
+# title color (defaults to $3).
 configure() {
   local source=$1 background=$2 text=$3 title_bar=${4:-} colors=${5:-} glyph=${6:-never} backgrounds=${7:-false}
+  local background_unfocused=${8:-$background} text_unfocused=${9:-$text}
   cat > "$UMBRIEL_CONFIG" <<EOF
 [general]
 xwayland = false
@@ -60,9 +62,9 @@ $title_bar
 
 [colors.title_bar]
 background = "$background"
-background_unfocused = "$background"
+background_unfocused = "$background_unfocused"
 text = "$text"
-text_unfocused = "$text"
+text_unfocused = "$text_unfocused"
 $colors
 
 [[window_rule]]
@@ -297,4 +299,30 @@ minimize_glyph = "#E8E8E8FF"' always
 shot
 expect_at_least "$reversed" 3 "a title that moved onto the edge under it" "$TITLE_END"
 
-echo "the edge follows title_shadow on the title and the symbols, the title and symbols reverse only when their color would vanish, and window mode reads the edge back only when asked"
+# An inactive bar draws the window's edge dimmed over `background_unfocused`, and that mask can carry the title's own
+# color: the raw edge reads against the pale title while the composite the eye sees does not, so a verdict taken on
+# the raw edge leaves the title sunk. The mask is the title's grey here, the edge is darker than the threshold on its
+# own (0.365 apart) and the dimmed composite is inside it (0.237), so only a judgement on the bar as shown flips.
+# The symbols on the bare bar are judged through the same composite, and "average" gives them no spot sample of their
+# own, so they are the case a raw fallback would leave sunk. The title is left-aligned to stay clear of the button row.
+exec 3>&-
+kill "$CLIENT_PID"
+wait "$CLIENT_PID" 2> /dev/null || true
+configure average '#101010FF' '#808080FF' 'title_shadow = false
+title_align = "left"' 'close_glyph = "#808080FF"
+maximize_glyph = "#808080FF"
+minimize_glyph = "#808080FF"' always false '#808080FF' '#808080FF'
+FILL_COLOR=0xFFFF0000 TOP_BAND_COLOR=0xFF232323 TOP_BAND_HEIGHT=1 \
+  "$CLIENT" contrast-bar 480 300 < /dev/null > "$LOG" 2>&1 &
+CLIENT_PID=$!
+await_lines "$LOG" mapped 1
+# A second window takes focus and leaves the bar inactive; the rule places only the contrast bar, so it stays put.
+"$CLIENT" focus-thief 320 240 < /dev/null > "$UMBRIEL_RUNTIME_DIR/title-bar-contrast-thief.log" 2>&1 &
+await_lines "$UMBRIEL_RUNTIME_DIR/title-bar-contrast-thief.log" mapped 1
+"$UMBRIEL" settle
+"$UMBRIEL" focused-window --json | rg -q 'focus-thief' || fail "the second window did not take focus, so the bar is not inactive"
+shot
+expect_at_least "$white" 10 "a title left sunk on the inactive bar's dimmed edge" "180x26+175+82"
+expect_at_least "$white" 5 "symbols left sunk on the inactive bar's dimmed edge" "$BUTTONS"
+
+echo "the edge follows title_shadow on the title and the symbols, the title and symbols reverse only when their color would vanish against the bar as shown, and window mode reads the edge back only when asked"

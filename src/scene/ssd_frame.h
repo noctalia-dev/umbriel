@@ -105,11 +105,18 @@ namespace umbriel {
     static int onStripFallbackTimer(void* data);
     // A one-pixel buffer of `color`, kept until the color changes.
     wlr_buffer* averageBufferFor(const std::array<float, 4>& color);
-    // The color the bar shows, which is what the title is drawn on; empty when "window" was not allowed to sample it.
+    // The bar's own fill: the window's sample, the mean, or the palette. The contrast rule judges against
+    // `displayedBarColor()`, which composites this as shown.
     std::optional<std::array<float, 4>> barFillColor() const;
-    // What a bare symbol on `which` sits on: the edge under that button, or the bar when that region read as empty.
+    // `fill` as the screen shows it: over the palette it is drawn on, and dimmed over the unfocused palette when the
+    // window is inactive. This is what the contrast rule judges against, so a verdict cannot disagree with the screen.
+    std::array<float, 4> fillAsShown(const std::array<float, 4>& fill) const;
+    // `barFillColor()` composited as shown; empty when there is no color to judge against.
+    std::optional<std::array<float, 4>> displayedBarColor() const;
+    // What a bare symbol on `which` sits on: the edge under that button composited as shown, or the bar when that
+    // region read as empty.
     std::optional<std::array<float, 4>> glyphBackground(TitleBarButton which) const;
-    // The title's color after the contrast rule.
+    // The title's color after the contrast rule, judged against the bar as shown.
     std::array<float, 4> resolvedTitleColor() const;
     // Let wlroots keep reusing the mirrored client buffer's texture for in-place shm damage, and withdraw that when the
     // mirror is replaced or cleared.

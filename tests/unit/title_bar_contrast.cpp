@@ -68,4 +68,48 @@ UMBRIEL_TEST(contrastAdjustedLeavesATitleAloneOnNoBackground) {
   CHECK(umbriel::contrastAdjusted(text, color(0.1F, 0.1F, 0.1F, 0.0F)) == text);
 }
 
+UMBRIEL_TEST(asShownBarColorKeepsAnOpaqueFillAtFullOpacity) {
+  // The focused ordinary case: an opaque fill is what shows, whatever the palette behind it would have said.
+  const auto fill = color(0.2F, 0.35F, 0.8F);
+  CHECK(umbriel::asShownBarColor(fill, 1.0F, color(0.9F, 0.1F, 0.1F)) == fill);
+}
+
+UMBRIEL_TEST(asShownBarColorBlendsATranslucentFillWithThePalette) {
+  // A translucent edge drawn over a white palette reads grey, not the edge's straight black.
+  const auto shown = umbriel::asShownBarColor(color(0.0F, 0.0F, 0.0F, 0.5F), 1.0F, color(1.0F, 1.0F, 1.0F));
+  CHECK_EQ(shown[0], 0.5F);
+  CHECK_EQ(shown[1], 0.5F);
+  CHECK_EQ(shown[2], 0.5F);
+  CHECK_EQ(shown[3], 1.0F);
+}
+
+UMBRIEL_TEST(asShownBarColorDimsAnInactiveFillOverTheMask) {
+  // A half-strength dim over a mask of the same tone lands the composite exactly between the two.
+  const auto shown = umbriel::asShownBarColor(color(0.25F, 0.25F, 0.25F), 0.5F, color(0.5F, 0.5F, 0.5F));
+  CHECK_EQ(shown[0], 0.375F);
+  CHECK_EQ(shown[3], 1.0F);
+}
+
+UMBRIEL_TEST(asShownBarColorLeavesThePaletteOverItself) {
+  // An edge read as empty shows the palette alone; compositing the palette over itself must not move it at all. The
+  // general formula would inflate the coverage alpha, which then corrupts a translucent button's own composite.
+  const auto palette = color(0.4F, 0.4F, 0.45F, 0.8F);
+  CHECK(umbriel::asShownBarColor(palette, 0.65F, palette) == palette);
+  CHECK(umbriel::asShownBarColor(palette, 1.0F, palette) == palette);
+}
+
+UMBRIEL_TEST(contrastAdjustedJudgesTheInactiveBarAsShown) {
+  // The regression: the dim mask carries the title's own color, so the bar as shown sinks the title even though the
+  // raw edge reads fine against it. The verdict must come from the composite.
+  const auto text = color(0.5F, 0.5F, 0.5F);
+  const auto edge = color(0.14F, 0.14F, 0.14F);
+  const auto mask = color(0.5F, 0.5F, 0.5F);
+  CHECK(umbriel::contrastAdjusted(text, edge) == text); // the raw edge reads fine: the old, wrong verdict
+  const auto adjusted = umbriel::contrastAdjusted(text, umbriel::asShownBarColor(edge, 0.65F, mask));
+  CHECK(adjusted != text);
+  CHECK_EQ(adjusted[0], 1.0F);
+  CHECK_EQ(adjusted[1], 1.0F);
+  CHECK_EQ(adjusted[2], 1.0F);
+}
+
 int main() { return RUN_TESTS(); }
