@@ -112,4 +112,18 @@ UMBRIEL_TEST(contrastAdjustedJudgesTheInactiveBarAsShown) {
   CHECK_EQ(adjusted[2], 1.0F);
 }
 
+UMBRIEL_TEST(contrastAdjustedJudgesAPaintedButtonAtItsOpacity) {
+  // A disabled button is painted at 0.35, so a black one on a white bar reads as light grey: a 0.6 grey symbol is
+  // kept against the raw black and vanishes on screen. The verdict must follow the painted opacity.
+  const auto glyph = color(0.6F, 0.6F, 0.6F);
+  const auto button = color(0.0F, 0.0F, 0.0F);
+  CHECK(umbriel::contrastAdjusted(glyph, button) == glyph); // reads on the raw color: the old, wrong verdict
+  const auto adjusted =
+      umbriel::contrastAdjusted(glyph, umbriel::asShownBarColor(button, 0.35F, color(1.0F, 1.0F, 1.0F)));
+  CHECK(adjusted != glyph);
+  CHECK_EQ(adjusted[0], 0.0F);
+  CHECK_EQ(adjusted[1], 0.0F);
+  CHECK_EQ(adjusted[2], 0.0F);
+}
+
 int main() { return RUN_TESTS(); }

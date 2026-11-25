@@ -259,6 +259,13 @@ title_contrast = false'
 shot
 expect_none "$black" "title_contrast = false still reversed a symbol on its button color" "$BUTTONS"
 
+# The button is painted at its state opacity, so what a symbol sits on is that much of its color over the bar: an idle
+# white button on the dark palette reads as 0.86 grey, not white. A 0.6 grey symbol is kept against the raw white
+# (0.4 apart) and reverses to black on the blend (0.26 apart), so only a verdict on the painted button flips here.
+configure_backgrounds '#FFFFFFFF' '#999999FF' 'title_shadow = false'
+shot
+expect_at_least "$black" 5 "a symbol judged against its painted button color" "$BUTTONS"
+
 # The edge follows title_shadow around the symbols as well: a white symbol on a white bar paints nothing, so every pixel
 # that is not white in the button row is the edge itself.
 configure_buttons '#FFFFFFFF' '#FFFFFFFF' 'title_contrast = false'

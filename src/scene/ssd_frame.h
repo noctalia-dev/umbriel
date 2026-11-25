@@ -80,14 +80,6 @@ namespace umbriel {
     void hideAdaptive();
     // The source this window resolved, or the global one when no rule set it.
     TitleBarColorSource colorSource() const;
-    // What one readback of the edge produced: a value, a refusal, or a readable edge with nothing to average.
-    struct StripSample {
-      // `Empty` means the strip was read and holds no color (a transparent edge), so the palette is the honest
-      // answer; `Refused` means it could not be read (protected or external-only), so the last color still stands.
-      enum class State : uint8_t { Fresh, Refused, Empty };
-      State state = State::Refused;
-      std::optional<std::array<float, 4>> color;
-    };
     // Whether `box` of the client buffer changed in this commit's damage. The caller gates it on a commit.
     bool stripTouched(const wlr_fbox& box) const;
     // Whether this commit's explicit-sync acquire point has signalled, or has no fence at all.

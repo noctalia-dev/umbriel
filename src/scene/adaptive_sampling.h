@@ -1,8 +1,34 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <optional>
 
 namespace umbriel {
+
+  // What one readback of the edge produced: a value, a refusal, or a readable edge with nothing to average.
+  struct StripSample {
+    // `Empty` means the strip was read and holds no color (a transparent edge), so the palette is the honest
+    // answer; `Refused` means it could not be read (protected or external-only), so the last color still stands.
+    enum class State : std::uint8_t { Fresh, Refused, Empty };
+    State state = State::Refused;
+    std::optional<std::array<float, 4>> color;
+  };
+
+  // What one strip read does to the remembered sample: a fresh mean replaces it, a readable edge with nothing in it
+  // hands the spot to the palette, and a refused read keeps what the bar already had — the last color the window
+  // gave survives an unreadable buffer. Pure, so the rule is testable without a compositor.
+  inline void resolveStripSample(const StripSample& sample, std::optional<std::array<float, 4>>& color, bool& empty) {
+    if (sample.color.has_value()) {
+      color = sample.color;
+      empty = false;
+    } else if (sample.state == StripSample::State::Empty) {
+      // A readable edge with nothing in it leaves the palette showing, which is what sits behind it. Unreadable
+      // content is unknown rather than empty, so it changes nothing.
+      color.reset();
+      empty = true;
+    }
+  }
 
   // When the adaptive title bar may read the window's top edge back. A readback finishes the frame, so a burst of
   // commits pays for at most one read per kSampleEveryCommits commits and per kSampleMinIntervalMsec, and an

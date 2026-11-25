@@ -406,7 +406,7 @@ namespace umbriel {
     m_adaptiveBuffer = nullptr;
   }
 
-  std::array<SsdFrame::StripSample, 1 + kTitleBarButtonCount>
+  std::array<StripSample, 1 + kTitleBarButtonCount>
   SsdFrame::readSampleRegions(const std::array<wlr_fbox, 1 + kTitleBarButtonCount>& boxes) {
     // The only readback in this class, and the only cost average mode cannot avoid: wlroots finishes the frame first.
     // One read covers every region, so a symbol judged against the edge under its own button costs no second frame. A
@@ -786,24 +786,9 @@ namespace umbriel {
           }
         }
         if (sampling) {
-          const auto applySample = [](const StripSample& sample, std::optional<std::array<float, 4>>& color,
-                                      bool& empty) {
-            if (sample.color.has_value()) {
-              color = sample.color;
-              empty = false;
-            } else if (sample.state == StripSample::State::Empty) {
-              // A readable edge with nothing in it leaves the palette showing, which is what sits behind it.
-              color.reset();
-              empty = true;
-            } else {
-              // Unreadable content is unknown rather than empty: the palette is not what shows behind it.
-              color.reset();
-              empty = false;
-            }
-          };
-          applySample(samples[0], m_contrastSample, m_contrastSampleEmpty);
+          resolveStripSample(samples[0], m_contrastSample, m_contrastSampleEmpty);
           for (size_t index = 0; index < kTitleBarButtonCount; ++index) {
-            applySample(samples[1 + index], m_glyphSamples[index], m_glyphSampleEmpty[index]);
+            resolveStripSample(samples[1 + index], m_glyphSamples[index], m_glyphSampleEmpty[index]);
           }
         }
         break;
@@ -1033,14 +1018,15 @@ namespace umbriel {
       wlr_scene_rect_set_color(rect, color);
       const std::array<float, 4>& configured = enabled && (hovered || pressed) ? hoverGlyph : idleGlyph;
       // A symbol sits on its own button color when backgrounds are painted, and on the bar when they are not or when
-      // that color is fully transparent. A translucent button color shows over the bar beneath it, so the symbol is
-      // judged against that composite; on a mirrored bar that spot is sampled separately, so a symbol is judged
-      // against the edge under its own button rather than the one under the title.
+      // that color is fully transparent. The button is painted at its state opacity, so a disabled or idle one shows
+      // the bar through itself and the symbol is judged against that blend; on a mirrored bar that spot is sampled
+      // separately, so a symbol is judged against the edge under its own button rather than the one under the title.
       std::optional<std::array<float, 4>> symbolBackground;
       if (backgrounds && value[3] > 0.0F) {
         const auto bar = displayedBarColor();
-        symbolBackground = value[3] < 1.0F && bar.has_value() ? std::optional(asShownBarColor(value, 1.0F, *bar))
-                                                              : std::optional(value);
+        symbolBackground = bar.has_value() && (alpha < 1.0F || value[3] < 1.0F)
+            ? std::optional(asShownBarColor(value, alpha, *bar))
+            : std::optional(value);
       } else {
         symbolBackground = glyphBackground(which);
       }

@@ -6,6 +6,8 @@
 
 namespace {
   using umbriel::AdaptiveSampling;
+  using umbriel::resolveStripSample;
+  using umbriel::StripSample;
 
   AdaptiveSampling::Input commit(std::uint64_t nowMsec, bool fenceSignalled = true, std::uint64_t generation = 1) {
     return {.fromCommit = true, .fenceSignalled = fenceSignalled, .generation = generation, .nowMsec = nowMsec};
@@ -110,6 +112,48 @@ UMBRIEL_TEST(resetForgetsTheBurstAndTheAbandonedFence) {
   sampling.reset();
   CHECK(sampling.decide(commit(102)) == AdaptiveSampling::Action::Read);
   CHECK(sampling.decide(commit(103, false)) == AdaptiveSampling::Action::Wait);
+}
+
+UMBRIEL_TEST(aFreshMeanReplacesTheRememberedSample) {
+  const std::array<float, 4> mean{0.2F, 0.2F, 0.2F, 1.0F};
+  std::optional<std::array<float, 4>> color;
+  bool empty = true;
+  resolveStripSample(StripSample{StripSample::State::Fresh, mean}, color, empty);
+  CHECK(color == mean);
+  CHECK(!empty);
+}
+
+UMBRIEL_TEST(anEmptyEdgeHandsTheSpotToThePalette) {
+  std::optional<std::array<float, 4>> color = std::array<float, 4>{0.2F, 0.2F, 0.2F, 1.0F};
+  bool empty = false;
+  resolveStripSample(StripSample{StripSample::State::Empty, std::nullopt}, color, empty);
+  CHECK(!color.has_value());
+  CHECK(empty);
+}
+
+UMBRIEL_TEST(aRefusedReadKeepsTheLastColor) {
+  // The documented contract: a window that cannot be read keeps the last color it gave. Clearing it here dropped
+  // the contrast verdict on protected or external-only content even though a previous sample was available.
+  const std::array<float, 4> given{0.2F, 0.2F, 0.2F, 1.0F};
+  std::optional<std::array<float, 4>> color = given;
+  bool empty = false;
+  resolveStripSample(StripSample{StripSample::State::Refused, std::nullopt}, color, empty);
+  CHECK(color == given);
+  CHECK(!empty);
+  // A refusal after an empty edge keeps that answer too: the palette is still what shows through it.
+  color.reset();
+  empty = true;
+  resolveStripSample(StripSample{StripSample::State::Refused, std::nullopt}, color, empty);
+  CHECK(!color.has_value());
+  CHECK(empty);
+}
+
+UMBRIEL_TEST(aRefusedReadWithNothingGivenLeavesTheBarUnjudged) {
+  std::optional<std::array<float, 4>> color;
+  bool empty = false;
+  resolveStripSample(StripSample{StripSample::State::Refused, std::nullopt}, color, empty);
+  CHECK(!color.has_value());
+  CHECK(!empty); // no sample and not empty: the title stays as configured
 }
 
 int main() { return RUN_TESTS(); }
