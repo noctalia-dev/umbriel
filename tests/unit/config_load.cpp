@@ -4356,6 +4356,30 @@ UMBRIEL_TEST(effectSelectorsLoadAtEveryLevel) {
   CHECK(ring != nullptr && ring->overlay == "lines");
 }
 
+UMBRIEL_TEST(windowRuleBorderEffectUnfocusedAcceptsOnlyBooleans) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[[window_rule]]\nborder_effect_unfocused = true\n"
+      "[[window_rule]]\nborder_effect_unfocused = false\n"
+      "[[window_rule]]\nopacity = 0.9\n"
+      "[[window_rule]]\nborder_effect_unfocused = \"audio\"\n"
+  );
+  CHECK(store.reload().success);
+  const auto& rules = store.config().windowRules;
+  CHECK_EQ(rules.size(), size_t{4});
+  if (rules.size() != 4) {
+    return;
+  }
+  CHECK(rules[0].borderUnfocused == true);
+  CHECK(rules[1].borderUnfocused == false);
+  CHECK(!rules[2].borderUnfocused.has_value());
+  CHECK(!rules[3].borderUnfocused.has_value());
+  CHECK(containsDiagnostic(store, "border_effect_unfocused"));
+  CHECK(!containsDiagnostic(store, "unknown key"));
+}
+
 UMBRIEL_TEST(windowsDragTuningDefaultsAndBounds) {
   {
     const TempConfigTree tree;

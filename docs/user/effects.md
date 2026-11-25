@@ -60,25 +60,38 @@ screen_effect = "off"
 
 `border_effect` and `window_effect` follow the usual window-rule merging: the last matching rule that sets a key wins. The cursor effect has no per-window or per-output override.
 
+To keep the audio border on the focused window and an unfocused audio player, include the `audio` border preset and use:
+
+```toml
+[effects]
+border = "audio"
+
+[[window_rule]]
+match.app_id = "^io[.]github[.]nokse22[.]high-tide$"
+border_effect_unfocused = true
+```
+
+A window rule's `border_effect_unfocused` accepts `true` or `false` and overrides `[effects].border_unfocused`. Omission inherits the global setting; the last matching rule that sets it wins. It controls whether the selected effect can draw without focus, including on overview cards. Use `border_effect` to select a different preset and `match.is_focused` to select it by focus state. Decoration, urgency, and fullscreen restrictions still apply.
+
 ## Settings
 
 `[effects]`:
 
 | Key                | Default | Description                                                                                                                                                                                               |
 | ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `border`           | `""`    | Border preset or pool for the focused window, or for every decorated, non-urgent, non-fullscreen window with `border_unfocused`.                                                                          |
+| `border`           | `""`    | Border preset or pool for the focused window, and for eligible unfocused windows allowed by `border_unfocused` or a window rule's `border_effect_unfocused`.                                              |
 | `window`           | `""`    | Window preset or pool applied to every window.                                                                                                                                                            |
 | `screen`           | `""`    | Screen preset or pool applied to every output.                                                                                                                                                            |
 | `screen_cast`      | `""`    | Screen preset or pool that replaces `screen` on an output while a client captures that output whole, as a portal screen share does. Other outputs keep theirs. It reaches viewers only with `in_capture`. |
 | `cursor`           | `""`    | Cursor preset or pool, shared across outputs.                                                                                                                                                             |
 | `max_fps`          | `0`     | Cap, 0 to 240, for frames drawn only because an effect animates. `0` follows each output's refresh rate.                                                                                                  |
 | `in_capture`       | `false` | Include window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear. Raw export-DMA-BUF is not advertised; use screencopy or image-copy clients.               |
-| `border_unfocused` | `false` | Draw the border effect on every decorated, non-urgent, non-fullscreen window, focused or not.                                                                                                             |
+| `border_unfocused` | `false` | Draw the border effect on decorated, non-urgent, non-fullscreen windows without focus. Window rules can override this with the boolean `border_effect_unfocused`.                                         |
 
 Where each kind draws:
 
 - **animation** binds to an animation event through `[animation.<event>] effect = "<name>"`. The event's `enabled`, `duration_ms`, and `curve` still own its timeline; see [Animation](animation.md#custom-effects).
-- **border** draws on the focused window's border ring while the window is decorated, not fullscreen, and not urgent; with `border_unfocused = true`, it draws on every such window, focused or not. `padding` reserves transparent space around the ring for the effect to paint into.
+- **border** draws on the focused window's border ring while the window is decorated, not fullscreen, and not urgent; with `[effects].border_unfocused = true` or `border_effect_unfocused = true` in a matching window rule, it also draws on eligible unfocused windows. A rule's explicit `false` keeps that window's effect focused-only. `padding` reserves transparent space around the ring for the effect to paint into.
 - **window** draws over each window in place, regardless of focus, including undecorated and fullscreen windows. It follows the window through opening, closing, moving, workspace switches, and the overview. A floating window with client-side decorations and `corner_radius = 0` has no rounding to mask against, so the effect also shades the transparent margin the client draws around such a window.
 - **screen** draws over the whole output after everything else, except the cursor effect and the software cursor.
 - **cursor** draws in a square of `radius` logical pixels around the pointer (`0` covers the whole output), after the screen effect, only on the output currently holding the pointer, clipped at that output's edges. It runs before the software cursor is drawn and never shades the cursor image, and never affects a hardware cursor. It hides when the compositor hides the pointer; a client that hides its own cursor image does not by itself turn the effect off. Motion-history shaders expand the rectangle to cover the retained path, with `radius` padding.
@@ -231,4 +244,4 @@ Referenced presets compile at startup, on effects reload, and during runtime act
 
 ## Cost
 
-Unreferenced presets and pools add no rendering work. Named keybinds and enabled hot corners prepare programs before use; selections retain bookkeeping state. A border effect renders the ring through a capture and one program pass per frame on each window it draws: the focused window, or every decorated, non-urgent, non-fullscreen window with `border_unfocused = true`. It requests extra frames only while its program reads `umbriel_time` and its clock advances, capped by `max_fps`. Light adds a second program pass and a blurred pyramid where the ring draws, and a blend on every output its light reaches. A window effect copies the pixels under the window and runs one pass per window per frame. Screen and cursor effects each run one pass over the output or the radius square and disable direct scanout on that output. Drag physics costs only while a window is held or settling. With `in_capture = false`, a pending screencopy or image-copy capture of an output composes its frame twice whenever any window, screen, or cursor effect is visible on that output.
+Unreferenced presets and pools add no rendering work. Named keybinds and enabled hot corners prepare programs before use; selections retain bookkeeping state. A border effect renders the ring through a capture and one program pass per frame on each window it draws: the focused window, and eligible unfocused windows allowed by the global setting or a window rule. It requests extra frames only while its program reads `umbriel_time` and its clock advances, capped by `max_fps`. Light adds a second program pass and a blurred pyramid where the ring draws, and a blend on every output its light reaches. A window effect copies the pixels under the window and runs one pass per window per frame. Screen and cursor effects each run one pass over the output or the radius square and disable direct scanout on that output. Drag physics costs only while a window is held or settling. With `in_capture = false`, a pending screencopy or image-copy capture of an output composes its frame twice whenever any window, screen, or cursor effect is visible on that output.

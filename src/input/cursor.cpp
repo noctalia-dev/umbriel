@@ -2085,8 +2085,8 @@ namespace umbriel {
         // A press on an override-redirect X11 menu leaves the keyboard with the menu.
         wlr_output* wlrOutput = wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y);
         Output* output = m_server->outputFromWlr(wlrOutput);
-        // A press on a shown scratchpad's backdrop dismisses it.
-        if (ScratchpadManager* pad = m_server->scratchpadManager(); pad != nullptr) {
+        // A press on a modal scratchpad's backdrop dismisses it.
+        if (ScratchpadManager* pad = m_server->scratchpadManager(); pad != nullptr && pad->modalOn(output)) {
           pad->dismissOn(output);
         }
         m_server->refocusExplicit(output);

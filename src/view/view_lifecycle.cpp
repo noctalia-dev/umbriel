@@ -1103,6 +1103,7 @@ namespace umbriel {
     }
     commitFloatingSize();
     (void)settleTiledSizeRequest();
+    reassertTiledClientSize();
     applyCornerRadius();
     // Re-apply the owner's frame and clip after each client commit. A tiled commit is not a resize request: Chromium
     // can change its geometry without changing configure, but the layout still owns its box.

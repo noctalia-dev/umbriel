@@ -747,7 +747,7 @@ namespace umbriel {
     m_cursorEffectSlot.configuredSelector = config().effects.cursor;
     resolveEffectSlot(m_cursorEffectSlot, EffectKind::Cursor);
     effectRegistry().prepare(m_renderer);
-    m_compositor = wlr_compositor_create(m_display, 5, m_renderer);
+    m_compositor = wlr_compositor_create(m_display, 6, m_renderer);
     if (explicitSync) {
       m_syncobjAcquireBarrier = std::make_unique<SyncobjAcquireBarrier>(m_compositor);
       m_syncobjUnmapRelease = std::make_unique<SyncobjUnmapRelease>(m_compositor);
