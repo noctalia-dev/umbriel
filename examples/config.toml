@@ -72,6 +72,7 @@ files = []
 # position = [0, 0]
 # scale = 1.25
 # render_scale = 2.0 # Supersample: clients render at 2.0, compositor samples down to `scale`.
+# supersample_fullscreen = false # Enable supersampling for fullscreen windows too.
 # vrr = "fullscreen"
 # hdr = "auto"
 # sdr_transfer = "gamma22" # Or "srgb" for piecewise SDR decoding in HDR.

@@ -669,8 +669,10 @@ namespace umbriel {
     // Layer surfaces and their popups answer for their layer surface, which a
     // `supersample` layer rule can keep at the logical scale.
     const LayerSurface* layer = view == nullptr && surface != nullptr ? LayerSurface::fromSurface(surface) : nullptr;
-    const bool exempt = (view != nullptr && !view->supersampled()) || (layer != nullptr && !layer->supersampled());
     const OutputRule* rule = findOutputRule(config(), identity());
+    const bool supersampleFullscreen = rule != nullptr && rule->supersampleFullscreen;
+    const bool exempt =
+        (view != nullptr && !view->supersampled(supersampleFullscreen)) || (layer != nullptr && !layer->supersampled());
     const bool configured = rule != nullptr && rule->renderScale.has_value();
     const double scale = exempt ? static_cast<double>(m_output->scale) : clientRenderScale();
     // An unset render_scale never shrinks client buffers below the neutral

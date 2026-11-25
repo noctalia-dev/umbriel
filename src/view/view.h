@@ -158,10 +158,8 @@ namespace umbriel {
     Output* currentOutput() const;
     // Effective optional window-rule override used by tearing diagnostics.
     std::optional<bool> tearingRuleOverride();
-    // Whether this window renders at its output's render_scale. A `supersample` window rule decides outright;
-    // otherwise fullscreen windows and game or video content stay at the logical scale, so 3D and video skip the
-    // supersample and remain eligible for direct scanout.
-    bool supersampled();
+    // A window rule takes precedence over the output's fullscreen policy and content-type exemptions.
+    bool supersampled(bool supersampleFullscreen);
     bool confinePointer();
     double touchpadScrollFactor();
     bool allowsShortcutsInhibit();

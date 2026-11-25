@@ -1034,11 +1034,13 @@ namespace umbriel {
     forEachPopupSurface(&Output::notifySurfaceScaleIter, output);
   }
 
-  bool View::supersampled() {
+  bool View::supersampled(bool supersampleFullscreen) {
     if (const std::optional<bool> rule = resolvedRules().supersample) {
       return *rule;
     }
-    return !scheduledFullscreen() && m_contentType != ContentType::Game && m_contentType != ContentType::Video;
+    return (!scheduledFullscreen() || supersampleFullscreen)
+        && m_contentType != ContentType::Game
+        && m_contentType != ContentType::Video;
   }
 
   void View::unconstrainPopup(wlr_xdg_popup* popup) {

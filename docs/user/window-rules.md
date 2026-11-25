@@ -182,6 +182,8 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.m
 
 ## Settings updated while a window is open
 
+The `supersample` rule chooses whether a window uses its output's `render_scale`. It overrides the fullscreen and content-type defaults, including the output's `supersample_fullscreen` setting. Use `supersample = false` to reduce rendering cost for a 3D application in every window state. See [Supersampling with `render_scale`](outputs.md#supersampling-with-render_scale).
+
 | Key                       | Description                                                                                                                                                                                                                                                            |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `dim_behind`              | Darken content below this window on its output; `0.0`–`1.0`, default `0.0`.                                                                                                                                                                                            |

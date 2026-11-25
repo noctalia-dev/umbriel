@@ -343,6 +343,7 @@ namespace umbriel {
     // Scale clients are asked to render at; the compositor samples the larger
     // buffers down to the `scale` raster. Unset follows the logical scale.
     std::optional<double> renderScale;
+    bool supersampleFullscreen = false;
     std::optional<int> transform;
     VrrMode vrr = VrrMode::Disabled;
     bool focusAtStartup = false;
@@ -505,8 +506,8 @@ namespace umbriel {
     // true forces async preference, and false vetoes it.
     std::optional<bool> allowTearing;
     // Overrides whether the window renders at its output's render_scale.
-    // Omitted supersamples everything except fullscreen windows and windows
-    // whose content type is game or video; true and false decide outright.
+    // Omitted follows the output's fullscreen policy and skips game and video
+    // content; true and false decide outright.
     std::optional<bool> supersample;
     std::optional<HdrMode> hdr;
     std::optional<double> dimBehind;

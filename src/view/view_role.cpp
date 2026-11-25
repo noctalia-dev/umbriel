@@ -126,9 +126,7 @@ namespace umbriel {
       m_xFullscreenSize.reset();
       wlr_xwayland_surface_set_fullscreen(m_xsurface, fullscreen);
     }
-    // Fullscreen windows skip the supersample (see supersampled()); the hint
-    // goes out ahead of any resulting configure, for X11 views too so the
-    // invariant "re-send whenever supersampled() reads changes" holds.
+    // The fullscreen policy may change the scale hint, so send it before the configure.
     refreshScaleHints();
     syncSsdFrame();
   }
