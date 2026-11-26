@@ -537,10 +537,10 @@ namespace umbriel {
     // An overview card drag is a first-class drag here: it may slide the strip AND the workspace filmstrip. Data
     // drags AND compositor tiled moves keep the overview exclusion (DnD-overview semantics, pinned by
     // drag/data_drag_edge_scroll.sh; the MoveGrab-in-overview drag model belongs to a later wave). A concurrent
-    // middle-press pointer-scroll pan owns the motion while it runs, so the card's frozen drop row must not pair
+    // pointer-scroll button press owns the motion while it runs, so the card's frozen drop row must not pair
     // with the live pointer's edge ramp; the machinery stands down until the hold is the card's alone. The
     // target maths resolve the real usable-area edges, not the row under the pointer or the preview bounds.
-    const bool cardDrag = overview != nullptr && overview->cardDragging() && !overview->middlePressed();
+    const bool cardDrag = overview != nullptr && overview->cardDragging() && !overview->pointerScrollPressed();
     const bool tiledMove = tiledMoveDragActive();
     if (!edge.enabled
         || m_server->sessionLocked()

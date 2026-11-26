@@ -124,7 +124,7 @@ namespace umbriel {
     // actions retain their regular handlers throughout the closing animation.
     bool handleKeybindAction(KeybindAction action);
     // Step the active workspace `delta` rows down the filmstrip on `output` (null: wherever the pointer is). Returns
-    // false at either end. The wheel and middle-button drag use discrete steps;
+    // false at either end. The wheel and pointer drag use discrete steps;
     // touchpad navigation moves the rows continuously and selects on release.
     bool selectRelativeWorkspace(int delta, Output* output);
     // The workspace row a pointer drag at this point pans. The row extends along its scrolling axis across the
@@ -133,11 +133,10 @@ namespace umbriel {
     // The scale previews rest at once open. Gesture travel maps onto the settled layout, so it must not depend on
     // how far the zoom has come.
     static double settledZoom();
-    bool dragging() const { return m_dragCard != nullptr || m_middlePressed; }
+    bool dragging() const { return m_dragCard != nullptr || pointerScrollPressed(); }
     bool cardDragging() const { return m_dragCard != nullptr; }
-    // A middle-press pointer-scroll pan owns the motion while it runs (handleMotion routes it ahead of the card
-    // drag), so the held card's drop row must not drive edge-scroll pairing in that window.
-    bool middlePressed() const { return m_middlePressed; }
+    // Pointer scroll owns motion ahead of a card drag and suspends that card's edge scrolling.
+    bool pointerScrollPressed() const { return m_pointerScrollButton != 0; }
     // Re-resolves the drop under the stationary drag pointer after the strip moved beneath it (edge auto-scroll or
     // finger-scroll pan). A no-op without a live card drag.
     void refreshDragTarget();
@@ -460,7 +459,7 @@ namespace umbriel {
     double m_middlePressY = 0;
     // Travel along the pressed output's workspace axis since the last step.
     double m_middleAccum = 0;
-    bool m_middlePressed = false;
+    uint32_t m_pointerScrollButton = 0;
     bool m_middleDragging = false;
     // Set once a drag locks across the workspace axis, whether or not a strip was there to pan.
     bool m_middlePanning = false;

@@ -3,12 +3,14 @@
 # three-finger gesture, on the active workspace or on the overview row under the pointer. In overview, an unmodified
 # middle drag locks to the dominant axis: along the workspace axis it steps rows, across it it pans that row's strip.
 # A stationary middle click remains the close gesture; delaying close until release lets motion disambiguate the two
-# without swallowing ordinary middle clicks outside the overview.
+# without swallowing ordinary middle clicks outside the overview. When right drag is enabled, only the initiating
+# button may settle the gesture or request a close.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
 readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
+readonly BTN_RIGHT=273
 readonly BTN_MIDDLE=274
 readonly POINTER="${UMBRIEL_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly WORKSPACE="${UMBRIEL_WORKSPACE_CLIENT:-./build-debug/tests/workspace-client}"
@@ -23,6 +25,9 @@ default_extent_fraction = 0.5
 
 [output.HEADLESS-1]
 workspace_axis = "vertical"
+
+[overview]
+right_button_pan = true
 
 [keybinds]
 "Mod+MouseMiddle" = "layout-scroll-drag"
@@ -228,9 +233,7 @@ if [[ $(window_count) -ne 4 ]]; then
   exit 1
 fi
 
-# Return to the occupied row, then prove the click half of the gesture is
-# deferred: the press alone leaves the card mapped and the matching release
-# sends exactly one close request.
+# Return to the occupied row for the combined-button checks.
 pointer press "$BTN_MIDDLE" move 560 180 move 560 360 release "$BTN_MIDDLE"
 for _ in $(seq 40); do
   [[ $("$WORKSPACE") == 1 ]] && break
@@ -244,7 +247,22 @@ if [[ $(window_count) -ne 4 ]]; then
   echo "overview return drag closed a card instead of navigating"
   exit 1
 fi
-pointer_hold "$OUTPUT_W" "$OUTPUT_H" move 560 360 press "$BTN_MIDDLE" -- release "$BTN_MIDDLE"
+# The right button stays in control while the middle button is clicked over a card.
+pointer move 560 360
+pointer click "$BTN_RIGHT"
+right_before_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "A") | .x')
+pointer press "$BTN_RIGHT" click "$BTN_MIDDLE" move 510 360 move 310 360 release "$BTN_RIGHT"
+"$UMBRIEL" settle > /dev/null
+right_after_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "A") | .x')
+if [[ $(window_count) -ne 4 || -z $right_after_x ]] || ((right_after_x >= right_before_x)); then
+  echo "the middle click interrupted a right-button drag or closed a card"
+  exit 1
+fi
+pointer press "$BTN_RIGHT" move 360 360 move 560 360 release "$BTN_RIGHT"
+"$UMBRIEL" settle > /dev/null
+
+# A right click during a middle press cannot replace its target or finish it.
+pointer_hold "$OUTPUT_W" "$OUTPUT_H" move 560 360 press "$BTN_MIDDLE" click "$BTN_RIGHT" -- release "$BTN_MIDDLE"
 sleep 0.2 # real time: the press alone must not close the card before release
 if [[ $(window_count) -ne 4 ]]; then
   echo "overview middle press closed a card before release"
@@ -253,4 +271,4 @@ fi
 pointer_release
 wait_for_count 3
 
-echo "bound and bare mouse drags pan overview strips, navigate rows, and preserve release-only middle-click close"
+echo "bound, middle, and right drags navigate the overview and preserve the initiating button"
