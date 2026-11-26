@@ -3874,6 +3874,7 @@ _PRIVATE = "kept"
 NOT_A_STRING = 1
 WAYLAND_DISPLAY = "wrong"
 LIBEI_SOCKET = "/nonexistent/umbriel-test-eis"
+UMBRIEL_DINIT_READY_FD = "4"
 WLR_DRM_DEVICES = "/dev/dri/card0"
 WLR_RENDER_DRM_DEVICE = "/dev/dri/renderD128"
 )");

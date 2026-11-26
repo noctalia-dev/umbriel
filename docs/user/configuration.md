@@ -191,13 +191,13 @@ ELECTRON_OZONE_PLATFORM_HINT = "auto"
 SDL_VIDEODRIVER = "wayland"
 ```
 
-These variables apply to Umbriel and commands started in its session. In a managed native session, they are also published to the systemd user manager for session services such as Noctalia. Nested sessions do not modify the host session environment.
+These variables apply to Umbriel and commands started in its session. In a managed native session, they are also published to the active user service manager for session services such as Noctalia. Nested sessions do not modify the host session environment.
 
-Names must match `[A-Za-z_][A-Za-z0-9_]*`, and values must be strings. Umbriel owns its display, input-emulation, and session variables, so this section cannot override `WAYLAND_DISPLAY`, `WAYLAND_SOCKET`, `DISPLAY`, `UMBRIEL_SOCKET`, `LIBEI_SOCKET`, `XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP`, or `XDG_SESSION_TYPE`.
+Names must match `[A-Za-z_][A-Za-z0-9_]*`, and values must be strings. Umbriel owns its display, input-emulation, session, and readiness variables, so this section cannot override `WAYLAND_DISPLAY`, `WAYLAND_SOCKET`, `DISPLAY`, `UMBRIEL_SOCKET`, `LIBEI_SOCKET`, `XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP`, `XDG_SESSION_TYPE`, or `UMBRIEL_DINIT_READY_FD`.
 
 Environment changes require an Umbriel restart. Fully quit and relaunch long-running applications that survived the restart.
 
-Removing a key does not clear a value already published to the systemd user manager. Run `systemctl --user unset-environment NAME` to remove it immediately, or wait for the user manager to exit.
+Removing a key does not clear a value already published to the user manager. Run `systemctl --user unset-environment NAME` for systemd or `dinitctl --user unsetenv NAME` for dinit to remove it immediately, or wait for the user manager to exit.
 
 ## Events
 

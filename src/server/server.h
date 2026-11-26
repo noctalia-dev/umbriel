@@ -965,6 +965,7 @@ namespace umbriel {
     std::string m_socketName;
     std::string m_systemdRunExecutable;
     std::string m_systemctlExecutable;
+    std::string m_dinitControlCommand;
     std::string m_applicationScopePartOfProperty;
     std::string m_applicationScopeBindsToProperty;
     std::string m_applicationScopeAfterProperty;

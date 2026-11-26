@@ -6,7 +6,8 @@ if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] &&
     drs=dbus-run-session
 fi
 
-if [ -n "${MANAGERPID:-}" ] && [ "${SYSTEMD_EXEC_PID:-}" = "$$" ]; then
+if { [ -n "${MANAGERPID:-}" ] && [ "${SYSTEMD_EXEC_PID:-}" = "$$" ]; } ||
+   [ -n "${UMBRIEL_DINIT_READY_FD:-}" ]; then
   exec ${drs} @UMBRIEL_EXECUTABLE@ "$@"
 fi
 
@@ -58,20 +59,6 @@ if [ "$login_reentry" = false ]; then
   esac
 fi
 
-if ! command -v systemctl >/dev/null 2>&1 ||
-  ! systemctl --user show-environment >/dev/null 2>&1; then
-  exec ${drs} @UMBRIEL_EXECUTABLE@ "$@"
-fi
-
-if systemctl --user --quiet is-active umbriel.service; then
-  echo "An Umbriel session is already running." >&2
-  exit 1
-fi
-
-systemctl --user reset-failed
-systemctl --user unset-environment WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY \
-  XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE UMBRIEL_SOCKET
-# Import the login-profile environment before starting the managed session.
 session_environment_names() {
   awk 'BEGIN {
     for (name in ENVIRON) {
@@ -81,6 +68,107 @@ session_environment_names() {
     }
   }' </dev/null
 }
+
+dinit_available() {
+  command -v dinitctl >/dev/null 2>&1 &&
+    dinitctl --user --quiet list >/dev/null 2>&1
+}
+session_manager=direct
+if [ -n "${DINIT_SOCKET_PATH:-}" ] && dinit_available; then
+  session_manager=dinit
+elif command -v systemctl >/dev/null 2>&1 &&
+     systemctl --user show-environment >/dev/null 2>&1; then
+  session_manager=systemd
+elif dinit_available; then
+  session_manager=dinit
+fi
+
+if [ "$session_manager" = dinit ]; then
+  # Explicit options and commands retain direct launch semantics. Service
+  # configuration supplies options for a supervised compositor.
+  if [ "$#" -ne 0 ]; then
+    exec ${drs} @UMBRIEL_EXECUTABLE@ "$@"
+  fi
+  case "${DINIT_SOCKET_PATH:-}" in
+    '' | /*) ;;
+    *) DINIT_SOCKET_PATH="$(pwd)/$DINIT_SOCKET_PATH"; export DINIT_SOCKET_PATH ;;
+  esac
+  if dinitctl --user --quiet is-started umbriel 2>/dev/null; then
+    echo "An Umbriel session is already running." >&2
+    exit 1
+  fi
+  dinit_wait_pid=
+  cleanup_dinit_session() {
+    umbriel_status=$?
+    trap '' HUP INT TERM
+    trap - 0
+    if [ -n "$dinit_wait_pid" ]; then
+      kill "$dinit_wait_pid" 2>/dev/null || :
+      wait "$dinit_wait_pid" 2>/dev/null || :
+    fi
+    dinitctl --user --quiet stop --force --ignore-unstarted umbriel || :
+    dinitctl --user --quiet stop --force --ignore-unstarted umbriel-session || :
+    dinitctl --user --quiet unsetenv WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY \
+      XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE XCURSOR_THEME \
+      XCURSOR_SIZE UMBRIEL_SOCKET || :
+    if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+      dbus-update-activation-environment WAYLAND_DISPLAY= DISPLAY= UMBRIEL_SOCKET= \
+        XDG_CURRENT_DESKTOP= XDG_SESSION_DESKTOP= XDG_SESSION_TYPE= XCURSOR_THEME= XCURSOR_SIZE= || :
+    fi
+    exit "$umbriel_status"
+  }
+  trap cleanup_dinit_session 0
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  unset WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY UMBRIEL_SOCKET \
+    XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE
+  dinitctl --user --quiet unsetenv WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY \
+    XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE UMBRIEL_SOCKET || exit 1
+  session_environment_names | xargs -r dinitctl --user --quiet setenv || exit 1
+  if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+    session_environment_names | xargs -r dbus-update-activation-environment || exit 1
+  fi
+  dinitctl --user --quiet start umbriel &
+  dinit_wait_pid=$!
+  wait "$dinit_wait_pid"
+  umbriel_status=$?
+  dinit_wait_pid=
+  if [ "$umbriel_status" -ne 0 ]; then exit "$umbriel_status"; fi
+  dinitctl --user --quiet start umbriel-session &
+  dinit_wait_pid=$!
+  wait "$dinit_wait_pid"
+  umbriel_status=$?
+  dinit_wait_pid=
+  if [ "$umbriel_status" -ne 0 ]; then exit "$umbriel_status"; fi
+  # Query current state so a stop between startup and observation cannot be missed.
+  while dinitctl --user --quiet is-started umbriel &&
+        dinitctl --user --quiet is-started umbriel-session; do
+    sleep 1 &
+    dinit_wait_pid=$!
+    wait "$dinit_wait_pid"
+    dinit_wait_pid=
+  done
+  if dinitctl --user --quiet is-failed umbriel ||
+     dinitctl --user --quiet is-failed umbriel-session ||
+     ! dinitctl --user --quiet list >/dev/null 2>&1; then
+    exit 1
+  fi
+  exit 0
+fi
+
+if [ "$session_manager" = direct ]; then
+  exec ${drs} @UMBRIEL_EXECUTABLE@ "$@"
+fi
+if systemctl --user --quiet is-active umbriel.service; then
+  echo "An Umbriel session is already running." >&2
+  exit 1
+fi
+
+systemctl --user reset-failed
+systemctl --user unset-environment WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY \
+  XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE UMBRIEL_SOCKET
+# Import the login-profile environment before starting the managed session.
 session_environment_names | xargs -r systemctl --user import-environment
 if command -v dbus-update-activation-environment >/dev/null 2>&1; then
   session_environment_names | xargs -r dbus-update-activation-environment
