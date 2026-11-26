@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # A card admitted while the overview is open follows the same reveal as a normal-mode opener: fading in on windows_in
-# while the neighbour reflows on windows_move. Closing a card during tiled reflow must discard
-# the copied windows_move effect before windows_out runs. The move shader paints the live blue card red. The close
-# shader then paints its snapshot green only when it samples the original blue client, or magenta when the stale
-# move shader is still composed into the snapshot.
+# while the neighbour reflows on windows_move once it has redrawn at its new size. Closing a card during tiled reflow
+# must discard the copied windows_move effect before windows_out runs. The move shader paints the live blue card red.
+# The close shader then paints its snapshot green only when it samples the original blue client, or magenta when the
+# stale move shader is still composed into the snapshot.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly FIRST_LOG="$UMBRIEL_RUNTIME_DIR/overview-close-first.log"
 readonly SECOND_LOG="$UMBRIEL_RUNTIME_DIR/overview-close-second.log"
@@ -77,17 +78,22 @@ color_pixels() {
   "$UMBRIEL_PIXEL_PROBE" "$image" count "$expression"
 }
 
-FILL_COLOR=0xFF0000FF "$UMBRIEL_UNMAP_CLIENT" overview-close-first 1200 700 > "$FIRST_LOG" 2>&1 &
-for _ in $(seq 80); do
-  first=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "overview-close-first")')
-  [[ -n $first ]] && break
-  sleep 0.025
-done
-if [[ -z ${first:-} ]]; then
-  echo "first overview close client never mapped"
-  exit 1
-fi
-first_id=$(jq -r .id <<< "$first")
+# Every client follows its tile. A reflow is held until each resized client has redrawn, and on the frozen clock the
+# motion then starts at the current instant, so wait for a window's committed width to leave its old value.
+await_redrawn() {
+  local title=$1 old_width=$2
+  for _ in $(seq 80); do
+    window=$(window_by_title "$title") && (($(jq .w <<< "$window") != old_width)) && return 0
+    sleep 0.025
+  done
+  echo "$title never redrew away from width $old_width"
+  return 1
+}
+
+FOLLOW_CONFIGURES=1 FILL_COLOR=0xFF0000FF "$UMBRIEL_UNMAP_CLIENT" overview-close-first 1200 700 > "$FIRST_LOG" 2>&1 &
+await_redrawn overview-close-first 1200
+first_id=$(jq -r .id <<< "$window")
+first_w=$(jq .w <<< "$window")
 "$UMBRIEL" settle
 
 "$UMBRIEL" msg overview-open > /dev/null
@@ -97,18 +103,11 @@ first_id=$(jq -r .id <<< "$first")
 # into the close. Advancing 1600 ms finishes every timeline, including the reflow each change starts.
 "$UMBRIEL" clock-freeze
 
-# Mapping the second tile starts a long windows_move transition on the established first tile and its overview card.
-FILL_COLOR=0xFF00FFFF "$UMBRIEL_UNMAP_CLIENT" overview-close-second 1200 700 > "$SECOND_LOG" 2>&1 &
-for _ in $(seq 80); do
-  if [[ $("$UMBRIEL" windows --json | jq length) -eq 2 ]]; then
-    break
-  fi
-  sleep 0.025
-done
-if [[ $("$UMBRIEL" windows --json | jq length) -ne 2 ]]; then
-  echo "second overview close client never mapped"
-  exit 1
-fi
+# Mapping the second tile starts a long windows_move transition on the established first tile and its overview card
+# once both clients have redrawn at their slots.
+FOLLOW_CONFIGURES=1 FILL_COLOR=0xFF00FFFF "$UMBRIEL_UNMAP_CLIENT" overview-close-second 1200 700 > "$SECOND_LOG" 2>&1 &
+await_redrawn overview-close-second 1200
+await_redrawn overview-close-first "$first_w"
 "$UMBRIEL" clock-advance 120
 grim "$MOVING"
 moving_red=$(color_pixels "$MOVING" 'r > 0.8 && g < 0.1 && b < 0.1')

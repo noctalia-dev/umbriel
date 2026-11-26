@@ -35,6 +35,14 @@ struct wlr_render_pass* fx_renderer_begin_output_buffer_pass(
     struct wlr_output* output, struct wlr_buffer* buffer, const struct wlr_buffer_pass_options* options
 );
 
+/**
+ * Like the output pass above, but SDR also composes into owned scratch storage
+ * so blur can sample current pixels without reimporting the output image.
+ */
+struct wlr_render_pass* fx_renderer_begin_offscreen_output_buffer_pass(
+    struct wlr_output* output, struct wlr_buffer* buffer, const struct wlr_buffer_pass_options* options
+);
+
 //
 // fx_texture
 //

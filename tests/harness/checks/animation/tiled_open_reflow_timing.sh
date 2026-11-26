@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # A tiled opener starts its windows_in in its final slot on the same tick established neighbours begin their
-# windows_move reflow. Both clocks run independently: the opener is already visible while the neighbour is mid-reflow,
-# and still mid-fade after that shorter reflow has settled. An opener that takes the whole width through
-# default_maximize reflows them on that same clock.
+# windows_move reflow, once the resized neighbour and the opener have redrawn at their slots. Both clocks run
+# independently: the opener is already visible while the neighbour is mid-reflow, and still mid-fade after that
+# shorter reflow has settled. An opener that takes the whole width through default_maximize reflows them on that same
+# clock.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly IMAGE="$UMBRIEL_RUNTIME_DIR/tiled-open-reflow.png"
 
@@ -63,17 +65,26 @@ default_maximize = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
-spawn() {
-  local title=$1 color=$2
-  FILL_COLOR="$color" "$UMBRIEL_UNMAP_CLIENT" "$title" 1200 700 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
+# Every client follows its tile. A reflow is held until each resized client has redrawn, and on the frozen clock the
+# motion then starts at the current instant, so spawn returns once the new window has redrawn away from its mapped
+# width and await_redrawn waits the same way for a resized neighbour.
+await_redrawn() {
+  local title=$1 old_width=$2
   for _ in $(seq 80); do
-    window=$("$UMBRIEL" windows --json | jq -c --arg title "$title" '.[] | select(.title == $title)')
-    [[ -n $window ]] && return 0
+    window=$(window_by_title "$title") && (($(jq .w <<< "$window") != old_width)) && return 0
     sleep 0.025
   done
-  echo "timed out waiting for $title"
+  echo "$title never redrew away from width $old_width"
   return 1
 }
+
+spawn() {
+  local title=$1 color=$2
+  FOLLOW_CONFIGURES=1 FILL_COLOR="$color" "$UMBRIEL_UNMAP_CLIENT" "$title" 1200 700 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
+  await_redrawn "$title" 1200
+}
+
+survivor_width() { window_by_title tiled-open-survivor | jq .w; }
 
 # Only the survivor is red. Its pixel count on a middle row directly observes its presented width without relying on
 # IPC target geometry or the opening window's opacity.
@@ -97,9 +108,11 @@ spawn tiled-open-survivor 0xFFFF0000
 "$UMBRIEL" clock-advance 1600
 "$UMBRIEL" settle
 before=$(red_width)
+survivor_w=$(survivor_width)
 
 spawn tiled-opener 0xFF0000FF
 opener=$window
+await_redrawn tiled-open-survivor "$survivor_w"
 # IPC has the final layout origin but may still expose the committed client size. Master places this opener against
 # the output's right edge, so derive a point well inside its final slot from that edge.
 opener_x=$(jq -r '.x + ((1280 - .x) / 2 | floor)' <<< "$opener")
@@ -139,7 +152,9 @@ if ! ((mid_blue > early_blue + 40 && mid_blue <= 220 && final_blue > 220)); then
 fi
 
 settled=$(red_width)
+survivor_w=$(survivor_width)
 spawn tiled-maximized-opener 0xFF00FF00
+await_redrawn tiled-open-survivor "$survivor_w"
 "$UMBRIEL" clock-advance 300
 maximized_early=$(red_width)
 "$UMBRIEL" clock-advance 1600

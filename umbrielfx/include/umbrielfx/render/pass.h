@@ -27,6 +27,8 @@ struct fx_gles_render_pass {
   // A composed output swapchain buffer, rather than an internal or capture target.
   bool output_target;
   bool has_color_transform;
+  // SDR blur samples this target.
+  bool offscreen_composition;
   struct wlr_color_transform* color_transform;
   struct fx_offscreen_buffers* output_buffers;
   float output_matrix[9];
@@ -39,7 +41,7 @@ struct fx_gles_render_pass {
   GLuint output_lut;
   float output_lut_dim;
   pixman_region32_t updated_region;
-  // A new or resized shared blend buffer needs every output pixel initialized.
+  // A new, resized or invalidated shared composition target needs every pixel initialized.
   bool needs_full_damage;
   // Set while an add_* call renders into an offscreen buffer instead of the
   // pass target, so it must not extend updated_region.
