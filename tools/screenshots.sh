@@ -17,8 +17,6 @@ set -euo pipefail
 
 bin=${1:-build-debug/umbriel}
 PAUSE=${PAUSE:-2}
-# Published width of the 1280x800 output.
-WIDTH=${WIDTH:-1000}
 
 if [[ ${SHOTS_INNER:-} ]]; then
   # Inside the nested compositor: WAYLAND_DISPLAY and UMBRIEL_SOCKET point at it.
@@ -59,9 +57,9 @@ if [[ ${SHOTS_INNER:-} ]]; then
   }
   shot() { # name
     sleep "$PAUSE"
-    grim -o shots "$SHOTS_TMP/raw.png"
-    magick "$SHOTS_TMP/raw.png" -resize "${WIDTH}x" "$SHOTS_TMP/$1.png"
-    cwebp -quiet -q 85 "$SHOTS_TMP/$1.png" -o "$SHOTS_OUT/$1.webp"
+    grim -o shots "$SHOTS_TMP/$1.png"
+    # Native 1280x800 and lossless: resampling and lossy encoding soften text and 1 px borders.
+    cwebp -quiet -lossless -z 9 "$SHOTS_TMP/$1.png" -o "$SHOTS_OUT/$1.webp"
     echo "wrote $SHOTS_OUT/$1.webp"
   }
   scene() { # layout window-count
@@ -178,5 +176,5 @@ env -i PATH="$PATH" WAYLAND_DISPLAY="$parent" HOME="$home" LANG=C.UTF-8 \
   XDG_STATE_HOME="$tmp/state" XDG_RUNTIME_DIR="$tmp/run" \
   XDG_DATA_DIRS="$real_data:/usr/local/share:/usr/share" GSETTINGS_BACKEND=keyfile \
   SHOTS_INNER=1 SHOTS_TMP="$tmp" SHOTS_OUT="$out" SHOTS_BIN="$bin" \
-  PAUSE="$PAUSE" WIDTH="$WIDTH" \
+  PAUSE="$PAUSE" \
   dbus-run-session -- "$bin" -c "$tmp/config/umbriel/config.toml" -s "$0"
