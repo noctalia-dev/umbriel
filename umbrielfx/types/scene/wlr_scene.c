@@ -941,7 +941,11 @@ static void scene_node_opaque_region(
   pixman_region32_init_rect(opaque, x, y, width, height);
 }
 
+static bool
+scene_blur_node_effective(struct wlr_scene* scene, const struct wlr_scene_blur* blur, struct blur_data* effective);
+
 struct scene_update_data {
+  struct wlr_scene* scene;
   const struct scene_effects* effects;
   pixman_region32_t* visible;
   const pixman_region32_t* update_region;
@@ -949,6 +953,7 @@ struct scene_update_data {
   struct wl_list* outputs;
   bool calculate_visibility;
   bool restack_xwayland_surfaces;
+  bool seen_optimized_blur_consumer;
 
 #if WLR_HAS_XWAYLAND
   struct wlr_xwayland_surface* restack_above;
@@ -1272,7 +1277,7 @@ static bool scene_node_update_iterator(
 
   if (node->type == WLR_SCENE_NODE_OPTIMIZED_BLUR) {
     struct wlr_scene_optimized_blur* scene_blur = wlr_scene_optimized_blur_from_node(node);
-    if (scene_blur->dirty) {
+    if (scene_blur->dirty && data->seen_optimized_blur_consumer) {
       // Restore the visible region back to default, without any opaque
       // regions. This ensures that all nodes below are fully re-rendered
       // and not culled by above nodes.
@@ -1299,6 +1304,13 @@ static bool scene_node_update_iterator(
     // region contains rendering, damage, output membership, frame callbacks
     // and dmabuf feedback in one place.
     pixman_region32_intersect(&node->visible, &node->visible, acc_clip);
+  }
+
+  if (node->type == WLR_SCENE_NODE_BLUR && pixman_region32_not_empty(&node->visible)) {
+    const struct wlr_scene_blur* blur = wlr_scene_blur_from_node(node);
+    if (blur->should_only_blur_bottom_layer && scene_blur_node_effective(data->scene, blur, NULL)) {
+      data->seen_optimized_blur_consumer = true;
+    }
   }
 
   if (data->calculate_visibility) {
@@ -1537,6 +1549,7 @@ static void scene_update_region(struct wlr_scene* scene, const pixman_region32_t
 
   struct pixman_box32* region_box = pixman_region32_extents(update_region);
   struct scene_update_data data = {
+      .scene = scene,
       .effects = scene_effects_get(scene, false),
       .visible = &visible,
       .update_region = update_region,
