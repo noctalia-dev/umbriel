@@ -105,6 +105,8 @@ static bool clear_blur_buffers(struct fx_offscreen_buffers* fbos) {
 }
 
 static void clear_effect_buffers(struct fx_offscreen_buffers* fbos) {
+  fbos->sdr_composition_valid = false;
+  drop_framebuffer(&fbos->sdr_composition_buffer);
   clear_animation_buffers(&fbos->output);
   clear_animation_buffers(&fbos->group);
   clear_blur_buffers(fbos);
@@ -206,6 +208,7 @@ void fx_offscreen_buffers_invalidate_blend(struct wlr_output* output) {
     return;
   }
   fbos->blend_valid = false;
+  fbos->sdr_composition_valid = false;
   fbos->sdr_capture_generation = 0;
 }
 

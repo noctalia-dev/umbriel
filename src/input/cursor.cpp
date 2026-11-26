@@ -319,6 +319,7 @@ namespace umbriel {
       forwardEffectPointer();
       if (m_compositorOwnsCursor) {
         setXcursor(m_compositorCursorName.c_str());
+        refreshPointerFocus();
       } else {
         restoreClientCursor();
       }
@@ -343,6 +344,7 @@ namespace umbriel {
         forwardEffectPointer();
         if (m_compositorOwnsCursor) {
           setXcursor(m_compositorCursorName.c_str());
+          refreshPointerFocus();
         } else {
           restoreClientCursor();
         }
@@ -371,6 +373,13 @@ namespace umbriel {
     m_cursorHidden = true;
     forwardEffectPointer();
     wlr_cursor_set_surface(m_cursor, nullptr, 0, 0);
+    // An invisible cursor must not keep a client looking pointed at: drop pointer focus so the surface under it
+    // receives leave and stops drawing hover state. A pointer constraint (a game's lock or confinement) owns that
+    // focus instead: clearing it would strand the lock and churn leave/enter on every hide, so setPointerFocus keeps
+    // focus on the constrained surface while hidden.
+    if (m_activeConstraint == nullptr) {
+      clearPointerFocus();
+    }
   }
 
   void Cursor::forwardEffectPointer() const {
@@ -1862,11 +1871,6 @@ namespace umbriel {
         return;
       }
       if (auto* grab = std::get_if<TiledResizeGrab>(&m_grab)) {
-        if (grab->deferred && grab->session != nullptr && grab->workspace != nullptr) {
-          grab->session->applyDelta(
-              m_cursor->x - grab->startX, m_cursor->y - grab->startY, grab->workspace->tiledArea()
-          );
-        }
         if (grab->workspace != nullptr) {
           if (grab->workspace->focusedView() == grab->view) {
             grab->workspace->reevaluateFocusedColumn();
@@ -2714,6 +2718,7 @@ namespace umbriel {
     // The same gates as hover: grabs, lock, exclusive layers, and the overview keep their focus.
     wlr_seat* seat = m_server->seat()->wlr();
     if (!isPassthrough()
+        || m_cursorHidden
         || seat->drag != nullptr
         || seat->pointer_state.button_count != 0
         || wlr_seat_pointer_has_grab(seat)
@@ -3690,6 +3695,13 @@ namespace umbriel {
   }
 
   void Cursor::setPointerFocus(wlr_surface* surface, double sx, double sy, uint32_t timeMsec) {
+    // Compositor warps and refreshes run while the cursor is hidden; none of them may hand pointer focus to the
+    // surface under the invisible cursor. The constrained surface is the exception: the locking client keeps its
+    // focus across hides so the lock is not stranded, but a warp elsewhere still releases it.
+    if (m_cursorHidden && (m_activeConstraint == nullptr || surface != m_activeConstraint->surface)) {
+      clearPointerFocus();
+      return;
+    }
     if (surface == nullptr) {
       clearPointerFocus();
       return;
@@ -3898,27 +3910,10 @@ namespace umbriel {
       resetMode();
       return;
     }
-    // With windows_resize.wait_for_redraw each step is a held switch, like any other resizing reflow: the next step
-    // waits until the clients have redrawn at the last one, so no frame shows a buffer stretched to a box it was not
-    // drawn for.
-    const auto& animation = config().animation;
-    const bool lockstep = animation.windowsResize.waitsForClient(animation.enabled);
-    if (lockstep && grab->workspace->layoutMotionWaiting()) {
-      grab->deferred = true;
-      return;
-    }
-    grab->deferred = false;
     const wlr_box usable = grab->workspace->tiledArea();
     grab->session->applyDelta(m_cursor->x - grab->startX, m_cursor->y - grab->startY, usable);
     grab->view->setMaximizedState(false);
-    grab->workspace->markArrange(lockstep);
-  }
-
-  void Cursor::resumeTiledResize(const Workspace* workspace) {
-    const auto* grab = std::get_if<TiledResizeGrab>(&m_grab);
-    if (grab != nullptr && grab->workspace == workspace && grab->deferred) {
-      processResizeTile();
-    }
+    grab->workspace->markArrange(false);
   }
 
 } // namespace umbriel

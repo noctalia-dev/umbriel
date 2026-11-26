@@ -277,6 +277,8 @@ saturation = 1.1
 
 Optimized blur samples the background beneath the window stack. Set it to `false` when translucent surfaces should blur the surfaces directly behind them, at a higher rendering cost. The shared background cache follows background layer-shell updates, including animated map and unmap transitions. Unchanged commits that only request frame callbacks reuse the cached blur.
 
+Blur and shadows can outlast visible content if an application clears its pixels before unmapping its window. See [Fully transparent content](window-rules.md#fully-transparent-content) for alpha masking and shadow rules.
+
 ### Shadow
 
 ```toml

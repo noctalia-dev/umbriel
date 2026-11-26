@@ -252,6 +252,9 @@ if build_tests
     'framebuffer-texture-binding',
     'blur-ping-pong-size',
     'blur-scratch-lifecycle',
+    'sdr-composition-selection',
+    'sdr-composition-10bit-selection',
+    'sdr-composition-alpha-copy',
   ]
     test(
       'color-' + case_name,
