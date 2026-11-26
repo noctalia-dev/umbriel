@@ -29,7 +29,7 @@ For floating windows, extent fractions use the output's usable area and respect 
 
 Focusing a floating window reveals the workspace's floating windows above fullscreen without taking the fullscreen window out of fullscreen. Clicking or explicitly focusing the fullscreen window covers independent floats again. With focus follows mouse enabled, hovering the fullscreen window transfers keyboard focus while leaving the floats visible; clicking it covers them.
 
-An independent floating window does not take focus by default when it opens over fullscreen. Set `default_focused = true` in a [window rule](window-rules.md) to focus and reveal it automatically. Parented dialogs and application activation requests retain their usual focus behavior.
+An independent floating window does not take focus by default when it opens over fullscreen. Set `default_focused = true` in a [window rule](window-rules-placement.md#maximize-fullscreen-and-focus) to focus and reveal it automatically. Parented dialogs and application activation requests retain their usual focus behavior.
 
 ## Dialogs
 
@@ -39,11 +39,11 @@ A modal dialog is attached to its parent: one that says so through xdg-dialog-v1
 
 While it is attached, the dialog holds its parent's input: focusing or clicking the parent focuses the dialog, and the parent is shaded by `[animation.dialogs]` `dim` (see [Animation](animation.md#event-tables)). Actions aimed at the dialog that place a window, such as moving it to a workspace, floating, pinning, or the scratchpad, act on the parent; closing and killing still reach the dialog. A Mod-drag on the dialog drags the parent. Window rules that place a window (`default_workspace`, `default_output`, `default_scratchpad`, `default_pinned`, `default_position`, `default_floating`, and the size and maximize defaults) do not apply to an attached dialog.
 
-The dialog leaves when it stops being modal or closes, and becomes an ordinary floating window if its parent closes first. Set `[general] attach_modal_dialogs = false` to keep every dialog an ordinary window, or use `attach_to_parent = false` in a [window rule](window-rules.md) for single applications. Either takes effect on reload.
+The dialog leaves when it stops being modal or closes, and becomes an ordinary floating window if its parent closes first. Set `[general] attach_modal_dialogs = false` to keep every dialog an ordinary window, or use `attach_to_parent = false` in a [window rule](window-rules-placement.md#dialogs) for single applications. Either takes effect on reload.
 
 ## Minimize
 
-Only floating windows minimize: `window-minimize`, the minimize button of Umbriel's [title bar](appearance.md#title-bar) or of the application, or a taskbar can hide one. Tiled, pinned, fullscreen, and scratchpad windows do not minimize, and applications and the title bar offer minimize only while the window floats. Tiling a minimized window, for example by switching its workspace to a tiling layout, shows it again.
+Only floating windows minimize: `window-minimize`, the minimize button of Umbriel's [title bar](title-bars.md) or of the application, or a taskbar can hide one. Tiled, pinned, fullscreen, and scratchpad windows do not minimize, and applications and the title bar offer minimize only while the window floats. Tiling a minimized window, for example by switching its workspace to a tiling layout, shows it again.
 
 A minimized window keeps its workspace, position, size, and stacking. It stays in taskbars and in `umbriel windows`, where it reports `minimized` (see [IPC](ipc.md)). When the focused window is minimized, focus moves to another window on the workspace. Focus cycling, directional focus, `window-focus-last`, and the overview skip minimized windows.
 

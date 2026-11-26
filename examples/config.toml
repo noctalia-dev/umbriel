@@ -399,7 +399,7 @@ default_pinned = true
 # background_render = true
 
 # Keep matching windows visible locally but absent from screenshots and recordings.
-# See docs/user/window-rules.md#capture-protection.
+# https://docs.noctalia.dev/umbriel/window-rules-behavior/#hide-a-window-from-screenshots
 # [[window_rule]]
 # match.app_id = "^private-app$"
 # block_capture = true
@@ -503,4 +503,4 @@ action = "overview-open"
 # [[layer_rule]]
 # match.namespace = "^vicinae$"
 # dim_behind = 0.5
-# Window rules accept dim_behind too; see docs/user/window-rules.md.
+# Window rules accept dim_behind too: https://docs.noctalia.dev/umbriel/window-rules-appearance/#dim-behind
