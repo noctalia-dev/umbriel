@@ -5,12 +5,13 @@
 #
 # Runs the binary as a nested session with a throwaway home, config and D-Bus
 # session, so nothing of the user's desktop or settings is touched. Shots use
-# light mode: a soft wallpaper made from one of the fixture paintings, and
-# Noctalia's default palette (tools/screenshots/noctalia-palette.json, the
-# shell's built-in "Noctalia" palette) for Umbriel, foot and luciole. Scenes are
+# dark mode: a dim wallpaper made from one of the fixture paintings, and the
+# Ayu dark palette (tools/screenshots/ayu-dark.json, from Noctalia's built-in
+# palettes) for Umbriel, foot and luciole. It differs from the Noctalia palette
+# of the docs site so the shots stand out from the page. Scenes are
 # driven through `umbriel msg`. Needs: noctalia, mpvpaper, grim, foot, magick,
 # cwebp, and a running Wayland session to nest in; luciole adds file manager
-# windows when installed. ICON_THEME overrides luciole's Rose-Pine-Plus-Light.
+# windows when installed. ICON_THEME overrides luciole's Rose-Pine-Plus-Dark.
 # Timing based: raise PAUSE if a shot comes out half drawn.
 set -euo pipefail
 
@@ -126,41 +127,46 @@ cp "$root"/tools/screenshots/pictures/*.jpg "$home/Pictures/"
 cat >"$home/notes.txt" <<'EOF'
 Umbriel
 
-- scrolling, dwindle, master, and stacking layouts
-- independent workspaces per output
-- tab groups and scratchpads
-- blur, shadows, and animations
+- four layouts
+- workspaces per output
+- tab groups
+- scratchpads
+- blur and shadows
 EOF
+# Layout-neutral commands, so the terminal reads right in every scene.
 cat >"$home/session.txt" <<'EOF'
-$ umbriel workspaces
-DP-1  1*  scrolling  3 windows
-DP-1  2   master     0 windows
-$ umbriel msg workspace-set-layout dwindle
+$ umbriel --version
+umbriel 0.1.0
+$ ls -1 ~/Pictures
+landscape-at-sunset.jpg
+rainbow-landscape.jpg
+river-landscape.jpg
+saint-ouen.jpg
 EOF
 # A soft, blurred take on one painting keeps the wallpaper quiet behind the windows.
 magick "$root/tools/screenshots/pictures/ship-in-a-stormy-sea.jpg" -resize '1280x800^' -gravity center \
-  -extent 1280x800 -blur 0x24 -modulate 120,50 "$tmp/wallpaper.png"
+  -extent 1280x800 -blur 0x24 -modulate 45,40 "$tmp/wallpaper.png"
 
 # The packaged starting configuration, so shots show what a new user sees, with the Noctalia palette included.
 mkdir -p "$tmp/config/umbriel" "$tmp/config/foot"
 perl -0pe 's/\[include\]\nfiles = \[\]/[include]\nfiles = ["noctalia.toml"]/' "$root/examples/config.toml" \
   >"$tmp/config/umbriel/config.toml"
-# "auto" follows the generated colors.toml, which holds the light palette.
+# "auto" follows the generated colors.toml, which holds the dark palette.
 printf '[browser]\nview_mode = "grid"\ncolor_scheme = "auto"\n' >"$tmp/config/luciole/config.toml"
 printf 'include=%s/config/foot/themes/noctalia\nfont=monospace:size=11\npad=12x12\n' "$tmp" >"$tmp/config/foot/foot.ini"
 
 # Render Noctalia's built-in templates (umbriel/noctalia.toml, foot/themes/noctalia, luciole/colors.toml and
-# others) from the default palette into the throwaway config. Hooks for absent programs warn harmlessly.
+# others) from the Ayu dark palette into the throwaway config. Hooks for absent programs warn harmlessly.
 HOME=$home XDG_CONFIG_HOME="$tmp/config" XDG_DATA_HOME="$tmp/data" XDG_STATE_HOME="$tmp/state" \
-  XDG_CACHE_HOME="$tmp/cache" noctalia theme --theme-json "$root/tools/screenshots/noctalia-palette.json" \
-  --builtin-config --default-mode light >/dev/null 2>&1
+  XDG_CACHE_HOME="$tmp/cache" noctalia theme --theme-json "$root/tools/screenshots/ayu-dark.json" \
+  --builtin-config --default-mode dark >/dev/null 2>&1
 
 # luciole's icon theme comes from the desktop settings (GSettings, here a plain key file).
 real_data=${XDG_DATA_HOME:-$HOME/.local/share}
-icons=${ICON_THEME:-Rose-Pine-Plus-Light}
+icons=${ICON_THEME:-Rose-Pine-Plus-Dark}
 if [[ -d $real_data/icons/$icons || -d /usr/share/icons/$icons ]]; then
   mkdir -p "$tmp/config/glib-2.0/settings"
-  printf "[org/gnome/desktop/interface]\nicon-theme='%s'\ncolor-scheme='prefer-light'\n" "$icons" \
+  printf "[org/gnome/desktop/interface]\nicon-theme='%s'\ncolor-scheme='prefer-dark'\n" "$icons" \
     >"$tmp/config/glib-2.0/settings/keyfile"
 fi
 
