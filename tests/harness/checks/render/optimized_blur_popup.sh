@@ -41,7 +41,7 @@ EOF
 await_events "$UMBRIEL_RUNTIME_DIR/wallpaper.log" ready 1 "the wallpaper"
 "$UMBRIEL_LAYER_CLIENT" HEADLESS-1 40 popup-on-release popup-color=0x80000000 > "$BAR_LOG" 2>&1 &
 await_events "$BAR_LOG" ready 1 "the bar"
-FILL_COLOR=0xFFFF0000 "$UMBRIEL_UNMAP_CLIENT" "$TITLE" 1200 600 > "$UMBRIEL_RUNTIME_DIR/window.log" 2>&1 &
+FILL_COLOR=0xFFFF0000 FOLLOW_CONFIGURES=1 "$UMBRIEL_UNMAP_CLIENT" "$TITLE" 1200 600 > "$UMBRIEL_RUNTIME_DIR/window.log" 2>&1 &
 await_lines "$UMBRIEL_RUNTIME_DIR/window.log" mapped 1
 "$UMBRIEL" settle
 

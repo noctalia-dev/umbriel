@@ -222,9 +222,10 @@ assert_group_fade closing "$group_close_red" "$group_close_blue"
 
 "$UMBRIEL" clock-advance 5000
 
-spawn style-tab-red 0xFFFF0000
+# Tabs map at their tile's size, so the centre of the box the listing reports is drawn by the tab.
+RESIZE_FILL_COLOR=0xFFFF0000 spawn style-tab-red 0xFFFF0000
 "$UMBRIEL" clock-advance 5000
-spawn style-tab-blue
+RESIZE_FILL_COLOR=0xFF0000FF spawn style-tab-blue
 "$UMBRIEL" clock-advance 5000
 if ! "$UMBRIEL" windows --json | jq -e '
   any(.[]; .title == "style-tab-blue" and .tabbed and (.tab_hidden | not) and .active)
@@ -259,7 +260,7 @@ if ((red < 240 || green > 15 || blue > 15)); then
   exit 1
 fi
 
-spawn style-tab-hidden
+RESIZE_FILL_COLOR=0xFF0000FF spawn style-tab-hidden
 "$UMBRIEL" clock-advance 5000
 "$UMBRIEL" msg window-focus "$(window_id style-tab-red)" > /dev/null
 "$UMBRIEL" clock-advance 1

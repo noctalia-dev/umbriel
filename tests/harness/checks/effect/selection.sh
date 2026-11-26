@@ -92,8 +92,14 @@ def run(*args):
 def action(name, *words):
     run("msg", name, *words)
 
+# A tiled reflow that resizes a window holds on the frozen clock until its client redraws, and these clients keep
+# their own size, so advance past the hold whenever settle refuses.
 def settle():
-    run("settle")
+    for _ in range(10):
+        if subprocess.run([umbriel, "settle"], capture_output=True, timeout=10).returncode == 0:
+            return
+        run("clock-advance", "200")
+    raise SystemExit("settle: animations never finished")
 
 def windows():
     return json.loads(run("windows", "--json"))
@@ -147,7 +153,8 @@ def event_window(title):
     raise SystemExit(f"first-map-event: no event for {title}")
 
 def spawn(title, expected):
-    env = dict(os.environ, FILL_COLOR="0xFF0000FF", REMAP_ON_STDIN="1")
+    # Following its tile keeps the window's pixels where the listing reports its box.
+    env = dict(os.environ, FILL_COLOR="0xFF0000FF", REMAP_ON_STDIN="1", FOLLOW_CONFIGURES="1")
     if title == "pool-history":
         env["TITLE_AFTER_MAP"] = "pool-changed"
     log = open(os.path.join(os.environ["UMBRIEL_RUNTIME_DIR"], title + ".log"), "w")

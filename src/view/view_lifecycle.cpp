@@ -229,7 +229,6 @@ namespace umbriel {
     }
     m_effects.resetSlots();
     m_tiledOpeningDeferred = false;
-    m_openingFloatingSize.reset();
     m_presentedTiledBox = {};
     m_acceptClientMaximizeRequests = config().general.honorRestoredMaximize;
     // Firefox often re-assert session maximize after map. With honor off, consume that one request so
@@ -503,55 +502,23 @@ namespace umbriel {
         // windows_move reflow that makes room for it. An overview card follows that same reveal.
         deferTiledOpening();
       } else {
-        if (!m_tiled && !layoutFullscreen() && m_presentation.width() > 0 && m_presentation.height() > 0) {
-          m_openingFloatingSize = std::array{m_presentation.width(), m_presentation.height()};
-        }
         setFadeAlpha(0.0F);
         m_fade.snap(0.0);
         m_fade.retarget(1.0, open.durationMs, open.curve);
 
-        // Floating and fullscreen windows tween themselves.
+        // Fullscreen and floating windows apply the inset to the box they rest in on every fade tick: the output box
+        // the arrange after this map assigns, or the float's position at the size its client draws by then.
         if (!m_customFade && (open.style == "popin" || open.style == "zoom")) {
-          const double scale = std::clamp(open.style == "zoom" ? 0.5 : open.scale, 0.0, 1.0);
-          if (layoutFullscreen()) {
-            // The output box this window rests in is assigned by the arrange that follows this map, so the inset is
-            // applied against that box on every fade tick instead of tweening a node it has not been placed in yet.
-            m_openingScale = scale;
-            const wlr_box area = fullscreenLayoutBox();
-            setLayoutTarget(area.x, area.y);
-            presentBox(area);
-          } else if (m_presentation.width() > 0 && m_presentation.height() > 0) {
-            const int targetW = m_presentation.width();
-            const int targetH = m_presentation.height();
-            const int startW = std::max(1, static_cast<int>(targetW * scale));
-            const int startH = std::max(1, static_cast<int>(targetH * scale));
-            const int targetX = layoutX();
-            const int targetY = layoutY();
-            const int startX = targetX + (targetW - startW) / 2;
-            const int startY = targetY + (targetH - startH) / 2;
-
-            m_presentation.setSize(startW, startH);
-            m_presentation.animateTo(targetW, targetH, open.durationMs, open.curve);
-            setScenePosition(startX, startY);
-            m_posX.snap(startX);
-            m_posY.snap(startY);
-            m_posX.retarget(targetX, open.durationMs, open.curve);
-            m_posY.retarget(targetY, open.durationMs, open.curve);
-          }
+          m_openingScale = std::clamp(open.style == "zoom" ? 0.5 : open.scale, 0.0, 1.0);
         } else if (!m_customFade && open.style == "slide") {
-          if (layoutFullscreen()) {
-            m_openingSlide = kOpenSlidePx;
-            const wlr_box area = fullscreenLayoutBox();
-            setLayoutTarget(area.x, area.y);
-            presentBox(area);
-          } else {
-            const int targetX = layoutX();
-            const int targetY = layoutY();
-            setScenePosition(targetX, targetY + kOpenSlidePx);
-            m_posX.snap(targetX);
-            m_posY.snap(targetY + kOpenSlidePx);
-            m_posY.retarget(targetY, open.durationMs, open.curve);
-          }
+          m_openingSlide = kOpenSlidePx;
+        }
+        if (openingInsetPending() && layoutFullscreen()) {
+          const wlr_box area = fullscreenLayoutBox();
+          setLayoutTarget(area.x, area.y);
+          presentBox(area);
+        } else if (openingInsetPending() && !m_tiled) {
+          presentBox(floatingOpeningBox());
         }
         scheduleFrame();
       }
@@ -1103,7 +1070,9 @@ namespace umbriel {
     }
     commitFloatingSize();
     (void)settleTiledSizeRequest();
-    reassertTiledClientSize();
+    if (m_mapped && m_workspace != nullptr) {
+      m_workspace->releaseAnsweredLayoutHold();
+    }
     applyCornerRadius();
     // Re-apply the owner's frame and clip after each client commit. A tiled commit is not a resize request: Chromium
     // can change its geometry without changing configure, but the layout still owns its box.

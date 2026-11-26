@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Closing the root leaf of a five-window dwindle tree moves several differently sized survivors. Their visible geometry
-# must keep following windows_move for its whole clock instead of pinning at the first overshoot of a non-linear curve.
+# Closing the root leaf of a five-window dwindle tree moves several differently sized survivors. Once they have redrawn
+# at their new sizes, their visible geometry must keep following windows_move for its whole clock instead of pinning at
+# the first overshoot of a non-linear curve.
 set -euo pipefail
 
 readonly SHOTS="$UMBRIEL_RUNTIME_DIR/dwindle-many-close-timing"
@@ -69,7 +70,7 @@ EOF
 
 spawn() {
   local title=$1 color=$2
-  FILL_COLOR="$color" "$UMBRIEL_UNMAP_CLIENT" "$title" 1280 720 \
+  FILL_COLOR="$color" FOLLOW_CONFIGURES=1 LOG_CONFIGURES=1 "$UMBRIEL_UNMAP_CLIENT" "$title" 1280 720 \
     > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
   for _ in $(seq 100); do
     if "$UMBRIEL" windows --json | jq -e --arg title "$title" 'any(.[]; .title == $title)' > /dev/null; then
@@ -78,6 +79,25 @@ spawn() {
     sleep 0.025
   done
   echo "timed out waiting for $title"
+  return 1
+}
+
+# Waits until a survivor has committed the latest size it was configured to after log line <mark>.
+wait_redrawn() {
+  local title=$1 mark=$2 size width height
+  local log="$UMBRIEL_RUNTIME_DIR/$title.log"
+  for _ in $(seq 100); do
+    size=$(tail -n "+$((mark + 1))" "$log" | grep -o 'configured-size=[0-9]*x[0-9]*' | tail -n 1 || true)
+    if [[ -n $size ]]; then
+      size=${size#configured-size=}
+      width=${size%x*}
+      height=${size#*x}
+      "$UMBRIEL" windows --json | jq -e --arg title "$title" --argjson w "$width" --argjson h "$height" \
+        'any(.[]; .title == $title and .w == $w and .h == $h)' > /dev/null && return 0
+    fi
+    sleep 0.025
+  done
+  echo "$title did not redraw at its new size: $(tail -n "+$((mark + 1))" "$log")"
   return 1
 }
 
@@ -116,8 +136,18 @@ spawn dwindle-survivor-red 0xFFFF0000
 spawn dwindle-survivor-green 0xFF00FF00
 spawn dwindle-survivor-blue 0xFF0000FF
 spawn dwindle-survivor-yellow 0xFFFFFF00
-"$UMBRIEL" clock-advance 3000
+# Runs the reflows the openings started, including holds that time out only on a tick after their first.
+for _ in $(seq 10); do
+  "$UMBRIEL" clock-advance 3000
+  "$UMBRIEL" settle 2> /dev/null && break
+done
 "$UMBRIEL" settle
+
+readonly survivors=(dwindle-survivor-red dwindle-survivor-green dwindle-survivor-blue dwindle-survivor-yellow)
+declare -A marks=()
+for survivor in "${survivors[@]}"; do
+  marks[$survivor]=$(wc -l < "$UMBRIEL_RUNTIME_DIR/$survivor.log")
+done
 
 grim "$SHOTS/before.png"
 readonly CLOSE_ID=$(window_id dwindle-close-root)
@@ -135,6 +165,11 @@ if ! grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/dwindle-close-root.log"; then
   echo "root dwindle leaf did not unmap"
   exit 1
 fi
+# Every survivor's tile changes size. Their redraws release the reflow hold at this frozen instant, before the first
+# sample.
+for survivor in "${survivors[@]}"; do
+  wait_redrawn "$survivor" "${marks[$survivor]}"
+done
 
 request_ms=0
 frame_count=$(((OUT_MS + 350) / SAMPLE_MS + 1))

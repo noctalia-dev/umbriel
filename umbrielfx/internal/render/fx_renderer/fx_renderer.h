@@ -22,6 +22,16 @@ void fx_renderer_set_allocator(struct wlr_renderer* renderer, struct wlr_allocat
 bool fx_output_set_sdr_transfer_function(struct wlr_output* output, enum wlr_color_transfer_function transfer_function);
 enum wlr_color_transfer_function fx_output_get_sdr_transfer_function(struct wlr_output* output);
 
+// Whether rendering this output buffer directly matches the precision and
+// clamping of the shared SDR target, which is 8-bit or FP16. Other formats,
+// such as 10-bit with or without FP16 support, would differ between direct and
+// offscreen frames, so they keep composing offscreen.
+bool fx_renderer_sdr_direct_matches_composition(struct wlr_buffer* buffer);
+
+// Whether the saved optimized blur is valid, encoded SDR and matches this
+// output buffer's size and effect format.
+bool fx_renderer_optimized_blur_ready(struct wlr_output* output, struct wlr_buffer* buffer);
+
 struct fx_pixel_format {
   uint32_t drm_format;
   // optional field, if empty then internalformat = format

@@ -188,7 +188,7 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.m
 | `opacity`                 | Surface opacity from 0.0 to 1.0.                                                                                                                                                                                                                                       |
 | `blur`                    | Enable or disable window blur, including translucent Umbriel title bars.                                                                                                                                                                                               |
 | `blur_popups`             | Apply blur to descendant XDG popups. Popups always blur the live content behind them, whatever `blur_optimized` says.                                                                                                                                                  |
-| `blur_ignore_alpha`       | Skip blur below an alpha threshold.                                                                                                                                                                                                                                    |
+| `blur_ignore_alpha`       | Skip blur below an alpha threshold, from 0.0 to 1.0; default `0.0`. See [Fully transparent content](#fully-transparent-content).                                                                                                                                       |
 | `blur_optimized`          | Override the global optimized-blur choice.                                                                                                                                                                                                                             |
 | `confine_pointer`         | Keep the pointer inside this window while it has keyboard focus (default `false`).                                                                                                                                                                                     |
 | `touchpad_scroll_factor`  | Touchpad scroll speed multiplier from 0.1 to 10.0 for this window, applied on top of [`input.touchpad.scroll_factor`](input.md#touchpad). Mouse wheels are unaffected.                                                                                                 |
@@ -213,6 +213,23 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.m
 | `window_effect`           | Replace `effects.window` with a window preset or pool, or `"off"` to disable it.                                                                                                                                                                                       |
 
 These values refresh when matching identity or state changes. Fullscreen bypasses rule opacity unless [`appearance.opaque_fullscreen`](appearance.md#window-appearance) is `false`.
+
+### Fully transparent content
+
+When window blur is enabled, `blur_ignore_alpha = 0.0` applies blur across the window's geometry, including fully transparent pixels. Set it to `0.01` to skip clear or nearly clear pixels while keeping blur under translucent content above that threshold. This controls where blur is drawn; it does not change the window's opacity.
+
+Some applications clear their window contents before unmapping the window, for example when closing a dialog. During that interval, blur can remain visible as an empty rectangle. With [optimized blur](appearance.md#blur), the rectangle shows the blurred wallpaper. Setting `blur_optimized = false` makes it blur the live content behind the window; the blur region and shadow can still remain until the window unmaps.
+
+Use a rule for the affected windows:
+
+```toml
+[[window_rule]]
+match.app_id = "^example-app$"
+blur = true
+blur_ignore_alpha = 0.01
+```
+
+Replace `example-app` with the app ID reported by `umbriel windows`. A mapped window's normal shadow follows its bounds independently of its content's alpha, so the blur threshold does not remove that shadow. Add `shadow = false` to the same rule if a shadow outline remains. This disables shadows for all matching windows, including while their content is visible.
 
 ### Focus transitions
 
