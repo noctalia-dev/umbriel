@@ -43,6 +43,7 @@ namespace umbriel {
     void setPressed(SsdFramePart part);
     void setBlurOptions(const SurfaceBlurOptions& options);
     void setBlurLive(bool live);
+    wlr_scene_blur* blurNode() const { return m_blur; }
     bool maximizeEnabled() const { return m_maximizeEnabled; }
     int titleBarHeight() const { return m_geometry.titleBarHeight; }
     bool contains(const wlr_scene_node* node) const;
@@ -66,6 +67,7 @@ namespace umbriel {
     wlr_scene_tree* m_gripTree = nullptr;
     wlr_scene_rect* m_background = nullptr;
     wlr_scene_blur* m_blur = nullptr;
+    fx_effect_shader* m_backdrop = nullptr;
     SurfaceBlurOptions m_blurOptions;
     bool m_blurLive = false;
     wlr_scene_buffer* m_label = nullptr;

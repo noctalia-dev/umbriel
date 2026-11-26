@@ -17,6 +17,7 @@
 extern "C" {
 #include <umbrielfx/render/effect.h>
 }
+#include "view/popup.h"
 #include "view/size_hints.h"
 #include "view/view_internal.h"
 // clang-format off
@@ -315,6 +316,17 @@ namespace umbriel {
     // A view deleted while its role lives on (server teardown) must not leave the role pointing at freed scene nodes.
     if (m_map.link.next != nullptr) {
       if (m_toplevel != nullptr) {
+        forEachPopupSurface(
+            [](wlr_surface* surface, int, int, void*) {
+              wl_listener* listener = wl_signal_get(&surface->events.commit, Popup::onCommit);
+              if (listener != nullptr) {
+                Popup* popup;
+                popup = wl_container_of(listener, popup, m_commit);
+                popup->m_blur = {};
+              }
+            },
+            nullptr
+        );
         m_toplevel->base->data = nullptr;
       } else {
         m_xsurface->data = nullptr;

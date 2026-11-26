@@ -19,6 +19,7 @@ namespace umbriel {
     Popup& operator=(const Popup&) = delete;
 
   private:
+    friend class View;
     static void onCommit(wl_listener* listener, void* data);
     static void onReposition(wl_listener* listener, void* data);
     static void onConfigure(wl_listener* listener, void* data);
@@ -26,7 +27,7 @@ namespace umbriel {
     static void onUnmap(wl_listener* listener, void* data);
     static void onDestroy(wl_listener* listener, void* data);
 
-    void handleCommit();
+    void handleCommit(bool configure = true);
     void handleReposition();
     void handleConfigure();
     void unconstrain();

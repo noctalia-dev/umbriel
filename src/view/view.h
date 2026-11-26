@@ -137,7 +137,7 @@ namespace umbriel {
     void syncAnimationEffects(
         wlr_scene_tree* target = nullptr, wlr_scene_node* border = nullptr, wlr_scene_node* surface = nullptr,
         const BorderEffectGate* gate = nullptr, Output* cardOutput = nullptr, float scale = 1.0F,
-        wlr_scene_blur* backdrop = nullptr
+        wlr_scene_blur* backdrop = nullptr, wlr_scene_blur* titlebarBackdrop = nullptr
     );
     ViewEffects& effects() { return m_effects; }
     EffectSlot& effectSlot(EffectKind kind) { return m_effects.slot(kind); }

@@ -211,7 +211,7 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](tab-grou
 | `border_effect`           | Replace `effects.border` with a border preset or pool, or `"off"` to disable it.                                                                                                                                                                                       |
 | `border_effect_unfocused` | Override `effects.border_unfocused` with `true` or `false`; omission inherits the global setting. The selected border effect still requires decoration, no urgency, and no fullscreen.                                                                                 |
 | `window_effect`           | Replace `effects.window` with a window preset or pool, or `"off"` to disable it.                                                                                                                                                                                       |
-| `backdrop_effect`         | Replace the window backdrop blur with a `backdrop` preset, or `"off"` to restore the configured native blur. Works with native blur disabled.                                                                                                                          |
+| `backdrop_effect`         | Select a `backdrop` preset behind the client area, translucent Umbriel title bar, and descendant XDG popups, or `"off"` to restore native blur settings. Works with `blur` and `blur_popups` disabled.                                                                 |
 
 These values refresh when matching identity or state changes. Fullscreen bypasses rule opacity unless [`appearance.opaque_fullscreen`](appearance.md#window-appearance) is `false`.
 

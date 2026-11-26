@@ -3,6 +3,7 @@
 #include "config/effects.h"
 #include "scene/effect_selection.h"
 
+#include <span>
 #include <string>
 #include <vector>
 
@@ -43,7 +44,7 @@ namespace umbriel {
     struct ApplyInput {
       wlr_scene_node* surface = nullptr;
       wlr_scene_node* border = nullptr;
-      wlr_scene_node* backdrop = nullptr;
+      std::span<wlr_scene_node* const> backdrops;
       wlr_scene_node* captureSurface = nullptr; // the isolated capture scene's surface tree node
       BorderEffectGate gate;
       float scale = 1.0F;
@@ -61,7 +62,9 @@ namespace umbriel {
     // Ledger removal for every node this object registered; slots are cleared by the caller.
     void detach();
     // Ledger removal for one set of nodes (an overview card being destroyed).
-    void detachNodes(wlr_scene_node* surface, wlr_scene_node* border, wlr_scene_node* backdrop);
+    void detachNodes(
+        wlr_scene_node* surface, wlr_scene_node* border, wlr_scene_node* backdrop, wlr_scene_node* titlebar = nullptr
+    );
 
   private:
     void track(const void* owner);   // remember a ledger owner so detach() can drop it
