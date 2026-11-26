@@ -257,15 +257,8 @@ namespace umbriel {
     m_initialRuleState = ruleState();
     m_initialRuleState.focused = false;
     m_initialRuleState.alone = false;
-    ResolvedWindowRule rule = resolveWindowRules(
-        config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, m_initialRuleState,
-        m_server->uptimeMs()
-    );
-    // spawn-floating acts as a default_floating rule; an explicit default_floating rule decides instead.
-    if (m_launchFloating && !rule.defaultFloating) {
-      rule.defaultFloating = true;
-    }
-    applyRememberedFloatingGeometry(rule);
+    const ResolvedWindowRule rule =
+        resolveOpeningRules(ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, m_initialRuleState);
     m_initialRules = rule;
     m_initialRuleHistory.clear();
     m_initialRuleHistory.push_back(rule);
@@ -858,13 +851,8 @@ namespace umbriel {
       openingState.focused = false;
       openingState.floating = !looksTiled();
       openingState.alone = false;
-      ResolvedWindowRule rule = resolveWindowRules(
-          config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, openingState, m_server->uptimeMs()
-      );
-      if (m_launchFloating && !rule.defaultFloating) {
-        rule.defaultFloating = true;
-      }
-      applyRememberedFloatingGeometry(rule);
+      ResolvedWindowRule rule =
+          resolveOpeningRules(ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, openingState);
       ScratchpadManager* scratchpadManager = m_server->scratchpadManager();
       const bool launchRuleOverride = m_launchPlacementPending
           && (rule.defaultOutput.has_value()

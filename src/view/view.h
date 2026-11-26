@@ -871,9 +871,13 @@ namespace umbriel {
     // Resolves the rules with `alone` forced, so the alone effect can compare both outcomes, and so the opening paths
     // can read the alone rules before the view is in the layout.
     ResolvedWindowRule resolveRulesWithAlone(bool alone) const;
-    // `remember_floating_geometry`: turn the geometry saved at the last close into floating size and position rules,
-    // and save it again when this window closes.
-    void applyRememberedFloatingGeometry(ResolvedWindowRule& rule) const;
+    // The rules a window opens with for one identity, with spawn-floating and the geometry `remember_floating_geometry`
+    // saved for that app ID applied on top. Every opening path resolves through here so they agree.
+    ResolvedWindowRule resolveOpeningRules(
+        std::optional<std::string_view> appId, std::optional<std::string_view> title,
+        std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state
+    ) const;
+    // Saves the floating geometry under the app ID the opening rules matched, for `remember_floating_geometry`.
     void saveFloatingGeometryForReopen();
     ResolvedWindowRule aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);

@@ -127,7 +127,7 @@ Accepted anchors are `center`, `top_left`, `top_right`, `bottom_left`, `bottom_r
 
 ### Remembered floating geometry
 
-With `remember_floating_geometry = true`, closing a floating window saves its size and its offset from the output's usable area under its app ID. The next window with that app ID opens with that size and position in place of the size and position rules, the way a `default_floating_size_px` and a `top_left` `default_position` would. A window that closes maximized, fullscreen, tiled, attached to its parent, or hidden in a scratchpad saves nothing, so the previous geometry stays. The geometry is kept in memory only and is forgotten when Umbriel restarts. The key does not make a window float; combine it with `default_floating`:
+With `remember_floating_geometry = true`, closing a floating window saves its size as a fraction of the output's usable area and its offset from the usable area's top left under its app ID. The next window with that app ID opens with that size and position in place of the size and position rules, the way a `default_floating_size` and a `top_left` `default_position` would, so it fits on a smaller output. A window that closes maximized, fullscreen, tiled, or attached to its parent saves nothing, so the previous geometry stays. The geometry is kept in memory only and is forgotten when Umbriel restarts. The key does not make a window float; combine it with `default_floating`:
 
 ```toml
 [[window_rule]]

@@ -214,16 +214,21 @@ namespace umbriel {
     wlr_scene_tree* xdgTree() const { return m_xdgTree; }
     wlr_scene_tree* scratchpadTree() const { return m_scratchpadTree; }
     ScratchpadManager* scratchpadManager() const { return m_scratchpadManager.get(); }
-    // Floating geometry of the last closed window per app ID, for `remember_floating_geometry`. Offsets are from the
-    // output's usable area. shortcut: kept in memory only, so it is lost when the compositor restarts.
+    // Floating geometry of the last closed window per app ID, for `remember_floating_geometry`: a logical-pixel
+    // offset from the usable area's top left, and a size as a fraction of it so a smaller output cannot overflow.
+    // shortcut: kept in memory only, so it is lost when the compositor restarts.
     struct RememberedFloatingGeometry {
       int x = 0;
       int y = 0;
-      int width = 0;
-      int height = 0;
+      double width = 0.0;
+      double height = 0.0;
     };
-    std::unordered_map<std::string, RememberedFloatingGeometry>& rememberedFloatingGeometry() {
-      return m_rememberedFloatingGeometry;
+    const RememberedFloatingGeometry* rememberedFloatingGeometry(std::string_view appId) const {
+      const auto found = m_rememberedFloatingGeometry.find(std::string(appId));
+      return found == m_rememberedFloatingGeometry.end() ? nullptr : &found->second;
+    }
+    void rememberFloatingGeometry(std::string_view appId, const RememberedFloatingGeometry& geometry) {
+      m_rememberedFloatingGeometry.insert_or_assign(std::string(appId), geometry);
     }
     // Between layer-shell background and bottom: overview wallpaper blur renders
     // before bottom-layer surfaces so they remain sharp.

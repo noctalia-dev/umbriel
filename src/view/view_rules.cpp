@@ -70,27 +70,34 @@ namespace umbriel {
     );
   }
 
-  void View::applyRememberedFloatingGeometry(ResolvedWindowRule& rule) const {
-    if (!rule.rememberFloatingGeometry.value_or(false) || appId() == nullptr) {
-      return;
+  ResolvedWindowRule View::resolveOpeningRules(
+      std::optional<std::string_view> appId, std::optional<std::string_view> title,
+      std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state
+  ) const {
+    ResolvedWindowRule rule =
+        resolveWindowRules(config(), appId, title, xdgTag, contentType, state, m_server->uptimeMs());
+    // spawn-floating acts as a default_floating rule; an explicit default_floating rule decides instead.
+    if (m_launchFloating && !rule.defaultFloating) {
+      rule.defaultFloating = true;
     }
-    const auto& remembered = m_server->rememberedFloatingGeometry();
-    const auto found = remembered.find(appId());
-    if (found == remembered.end()) {
-      return;
+    if (!rule.rememberFloatingGeometry.value_or(false) || !appId) {
+      return rule;
     }
-    const Server::RememberedFloatingGeometry& geometry = found->second;
-    // Pixel sizes win over fractions, but clearing the fractions keeps the resolved rule unambiguous.
-    rule.defaultFloatingWidthPx = geometry.width;
-    rule.defaultFloatingHeightPx = geometry.height;
-    rule.defaultFloatingWidth.reset();
-    rule.defaultFloatingHeight.reset();
-    rule.defaultPosition = WindowPosition{.x = geometry.x, .y = geometry.y, .anchor = WindowPositionAnchor::TopLeft};
+    if (const Server::RememberedFloatingGeometry* geometry = m_server->rememberedFloatingGeometry(*appId)) {
+      // Pixel sizes take precedence over fractions, so clear them for the remembered fractions to apply.
+      rule.defaultFloatingWidthPx.reset();
+      rule.defaultFloatingHeightPx.reset();
+      rule.defaultFloatingWidth = geometry->width;
+      rule.defaultFloatingHeight = geometry->height;
+      rule.defaultPosition =
+          WindowPosition{.x = geometry->x, .y = geometry->y, .anchor = WindowPositionAnchor::TopLeft};
+    }
+    return rule;
   }
 
   void View::saveFloatingGeometryForReopen() {
     if (!m_initialRules.rememberFloatingGeometry.value_or(false)
-        || appId() == nullptr
+        || !m_initialRulesAppId
         || m_tiled
         || !m_positioned
         || attached()
@@ -98,22 +105,21 @@ namespace umbriel {
         || scheduledMaximized()) {
       return;
     }
-    // A hidden scratchpad member is parked off its home position; keep the geometry from its last normal close.
-    if (const ScratchpadManager* scratchpad = m_server->scratchpadManager();
-        scratchpad != nullptr && scratchpad->contains(this)) {
-      return;
-    }
     const auto [width, height] = floatingSize();
     const wlr_box usable = floatingUsableArea();
     if (width <= 0 || height <= 0 || usable.width <= 0 || usable.height <= 0) {
       return;
     }
-    m_server->rememberedFloatingGeometry()[appId()] = {
-        .x = layoutTargetX() - usable.x,
-        .y = layoutTargetY() - usable.y,
-        .width = width,
-        .height = height,
-    };
+    // A scratchpad hides its members in place, so a hidden member's geometry is its real one.
+    m_server->rememberFloatingGeometry(
+        *m_initialRulesAppId,
+        {
+            .x = layoutTargetX() - usable.x,
+            .y = layoutTargetY() - usable.y,
+            .width = std::min(1.0, static_cast<double>(width) / usable.width),
+            .height = std::min(1.0, static_cast<double>(height) / usable.height),
+        }
+    );
   }
 
   // The difference between the alone and not-alone rules. Only the five size-related fields are kept: the others
@@ -391,11 +397,9 @@ namespace umbriel {
     // Late app ID or title settlement may select opening rules, but identity hints changed after map must not select
     // new one-shot behavior. is_alone never selects opening settings: alone effects are applied and undone on every
     // change to the workspace's tiled set.
-    ResolvedWindowRule rule = resolveWindowRules(
-        config(), m_initialRulesAppId, m_initialRulesTitle, m_initialRulesXdgTag, m_initialRulesContentType,
-        m_initialRuleState, m_server->uptimeMs()
+    const ResolvedWindowRule rule = resolveOpeningRules(
+        m_initialRulesAppId, m_initialRulesTitle, m_initialRulesXdgTag, m_initialRulesContentType, m_initialRuleState
     );
-    applyRememberedFloatingGeometry(rule);
     // An attached dialog's placement is its parent's, so the placement rules have nothing to act on.
     if (attached()) {
       m_initialRules = rule;
