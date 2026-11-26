@@ -82,7 +82,7 @@ vrr = "fullscreen"
 
 `"fullscreen_any"` keeps adaptive sync on while you switch from a fullscreen game to another workspace on the same output and back, so the output changes its VRR state only when the first window there enters fullscreen and when the last one leaves it or closes. `"fullscreen"` turns it off as soon as the active workspace holds no fullscreen window.
 
-A focused window can override this policy through a [window rule](window-rules.md#settings-updated-while-a-window-is-open). A window rule accepts `"disabled"`, `"always"`, or `"fullscreen"`, where `"fullscreen"` follows the focused window's own fullscreen state. Unsupported outputs remain at fixed refresh and produce a warning.
+A focused window can override this policy through a [window rule](window-rules-behavior.md#behavior-keys). A window rule accepts `"disabled"`, `"always"`, or `"fullscreen"`, where `"fullscreen"` follows the focused window's own fullscreen state. Unsupported outputs remain at fixed refresh and produce a warning.
 
 ## Tearing
 

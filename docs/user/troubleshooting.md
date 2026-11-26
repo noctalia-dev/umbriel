@@ -50,6 +50,16 @@ journalctl --user -t umbriel
 
 journald resolves the unit from the process that writes, so a program that is still running when it writes is attributed to the scope unit the launch record named: `journalctl --user -u app-umbriel-1180-3.scope`. A program that writes and exits at once, which is what a missing command does, may be recorded with the `umbriel` identifier and no unit, because there is no process left to look up. Such a record is missed by a unit query and still found by `-t umbriel`. A program that writes nothing, or redirects its own diagnostics away, leaves only the launch record. Under a TTY the child's own output also reaches `umbriel-stderr.log`.
 
+## Game menus open as separate windows
+
+Some Wine and Proton builds that run natively on Wayland open context menus as untitled, unparented windows. Window rules apply to them, but they carry no position, so they can open centered or maximized, and hovering on the way to the menu can refocus the game. Run the game through Xwayland instead. For Proton, set this Steam launch option:
+
+```sh
+PROTON_ENABLE_WAYLAND=0 PROTON_USE_WAYLAND=0 %command%
+```
+
+Restart the game afterward. Its window should then report `xwayland: true` in `umbriel windows --json`.
+
 ## Reporting a problem
 
 Report problems on the [issue tracker](https://github.com/noctalia-dev/umbriel/issues) or ask on [Discord](https://discord.noctalia.dev). Include the Umbriel version (`umbriel --version`), your distribution and GPU, the relevant part of `umbriel.log`, and a small reproduction.
