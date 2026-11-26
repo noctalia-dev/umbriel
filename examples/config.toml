@@ -359,6 +359,12 @@ default_floating = true
 default_maximize = false
 default_position = { x = 20, y = 20, anchor = "bottom_right" }
 
+# Reopen a floating window at the size and position it last closed at.
+# [[window_rule]]
+# match.app_id = "^org[.]example[.]Viewer$"
+# default_floating = true
+# remember_floating_geometry = true
+
 [[window_rule]]
 match.title = "^notificationtoasts_.+_desktop"
 default_position = { x = 0, y = 0, anchor = "bottom_right" }
