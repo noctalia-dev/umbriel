@@ -163,7 +163,8 @@ static void fx_renderer_destroy(struct wlr_renderer* wlr_renderer) {
 
 static struct wlr_render_pass* begin_buffer_pass_with_output(
     struct wlr_renderer* wlr_renderer, struct wlr_buffer* wlr_buffer, const struct wlr_buffer_pass_options* options,
-    struct fx_offscreen_buffers* output_buffers, enum wlr_color_transfer_function pq_sdr_transfer
+    struct fx_offscreen_buffers* output_buffers, enum wlr_color_transfer_function pq_sdr_transfer,
+    bool offscreen_composition
 ) {
   struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
 
@@ -189,7 +190,7 @@ static struct wlr_render_pass* begin_buffer_pass_with_output(
 
   struct fx_gles_render_pass* pass = fx_begin_buffer_pass(
       buffer, &prev_ctx, timer, options->signal_timeline, options->signal_point, options->color_transform,
-      output_buffers, pq_sdr_transfer
+      output_buffers, pq_sdr_transfer, offscreen_composition
   );
   if (!pass) {
     wlr_egl_restore_context(&prev_ctx);
@@ -210,8 +211,9 @@ static struct wlr_render_pass* begin_buffer_pass_with_output(
 static struct wlr_render_pass* begin_buffer_pass(
     struct wlr_renderer* wlr_renderer, struct wlr_buffer* wlr_buffer, const struct wlr_buffer_pass_options* options
 ) {
-  struct wlr_render_pass* pass =
-      begin_buffer_pass_with_output(wlr_renderer, wlr_buffer, options, NULL, WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
+  struct wlr_render_pass* pass = begin_buffer_pass_with_output(
+      wlr_renderer, wlr_buffer, options, NULL, WLR_COLOR_TRANSFER_FUNCTION_GAMMA22, false
+  );
   // Outputs use fx_renderer_begin_output_buffer_pass. Other callers here render into buffers a client reads
   // (capture destinations); fx_framebuffer_copy clears the flag for its internal targets.
   if (pass != NULL && options->signal_timeline == NULL) {
@@ -220,8 +222,9 @@ static struct wlr_render_pass* begin_buffer_pass(
   return pass;
 }
 
-struct wlr_render_pass* fx_renderer_begin_output_buffer_pass(
-    struct wlr_output* output, struct wlr_buffer* buffer, const struct wlr_buffer_pass_options* options
+static struct wlr_render_pass* begin_output_buffer_pass(
+    struct wlr_output* output, struct wlr_buffer* buffer, const struct wlr_buffer_pass_options* options,
+    bool offscreen_composition
 ) {
   if (output == NULL || buffer == NULL || output->renderer == NULL || !wlr_renderer_is_fx(output->renderer)) {
     return NULL;
@@ -233,24 +236,47 @@ struct wlr_render_pass* fx_renderer_begin_output_buffer_pass(
   }
 
   struct fx_offscreen_buffers* output_buffers = NULL;
-  if (options->color_transform != NULL) {
+  if (options->color_transform != NULL || offscreen_composition) {
     output_buffers = fx_offscreen_buffers_try_get(output);
     if (output_buffers != NULL) {
       output_buffers->allocator = output->allocator;
+      // Encoded SDR and linear HDR targets cannot seed one another.
+      if (options->color_transform != NULL) {
+        output_buffers->sdr_composition_valid = false;
+      } else {
+        output_buffers->blend_valid = false;
+        output_buffers->sdr_capture_generation = 0;
+      }
+    } else if (offscreen_composition) {
+      // Do not silently resume the output-image sampling path on failure.
+      return NULL;
     }
   } else {
-    // Direct rendering bypasses the linear blend target. Its previous
-    // contents cannot seed a later incremental transformed pass.
+    // Direct rendering bypasses both shared targets. Their previous contents
+    // cannot seed a later incremental offscreen pass.
     fx_offscreen_buffers_invalidate_blend(output);
   }
 
   struct wlr_render_pass* pass = begin_buffer_pass_with_output(
-      output->renderer, buffer, options, output_buffers, fx_output_get_sdr_transfer_function(output)
+      output->renderer, buffer, options, output_buffers, fx_output_get_sdr_transfer_function(output),
+      offscreen_composition
   );
   if (pass != NULL) {
     fx_get_render_pass(pass)->output_target = true;
   }
   return pass;
+}
+
+struct wlr_render_pass* fx_renderer_begin_output_buffer_pass(
+    struct wlr_output* output, struct wlr_buffer* buffer, const struct wlr_buffer_pass_options* options
+) {
+  return begin_output_buffer_pass(output, buffer, options, false);
+}
+
+struct wlr_render_pass* fx_renderer_begin_offscreen_output_buffer_pass(
+    struct wlr_output* output, struct wlr_buffer* buffer, const struct wlr_buffer_pass_options* options
+) {
+  return begin_output_buffer_pass(output, buffer, options, true);
 }
 
 void fx_renderer_set_nvidia_sync_workaround(struct wlr_renderer* renderer, bool enabled) {

@@ -3416,6 +3416,244 @@ static bool check_framebuffer_texture_attachment(struct fx_framebuffer* buffer) 
       && check(complete, "texture-backed framebuffer is complete");
 }
 
+// SDR scenes compose into the shared texture-backed target only when blur
+// samples the current composition. A clean optimized-blur cache renders
+// directly, as the swapchain copy would otherwise cost every update.
+static bool test_sdr_composition_selection(struct fixture* fixture) {
+  if (!enable_color_scene_output(fixture)) {
+    return false;
+  }
+  struct wlr_swapchain* swapchain = NULL;
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* output = scene != NULL ? wlr_scene_output_create(scene, fixture->output) : NULL;
+  const float white[4] = {1, 1, 1, 1};
+  struct wlr_scene_rect* background =
+      scene != NULL ? wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, white) : NULL;
+  struct wlr_scene_optimized_blur* optimized =
+      scene != NULL ? wlr_scene_optimized_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT) : NULL;
+  struct wlr_scene_blur* blur = scene != NULL ? wlr_scene_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT) : NULL;
+  bool ok = check(output != NULL && background != NULL && optimized != NULL && blur != NULL, "create selection scene");
+  if (!ok) {
+    goto out;
+  }
+  wlr_scene_output_set_direct_scanout_enabled(output, false);
+  // Darken the white backdrop so a skipped blur fails the pixel check.
+  wlr_scene_set_blur_data(scene, 1, 1, 0, 0.5f, 1, 1);
+  wlr_scene_blur_set_should_only_blur_bottom_layer(blur, true);
+
+  uint8_t pixels[2][4] = {0};
+  const uint8_t blurred[4] = {to_u8(0.5f), to_u8(0.5f), to_u8(0.5f), 255};
+  ok = render_metadata_scene(fixture, output, false, pixels) && ok;
+  struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_try_get(fixture->output);
+  if (!check(fbos != NULL, "create output effect buffers")) {
+    ok = false;
+    goto out;
+  }
+  ok = check(fbos->sdr_composition_valid && !optimized->dirty, "cache rebuild composes offscreen") && ok;
+
+  ok = render_metadata_scene(fixture, output, false, pixels) && ok;
+  ok = check(!fbos->sdr_composition_valid, "clean cache renders directly") && ok;
+  ok = check(codes_close(pixels[0], blurred, 1), "direct frame draws the cached blur") && ok;
+
+  // render_metadata_scene() damages the whole output on every frame. Build
+  // these frames directly so only the overlay's half is damaged. At reduced
+  // strength, blur that reads the cache must not expand that damage for
+  // padding it would never need to restore.
+  wlr_scene_blur_set_strength(blur, 0.5f);
+  ok = render_metadata_scene(fixture, output, false, pixels) && ok;
+  ok = check(!fbos->sdr_composition_valid && !optimized->dirty, "reduced-strength clean cache renders directly") && ok;
+  const struct wlr_drm_format* format = get_render_format(fixture, fixture->output->render_format);
+  swapchain = format != NULL ? wlr_swapchain_create(fixture->allocator, TEST_WIDTH, TEST_HEIGHT, format) : NULL;
+  const float red[4] = {0.25f, 0, 0, 0.25f}, blue[4] = {0, 0, 0.25f, 0.25f};
+  struct wlr_scene_rect* overlay = wlr_scene_rect_create(&scene->tree, TEST_WIDTH / 2, TEST_HEIGHT, red);
+  if (!check(swapchain != NULL && overlay != NULL, "create partial-damage scene")) {
+    ok = false;
+    goto out;
+  }
+  struct wlr_buffer* warmed = NULL;
+  for (size_t frame = 0; frame < 2; frame++) {
+    if (frame == 1) {
+      wlr_scene_rect_set_color(overlay, blue);
+    }
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    const struct wlr_scene_output_state_options options = {.swapchain = swapchain};
+    bool built = wlr_scene_output_build_state(output, &state, &options) && state.buffer != NULL;
+    ok = check(built, "build partial-damage frame") && ok;
+    ok = check(!fbos->sdr_composition_valid && !optimized->dirty, "partial-damage cached blur renders directly") && ok;
+    if (built) {
+      if (frame == 0) {
+        warmed = state.buffer;
+      } else {
+        const pixman_box32_t* damage = pixman_region32_extents(&state.damage);
+        ok = check(
+                 damage->x1 == 0 && damage->y1 == 0 && damage->x2 == TEST_WIDTH / 2 && damage->y2 == TEST_HEIGHT,
+                 "cached blur does not expand damage for padding"
+             )
+            && ok;
+        ok = check(state.buffer == warmed, "partial frame reuses the warmed swapchain buffer") && ok;
+      }
+      // Bytes are B, G, R, A. The overlay tints a quarter of the half-strength backdrop.
+      const float backdrop = 0.75f, tinted = 0.75f * backdrop;
+      for (size_t half = 0; half < 2; half++) {
+        const float base = half == 0 ? tinted : backdrop;
+        const uint8_t expected[4] = {
+            to_u8(base + (half == 0 && frame == 1 ? 0.25f : 0.0f)),
+            to_u8(base),
+            to_u8(base + (half == 0 && frame == 0 ? 0.25f : 0.0f)),
+            255,
+        };
+        ok = fixture_read_display_pixel(
+                 fixture, state.buffer, TEST_WIDTH * (1 + 2 * half) / 4, TEST_HEIGHT / 2, pixels[half]
+             )
+            && ok;
+        ok = check(codes_close(pixels[half], expected, 1), "partial frame draws the cache and preserves its neighbor")
+            && ok;
+      }
+      wlr_scene_output_acknowledge_damage_for_test(output, &state);
+    }
+    wlr_output_state_finish(&state);
+  }
+  wlr_scene_node_destroy(&overlay->node);
+  wlr_scene_blur_set_strength(blur, 1.0f);
+
+  // Live blur samples the composition even when the cache is clean.
+  wlr_scene_blur_set_should_only_blur_bottom_layer(blur, false);
+  ok = render_metadata_scene(fixture, output, false, pixels) && ok;
+  ok = check(fbos->optimized_blur_valid && fbos->sdr_composition_valid, "live blur composes offscreen") && ok;
+  ok = check(codes_close(pixels[0], blurred, 1), "offscreen frame draws live blur") && ok;
+
+  wlr_scene_blur_set_should_only_blur_bottom_layer(blur, true);
+  ok = render_metadata_scene(fixture, output, false, pixels) && ok;
+  ok = check(!fbos->sdr_composition_valid, "cache-only blur resumes direct rendering") && ok;
+
+  // Without a usable cache, blur falls back to live pixels.
+  fbos->optimized_blur_valid = false;
+  ok = render_metadata_scene(fixture, output, false, pixels) && ok;
+  ok = check(fbos->sdr_composition_valid, "invalid cache composes offscreen") && ok;
+  ok = check(codes_close(pixels[0], blurred, 1), "fallback frame draws live blur") && ok;
+out:
+  wlr_swapchain_destroy(swapchain);
+  if (scene != NULL) {
+    wlr_scene_node_destroy(&scene->tree.node);
+  }
+  return ok;
+}
+
+// An opaque 10-bit output must not switch to direct rendering once the cache is
+// clean, even after the last visible blur is hidden and only its marker remains.
+// The shared target is FP16 or 8-bit depending on renderer support, and neither
+// matches a direct 10-bit frame's precision and clamping.
+static bool test_sdr_composition_10bit_selection(struct fixture* fixture) {
+  const struct wlr_drm_format* format = get_render_format(fixture, DRM_FORMAT_XBGR2101010);
+  if (format == NULL) {
+    format = get_render_format(fixture, DRM_FORMAT_XRGB2101010);
+  }
+  if (format == NULL) {
+    fprintf(stderr, "SKIP: no opaque 10-bit render format\n");
+    return true;
+  }
+  if (!enable_color_scene_output(fixture)) {
+    return false;
+  }
+  struct wlr_swapchain* swapchain = wlr_swapchain_create(fixture->allocator, TEST_WIDTH, TEST_HEIGHT, format);
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* output = scene != NULL ? wlr_scene_output_create(scene, fixture->output) : NULL;
+  const float white[4] = {1, 1, 1, 1}, tint[4] = {0, 0, 0, 0.25f};
+  struct wlr_scene_rect* background =
+      scene != NULL ? wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, white) : NULL;
+  struct wlr_scene_optimized_blur* optimized =
+      scene != NULL ? wlr_scene_optimized_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT) : NULL;
+  struct wlr_scene_blur* blur = scene != NULL ? wlr_scene_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT) : NULL;
+  struct wlr_scene_rect* overlay =
+      scene != NULL ? wlr_scene_rect_create(&scene->tree, TEST_WIDTH / 2, TEST_HEIGHT, tint) : NULL;
+  bool ok = check(
+      swapchain != NULL && output != NULL && background != NULL && optimized != NULL && blur != NULL && overlay != NULL,
+      "create 10-bit selection scene"
+  );
+  if (!ok) {
+    goto out;
+  }
+  wlr_scene_output_set_direct_scanout_enabled(output, false);
+  wlr_scene_set_blur_data(scene, 1, 1, 0, 1.5f, 1, 1);
+  wlr_scene_blur_set_should_only_blur_bottom_layer(blur, true);
+
+  const char* frames[] = {
+      "cache rebuild composes offscreen",
+      "clean cache keeps offscreen composition",
+      "marker-only frame keeps offscreen composition",
+  };
+  struct fx_offscreen_buffers* fbos = NULL;
+  for (size_t frame = 0; frame < 3; frame++) {
+    if (frame == 1) {
+      wlr_scene_rect_set_color(overlay, (float[4]){0, 0, 0, 0.5f});
+    } else if (frame == 2) {
+      wlr_scene_node_set_enabled(&blur->node, false);
+    }
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    const struct wlr_scene_output_state_options options = {.swapchain = swapchain};
+    bool built = wlr_scene_output_build_state(output, &state, &options) && state.buffer != NULL;
+    ok = check(built, "build 10-bit selection frame") && ok;
+    fbos = fx_offscreen_buffers_try_get(fixture->output);
+    ok = check(fbos != NULL && fbos->sdr_composition_valid && !optimized->dirty, frames[frame]) && ok;
+    if (built) {
+      wlr_scene_output_acknowledge_damage_for_test(output, &state);
+    }
+    wlr_output_state_finish(&state);
+  }
+out:
+  wlr_swapchain_destroy(swapchain);
+  if (scene != NULL) {
+    wlr_scene_node_destroy(&scene->tree.node);
+  }
+  return ok;
+}
+
+// The encoded SDR copy must preserve stored channels without unpremultiplying.
+static bool test_sdr_composition_alpha_copy(struct fixture* fixture) {
+  struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  if (!check(target != NULL, "allocate SDR copy target")) {
+    return false;
+  }
+
+  // Initialize the destination to a different color so a skipped copy fails too.
+  struct wlr_render_pass* pass = fx_renderer_begin_output_buffer_pass(fixture->output, target, NULL);
+  bool ok = check(pass != NULL, "begin direct SDR pass")
+      && check(submit_solid_frame(pass, TEST_WIDTH, TEST_HEIGHT, 0.0f), "initialize SDR copy destination");
+  if (!ok) {
+    goto out;
+  }
+
+  pass = fx_renderer_begin_offscreen_output_buffer_pass(fixture->output, target, NULL);
+  ok = check(pass != NULL, "begin offscreen SDR pass");
+  if (!ok) {
+    goto out;
+  }
+  struct fx_gles_render_pass* fx_pass = fx_get_render_pass(pass);
+  struct wlr_buffer* source = fx_pass->buffer->buffer;
+  ok = check(source != target && fx_pass->offscreen_composition, "copy uses a separate SDR composition buffer");
+
+  // Seed the attachment directly rather than passing non-premultiplied color
+  // to the scene API. Track the damage the clear would otherwise bypass.
+  glClearColor(1, 0, 1, 0);
+  glClear(GL_COLOR_BUFFER_BIT);
+  ok = check(glGetError() == GL_NO_ERROR, "seed zero-alpha RGB in the composition buffer") && ok;
+  pixman_region32_union_rect(&fx_pass->updated_region, &fx_pass->updated_region, 0, 0, TEST_WIDTH, TEST_HEIGHT);
+  ok = check(wlr_render_pass_submit(pass), "submit SDR composition copy") && ok;
+
+  const uint8_t expected[4] = {255, 0, 255, 0}; // B, G, R, A
+  uint8_t pixel[4];
+  ok = ok
+      && fixture_read_display_pixel(fixture, source, TEST_WIDTH / 2, TEST_HEIGHT / 2, pixel)
+      && check(codes_close(pixel, expected, 0), "composition source contains RGB with zero alpha")
+      && fixture_read_display_pixel(fixture, target, TEST_WIDTH / 2, TEST_HEIGHT / 2, pixel)
+      && check(codes_close(pixel, expected, 0), "SDR copy preserves RGB and zero alpha");
+out:
+  wlr_buffer_drop(target);
+  return ok;
+}
+
 // Check the render-to-sample attachment and partial updates without repeated
 // EGLImage imports. Client buffers retain their separate refresh behavior.
 static bool test_framebuffer_texture_binding(struct fixture* fixture) {
@@ -3594,6 +3832,12 @@ int main(int argc, char* argv[]) {
     ok = test_capture_read_format(&fixture);
   } else if (strcmp(argv[1], "framebuffer-texture-binding") == 0) {
     ok = test_framebuffer_texture_binding(&fixture);
+  } else if (strcmp(argv[1], "sdr-composition-selection") == 0) {
+    ok = test_sdr_composition_selection(&fixture);
+  } else if (strcmp(argv[1], "sdr-composition-alpha-copy") == 0) {
+    ok = test_sdr_composition_alpha_copy(&fixture);
+  } else if (strcmp(argv[1], "sdr-composition-10bit-selection") == 0) {
+    ok = test_sdr_composition_10bit_selection(&fixture);
   } else {
     fprintf(stderr, "unknown case: %s\n", argv[1]);
     ok = false;
