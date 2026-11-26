@@ -847,6 +847,27 @@ UMBRIEL_TEST(windowRulesMergeBorderColorsLastWriterWins) {
   CHECK(merged.borderColorOuter && (*merged.borderColorOuter)[2] == 0.3F);
 }
 
+UMBRIEL_TEST(windowRulesMergeTitleBarColors) {
+  Config config;
+  WindowRule first;
+  first.appIdPatterns.add("^foot$");
+  first.titleBarBackground = std::array<float, 4>{0.2F, 0.3F, 0.4F, 1.0F};
+  first.titleBarClose = std::array<float, 4>{0.9F, 0.1F, 0.1F, 1.0F};
+  config.windowRules.push_back(std::move(first));
+
+  WindowRule second;
+  second.titlePatterns.add("override");
+  second.titleBarText = std::array<float, 4>{0.8F, 0.8F, 0.8F, 1.0F};
+  config.windowRules.push_back(std::move(second));
+
+  const auto merged = umbriel::resolveWindowRules(config, "foot", "override", std::nullopt, ContentType::None, {}, 0);
+  const auto colors = umbriel::resolveTitleBarColors(config.colors.titleBar, merged);
+  CHECK(colors.background == (std::array<float, 4>{0.2F, 0.3F, 0.4F, 1.0F}));
+  CHECK(colors.close == (std::array<float, 4>{0.9F, 0.1F, 0.1F, 1.0F}));
+  CHECK(colors.text == (std::array<float, 4>{0.8F, 0.8F, 0.8F, 1.0F}));
+  CHECK(colors.backgroundUnfocused == config.colors.titleBar.backgroundUnfocused);
+}
+
 UMBRIEL_TEST(windowRulesMatchContentTypesAndComposeSelectors) {
   Config config;
 

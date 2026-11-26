@@ -998,8 +998,10 @@ namespace umbriel {
     void refreshTitleBar();
     // A window rule's title_bar_buttons, which replaces [appearance.title_bar] buttons.
     std::optional<std::vector<TitleBarButton>> m_titleBarButtons;
+    Config::Colors::TitleBar m_titleBarColors = config().colors.titleBar;
     // Hand the frame the configured buttons this window can use now: minimize only while it can minimize.
     void syncTitleBarButtons();
+    void syncTitleBarColors();
     int m_chromeContentWidth = 0;
     int m_chromeContentHeight = 0;
     bool m_tabHidden = false;

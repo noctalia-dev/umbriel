@@ -404,6 +404,45 @@ namespace umbriel {
       if (rule.borderColorOuter) {
         resolved.borderColorOuter = rule.borderColorOuter;
       }
+      if (rule.titleBarBackground) {
+        resolved.titleBarBackground = rule.titleBarBackground;
+      }
+      if (rule.titleBarBackgroundUnfocused) {
+        resolved.titleBarBackgroundUnfocused = rule.titleBarBackgroundUnfocused;
+      }
+      if (rule.titleBarText) {
+        resolved.titleBarText = rule.titleBarText;
+      }
+      if (rule.titleBarTextUnfocused) {
+        resolved.titleBarTextUnfocused = rule.titleBarTextUnfocused;
+      }
+      if (rule.titleBarClose) {
+        resolved.titleBarClose = rule.titleBarClose;
+      }
+      if (rule.titleBarCloseGlyph) {
+        resolved.titleBarCloseGlyph = rule.titleBarCloseGlyph;
+      }
+      if (rule.titleBarCloseGlyphHover) {
+        resolved.titleBarCloseGlyphHover = rule.titleBarCloseGlyphHover;
+      }
+      if (rule.titleBarMaximize) {
+        resolved.titleBarMaximize = rule.titleBarMaximize;
+      }
+      if (rule.titleBarMaximizeGlyph) {
+        resolved.titleBarMaximizeGlyph = rule.titleBarMaximizeGlyph;
+      }
+      if (rule.titleBarMaximizeGlyphHover) {
+        resolved.titleBarMaximizeGlyphHover = rule.titleBarMaximizeGlyphHover;
+      }
+      if (rule.titleBarMinimize) {
+        resolved.titleBarMinimize = rule.titleBarMinimize;
+      }
+      if (rule.titleBarMinimizeGlyph) {
+        resolved.titleBarMinimizeGlyph = rule.titleBarMinimizeGlyph;
+      }
+      if (rule.titleBarMinimizeGlyphHover) {
+        resolved.titleBarMinimizeGlyphHover = rule.titleBarMinimizeGlyphHover;
+      }
       if (rule.borderWidth) {
         resolved.borderWidth = rule.borderWidth;
       }
@@ -427,6 +466,24 @@ namespace umbriel {
       }
     }
     return resolved;
+  }
+
+  Config::Colors::TitleBar resolveTitleBarColors(const Config::Colors::TitleBar& base, const ResolvedWindowRule& rule) {
+    return {
+        .background = rule.titleBarBackground.value_or(base.background),
+        .backgroundUnfocused = rule.titleBarBackgroundUnfocused.value_or(base.backgroundUnfocused),
+        .text = rule.titleBarText.value_or(base.text),
+        .textUnfocused = rule.titleBarTextUnfocused.value_or(base.textUnfocused),
+        .close = rule.titleBarClose.value_or(base.close),
+        .closeGlyph = rule.titleBarCloseGlyph.value_or(base.closeGlyph),
+        .closeGlyphHover = rule.titleBarCloseGlyphHover.value_or(base.closeGlyphHover),
+        .maximize = rule.titleBarMaximize.value_or(base.maximize),
+        .maximizeGlyph = rule.titleBarMaximizeGlyph.value_or(base.maximizeGlyph),
+        .maximizeGlyphHover = rule.titleBarMaximizeGlyphHover.value_or(base.maximizeGlyphHover),
+        .minimize = rule.titleBarMinimize.value_or(base.minimize),
+        .minimizeGlyph = rule.titleBarMinimizeGlyph.value_or(base.minimizeGlyph),
+        .minimizeGlyphHover = rule.titleBarMinimizeGlyphHover.value_or(base.minimizeGlyphHover),
+    };
   }
 
   ResolvedLayerRule resolveLayerRules(
