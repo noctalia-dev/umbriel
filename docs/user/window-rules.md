@@ -474,6 +474,18 @@ X11 transients with a known owner inherit its protection. When an X11 popup has 
 
 Raw `zwlr_export_dmabuf_manager_v1` export is not advertised because it would bypass the filtered composition. Use screencopy or image-copy capture clients instead, including image-copy clients with DMA-BUF destinations.
 
+### Tearing
+
+A game can present with vsync on an output with [`tearing = true`](outputs.md#tearing) when Umbriel does not see its tearing hint, for example under Wine's Wayland driver after switching windows or workspaces. `umbriel tearing` then lists the window with `hint vsync`. A `tearing = true` rule requests asynchronous presentation regardless of the hint:
+
+```toml
+[[window_rule]]
+match.app_id = "^steam_app_.*$"
+tearing = true
+```
+
+Use the application ID from `umbriel windows --json`. The rule still needs the output opt-in and applies only while the window is the output's eligible fullscreen window.
+
 ## Dim behind
 
 ```toml
