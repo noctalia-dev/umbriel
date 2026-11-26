@@ -318,6 +318,8 @@ grim -o HEADLESS-1 "$SCREENSHOT"
 assert_image_size "$SCREENSHOT" 1282 700
 assert_not_backdrop_pixel "$SCREENSHOT" 1281 0
 assert_not_backdrop_pixel "$SCREENSHOT" 1281 699
+# Close the fullscreen window so the background layer below is visible and receives its frame callback.
+"$UMBRIEL" msg window-close > /dev/null
 
 # Fully anchored layer surfaces round outward on both axes, allowing a
 # fractional-scale buffer to cover every physical output pixel.
