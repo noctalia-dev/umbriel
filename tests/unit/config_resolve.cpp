@@ -847,6 +847,27 @@ UMBRIEL_TEST(windowRulesMergeBorderColorsLastWriterWins) {
   CHECK(merged.borderColorOuter && (*merged.borderColorOuter)[2] == 0.3F);
 }
 
+UMBRIEL_TEST(windowRulesMergeAndClampAppearanceOverrides) {
+  Config config;
+  WindowRule first;
+  first.appIdPatterns.add("^foot$");
+  first.dragOpacity = 0.4;
+  first.titleBarHeight = 20;
+  first.titleBarButtonSize = 50;         // exceeds height 20 -> clamped to 20
+  first.titleBarButtonGlyphSize = 0;     // clamped to 1
+  first.titleBarButtonGlyphStroke = 0.1; // clamped to 0.5
+  config.windowRules.push_back(std::move(first));
+
+  const auto resolved = umbriel::resolveWindowRules(config, "foot", "shell", std::nullopt, ContentType::None, {}, 0);
+  CHECK(resolved.dragOpacity && *resolved.dragOpacity == 0.4);
+
+  const auto style = umbriel::resolveTitleBarStyle(config.appearance.titleBar, resolved);
+  CHECK_EQ(style.height, 20);
+  CHECK_EQ(style.buttonSize, 20);
+  CHECK_EQ(style.buttonGlyphSize, 1);
+  CHECK_EQ(style.buttonGlyphStroke, 0.5);
+}
+
 UMBRIEL_TEST(windowRulesMatchContentTypesAndComposeSelectors) {
   Config config;
 

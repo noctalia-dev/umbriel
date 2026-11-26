@@ -24,6 +24,10 @@ namespace umbriel {
       const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,
       std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs
   );
+  inline constexpr double kMinTitleBarGlyphStroke = 0.5;
+  void clampTitleBarStyle(Config::Appearance::TitleBar& style);
+  Config::Appearance::TitleBar
+  resolveTitleBarStyle(const Config::Appearance::TitleBar& base, const ResolvedWindowRule& rule);
   ResolvedLayerRule resolveLayerRules(
       const Config& config, std::optional<std::string_view> layerNamespace, LayerShellLayer layer, uint64_t uptimeMs
   );

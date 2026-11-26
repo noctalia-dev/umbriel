@@ -1028,7 +1028,8 @@ namespace umbriel {
         if (!wantMaximizeToEdges
             && wantsTitleBar(rule.titleBar.value_or(config().appearance.titleBar.mode))
             && !opensTabbed) {
-          initial.height = std::max(1, initial.height - config().appearance.titleBar.height);
+          initial.height =
+              std::max(1, initial.height - rule.titleBarHeight.value_or(config().appearance.titleBar.height));
         }
         const SizeHints hints = sizeHints();
         const int width =
@@ -1049,7 +1050,7 @@ namespace umbriel {
       } else {
         if (wantMaximized) {
           const int barHeight = wantsTitleBar(rule.titleBar.value_or(config().appearance.titleBar.mode))
-              ? config().appearance.titleBar.height
+              ? rule.titleBarHeight.value_or(config().appearance.titleBar.height)
               : 0;
           const wlr_box box = floatingMaximizedBox(
               openingUsableArea(targetOutput), wantMaximizeToEdges, barHeight,

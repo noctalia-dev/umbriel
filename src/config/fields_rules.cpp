@@ -265,6 +265,30 @@ namespace umbriel {
                 }
               }
           ),
+          integer("title_bar_height", 16, 128, &W::titleBarHeight),
+          registry::text("title_bar_font", &W::titleBarFont),
+          registry::choice(
+              "title_bar_title_align", &W::titleBarTitleAlign,
+              {{"left", TitleAlign::Left}, {"center", TitleAlign::Center}, {"right", TitleAlign::Right}}
+          ),
+          registry::choice(
+              "title_bar_button_position", &W::titleBarButtonPosition,
+              {{"left", TitleBarButtonSide::Left}, {"right", TitleBarButtonSide::Right}}
+          ),
+          integer("title_bar_button_corner_radius", -1, 100, &W::titleBarButtonCornerRadius),
+          integer("title_bar_button_size", -1, 128, &W::titleBarButtonSize),
+          integer("title_bar_button_gap", 0, 100, &W::titleBarButtonGap),
+          integer("title_bar_button_padding", -1, 100, &W::titleBarButtonPadding),
+          registry::choice(
+              "title_bar_button_glyph", &W::titleBarButtonGlyph,
+              {{"always", TitleBarButtonGlyph::Always},
+               {"hover", TitleBarButtonGlyph::Hover},
+               {"never", TitleBarButtonGlyph::Never}}
+          ),
+          integer("title_bar_button_glyph_size", -1, 128, &W::titleBarButtonGlyphSize),
+          real("title_bar_button_glyph_stroke", -1.0, 16.0, &W::titleBarButtonGlyphStroke),
+          boolean("title_bar_button_background", &W::titleBarButtonBackground),
+          real("drag_opacity", 0.0, 1.0, &W::dragOpacity),
           integer("border_width", 0, 100, &W::borderWidth),
           integer("outer_border_width", 0, 100, &W::outerBorderWidth),
           integer("corner_radius", 0, 100, &W::cornerRadius),

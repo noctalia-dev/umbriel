@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config/config.h"
 #include "scene/ssd_frame_geometry.h"
 #include "scene/surface_blur.h"
 #include "scene/title_bar_icon.h"
@@ -43,6 +44,7 @@ namespace umbriel {
     void setPressed(SsdFramePart part);
     void setBlurOptions(const SurfaceBlurOptions& options);
     void setBlurLive(bool live);
+    void setStyle(const Config::Appearance::TitleBar& style);
     bool maximizeEnabled() const { return m_maximizeEnabled; }
     int titleBarHeight() const { return m_geometry.titleBarHeight; }
     bool contains(const wlr_scene_node* node) const;
@@ -79,6 +81,7 @@ namespace umbriel {
     std::array<int, kTitleBarButtonCount> m_iconSizes{};
     std::array<TitleBarGlyph, kTitleBarButtonCount> m_iconGlyphs{};
     std::vector<TitleBarButton> m_buttons;
+    Config::Appearance::TitleBar m_style = config().appearance.titleBar;
     std::array<wlr_scene_rect*, 4> m_grips{};
     std::shared_ptr<TabLabelCache> m_labels;
     ViewChromeGeometry m_geometry;

@@ -38,7 +38,11 @@ namespace umbriel {
         || (m_tiled && m_workspace != nullptr && m_workspace->inTabGroup(this))) {
       return 0;
     }
-    return config().appearance.titleBar.height;
+    return m_titleBarStyle.height;
+  }
+
+  float View::dragOpacity() const {
+    return static_cast<float>(m_ruleDragOpacity.value_or(config().appearance.dragOpacity));
   }
 
   bool View::wantsTitleBar(TitleBarMode mode) const {
@@ -129,6 +133,7 @@ namespace umbriel {
     m_ssdFrame->setMaximized(scheduledMaximized() || floatingMaximized());
     m_ssdFrame->setFocused(m_borderFocusedState);
     m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
+    m_ssdFrame->setStyle(m_titleBarStyle);
     applyBorderColors();
     m_ssdFrame->setBlurOptions(blurOptions());
     m_ssdFrame->setBlurLive(m_server->cursor() != nullptr && m_server->cursor()->isDraggingView(this));
@@ -153,6 +158,12 @@ namespace umbriel {
       }
     }
     m_ssdFrame->setButtons(std::span(shown.data(), count));
+  }
+
+  void View::syncTitleBarStyle() {
+    if (m_ssdFrame != nullptr) {
+      m_ssdFrame->setStyle(m_titleBarStyle);
+    }
   }
 
   bool View::decorated() const { return m_decoration.bordersVisible(); }

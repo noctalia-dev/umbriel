@@ -6,6 +6,7 @@
 #include "config/config_registry.h"
 #include "config/fields.h"
 #include "config/overrides.h"
+#include "config/resolve.h"
 #include "config/section.h"
 #include "config/store.h"
 
@@ -166,15 +167,14 @@ namespace umbriel {
           titleBar.buttonGlyphSize = 1;
         }
         // A thinner stroke antialiases to nothing visible at scale 1.
-        constexpr double kMinGlyphStroke = 0.5;
-        if (titleBar.buttonGlyphStroke != -1.0 && titleBar.buttonGlyphStroke < kMinGlyphStroke) {
+        if (titleBar.buttonGlyphStroke != -1.0 && titleBar.buttonGlyphStroke < kMinTitleBarGlyphStroke) {
           warnAt(
               result.merged.at_path("appearance.title_bar.button_glyph_stroke").node()->source(),
               "appearance.title_bar.button_glyph_stroke = {} out of range (-1 or {} to 16), clamped to {}",
-              titleBar.buttonGlyphStroke, kMinGlyphStroke, kMinGlyphStroke
+              titleBar.buttonGlyphStroke, kMinTitleBarGlyphStroke, kMinTitleBarGlyphStroke
           );
-          titleBar.buttonGlyphStroke = kMinGlyphStroke;
         }
+        clampTitleBarStyle(titleBar);
         warnScrollButtonBinds(loaded);
         validateEffectReferences(loaded, effectReferences);
         auto& workspaces = loaded.animation.workspaces;

@@ -395,6 +395,45 @@ namespace umbriel {
       if (rule.titleBarButtons) {
         resolved.titleBarButtons = rule.titleBarButtons;
       }
+      if (rule.titleBarHeight) {
+        resolved.titleBarHeight = rule.titleBarHeight;
+      }
+      if (rule.titleBarFont) {
+        resolved.titleBarFont = rule.titleBarFont;
+      }
+      if (rule.titleBarTitleAlign) {
+        resolved.titleBarTitleAlign = rule.titleBarTitleAlign;
+      }
+      if (rule.titleBarButtonPosition) {
+        resolved.titleBarButtonPosition = rule.titleBarButtonPosition;
+      }
+      if (rule.titleBarButtonCornerRadius) {
+        resolved.titleBarButtonCornerRadius = rule.titleBarButtonCornerRadius;
+      }
+      if (rule.titleBarButtonSize) {
+        resolved.titleBarButtonSize = rule.titleBarButtonSize;
+      }
+      if (rule.titleBarButtonGap) {
+        resolved.titleBarButtonGap = rule.titleBarButtonGap;
+      }
+      if (rule.titleBarButtonPadding) {
+        resolved.titleBarButtonPadding = rule.titleBarButtonPadding;
+      }
+      if (rule.titleBarButtonGlyph) {
+        resolved.titleBarButtonGlyph = rule.titleBarButtonGlyph;
+      }
+      if (rule.titleBarButtonGlyphSize) {
+        resolved.titleBarButtonGlyphSize = rule.titleBarButtonGlyphSize;
+      }
+      if (rule.titleBarButtonGlyphStroke) {
+        resolved.titleBarButtonGlyphStroke = rule.titleBarButtonGlyphStroke;
+      }
+      if (rule.titleBarButtonBackground) {
+        resolved.titleBarButtonBackground = rule.titleBarButtonBackground;
+      }
+      if (rule.dragOpacity) {
+        resolved.dragOpacity = rule.dragOpacity;
+      }
       if (rule.borderColorFocused) {
         resolved.borderColorFocused = rule.borderColorFocused;
       }
@@ -427,6 +466,67 @@ namespace umbriel {
       }
     }
     return resolved;
+  }
+
+  void clampTitleBarStyle(Config::Appearance::TitleBar& style) {
+    if (style.buttonSize == 0 || style.buttonSize > style.height) {
+      style.buttonSize = std::clamp(style.buttonSize, 1, style.height);
+    }
+    if (style.buttonGlyphSize == 0) {
+      style.buttonGlyphSize = 1;
+    }
+    if (style.buttonGlyphStroke != -1.0 && style.buttonGlyphStroke < kMinTitleBarGlyphStroke) {
+      style.buttonGlyphStroke = kMinTitleBarGlyphStroke;
+    }
+  }
+
+  Config::Appearance::TitleBar
+  resolveTitleBarStyle(const Config::Appearance::TitleBar& base, const ResolvedWindowRule& rule) {
+    Config::Appearance::TitleBar style = base;
+    if (rule.titleBar) {
+      style.mode = *rule.titleBar;
+    }
+    if (rule.titleBarHeight) {
+      style.height = *rule.titleBarHeight;
+    }
+    if (rule.titleBarFont) {
+      style.font = *rule.titleBarFont;
+    }
+    if (rule.titleBarTitleAlign) {
+      style.titleAlign = *rule.titleBarTitleAlign;
+    }
+    if (rule.titleBarButtonPosition) {
+      style.buttonPosition = *rule.titleBarButtonPosition;
+    }
+    if (rule.titleBarButtonCornerRadius) {
+      style.buttonCornerRadius = *rule.titleBarButtonCornerRadius;
+    }
+    if (rule.titleBarButtonSize) {
+      style.buttonSize = *rule.titleBarButtonSize;
+    }
+    if (rule.titleBarButtonGap) {
+      style.buttonGap = *rule.titleBarButtonGap;
+    }
+    if (rule.titleBarButtonPadding) {
+      style.buttonPadding = *rule.titleBarButtonPadding;
+    }
+    if (rule.titleBarButtonGlyph) {
+      style.buttonGlyph = *rule.titleBarButtonGlyph;
+    }
+    if (rule.titleBarButtonGlyphSize) {
+      style.buttonGlyphSize = *rule.titleBarButtonGlyphSize;
+    }
+    if (rule.titleBarButtonGlyphStroke) {
+      style.buttonGlyphStroke = *rule.titleBarButtonGlyphStroke;
+    }
+    if (rule.titleBarButtonBackground) {
+      style.buttonBackground = *rule.titleBarButtonBackground;
+    }
+    if (rule.titleBarButtons) {
+      style.buttons = *rule.titleBarButtons;
+    }
+    clampTitleBarStyle(style);
+    return style;
   }
 
   ResolvedLayerRule resolveLayerRules(

@@ -313,7 +313,7 @@ namespace umbriel {
     // what keeps them off the neighbouring monitor.
     wlr_scene_tree_set_clip(card.tree, nullptr);
     layoutCardShadow(card, z, desktopChromeAlpha());
-    const float cardOpacity = &card == m_dragCard ? config().appearance.dragOpacity : 1.0F;
+    const float cardOpacity = &card == m_dragCard ? card.view->dragOpacity() : 1.0F;
     const float presentedOpacity = view->presentedOpacity() * cardOpacity;
 
     const int borderWidth = view->decorationBorderWidth();

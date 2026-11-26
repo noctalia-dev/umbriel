@@ -225,6 +225,7 @@ namespace umbriel {
     void setXdgDecorationPreference(std::optional<bool> serverSide);
     void setLegacyDecorationPreference(std::optional<bool> serverSide);
     int titleBarHeight() const;
+    float dragOpacity() const;
     void syncSsdFrame();
     SsdFramePoint ssdFramePointAt(double lx, double ly) const;
     SsdFrame* ssdFrame() const { return m_ssdFrame.get(); }
@@ -998,8 +999,11 @@ namespace umbriel {
     void refreshTitleBar();
     // A window rule's title_bar_buttons, which replaces [appearance.title_bar] buttons.
     std::optional<std::vector<TitleBarButton>> m_titleBarButtons;
+    Config::Appearance::TitleBar m_titleBarStyle = config().appearance.titleBar;
+    std::optional<double> m_ruleDragOpacity;
     // Hand the frame the configured buttons this window can use now: minimize only while it can minimize.
     void syncTitleBarButtons();
+    void syncTitleBarStyle();
     int m_chromeContentWidth = 0;
     int m_chromeContentHeight = 0;
     bool m_tabHidden = false;
