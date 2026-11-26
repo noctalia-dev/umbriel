@@ -424,6 +424,7 @@ namespace umbriel {
     void focusView(View* view, FocusReason reason = FocusReason::Startup) { m_focus.focusView(view, reason); }
     void xwaylandHintsChanged(View* view) { m_focus.xwaylandHintsChanged(view); }
     void restoreActivatedViewKeyboardFocus() { m_focus.restoreActivatedViewKeyboardFocus(); }
+    void noteSeatHandoffToLayer(View* from) { m_focus.noteSeatHandoffToLayer(from); }
     View* viewAt(double lx, double ly, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer = nullptr) {
       return m_focus.viewAt(lx, ly, surface, sx, sy, layer);
     }

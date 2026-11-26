@@ -13,6 +13,7 @@ extern "C" {
 #include "overview/overview.h"
 #include "server/server.h"
 #include "view/popup.h"
+#include "view/view.h"
 #include "wlr.h"
 
 #include <algorithm>
@@ -327,6 +328,10 @@ namespace umbriel {
 
     wlr_seat* seat = m_server->seat()->wlr();
     wlr_surface* surface = m_layerSurface->surface;
+    // Remember the window losing the keyboard so releasing the layer can hand it back, even on another output.
+    if (View* previous = View::fromSurface(seat->keyboard_state.focused_surface)) {
+      m_server->noteSeatHandoffToLayer(previous);
+    }
     // Layers take the seat: drop every window's activated/border so none stay "focused".
     m_server->deactivateViews(nullptr);
     if (seat->keyboard_state.focused_surface == surface) {

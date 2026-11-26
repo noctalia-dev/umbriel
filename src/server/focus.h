@@ -68,6 +68,8 @@ namespace umbriel {
     // Deliberately select a fallback on `preferred`. Explicit focus actions use
     // this overload, including with null when no output is available.
     void refocusExplicit(Output* preferred);
+    // A layer is taking the keyboard from `from`; refocus() returns it there unless a window is chosen meanwhile.
+    void noteSeatHandoffToLayer(View* from);
 
     // Drop activation, focus ring, and foreign-activated on every mapped view
     // except `except`.
@@ -92,8 +94,12 @@ namespace umbriel {
   private:
     [[nodiscard]] bool retainCurrentKeyboardFocus();
     void refocusFallback(Output* preferred);
+    // The window chosen while an exclusive layer held the seat, or null when it no longer exists.
+    [[nodiscard]] View* takeDeferredView();
 
     Server& m_server;
+    View* m_deferredView = nullptr;
+    FocusReason m_deferredReason = FocusReason::Startup;
     // The last raise decision focusView made. retainCurrentKeyboardFocus replays it, so a focus kept through a
     // popup grab or a seat handoff restacks exactly as the transition that selected the view did.
     bool m_lastRaise = true;
