@@ -65,7 +65,7 @@ These values apply once when a window opens. Umbriel checks opening rules again 
 
 Named `default_workspace` targets remain valid when their output is unavailable and their workspace has been evacuated. Combining a name with `default_output` can select that original output's evacuated workspace, including when another workspace on the receiving output has the same name. Missing or ambiguous targets keep the normal placement fallback.
 
-A `default_maximize` rule opens the window at the full column width. [`client_maximize`](layout.md#maximize-and-fullscreen) governs the client's own or restored maximize request instead, deciding whether that request lands in the edges. A rule that never sees a client request stays on the column unless `default_maximize_to_edges` is set.
+A `default_maximize` rule opens the window at the full column width. [`client_maximize`](window-states.md#maximize-and-fullscreen) governs the client's own or restored maximize request instead, deciding whether that request lands in the edges. A rule that never sees a client request stays on the column unless `default_maximize_to_edges` is set.
 
 Dialogs float by default. Use `default_floating = false` in a matching rule to force one into the layout.
 
@@ -83,7 +83,7 @@ PROTON_ENABLE_WAYLAND=0 PROTON_USE_WAYLAND=0 %command%
 
 Restart the application after changing its driver. Its main window should then report `xwayland: true` in `umbriel windows --json`. The plain-text listing uses `-` as a placeholder for an empty title; matching the literal `-` does not select an untitled window. `match.title = "^$"` matches a client-supplied empty title, including these native Wayland menus, but rules cannot supply their missing popup anchor.
 
-A modal dialog [attaches to its parent](layout.md#dialogs) and ignores the settings above, since it goes wherever its parent goes. `attach_to_parent = false` keeps it an ordinary window that these settings place. It is checked again whenever the rules change, so a reload detaches or attaches open dialogs.
+A modal dialog [attaches to its parent](window-states.md#dialogs) and ignores the settings above, since it goes wherever its parent goes. `attach_to_parent = false` keeps it an ordinary window that these settings place. It is checked again whenever the rules change, so a reload detaches or attaches open dialogs.
 
 A rule that matches the parent window also covers its dialogs. This is how to opt out an application whose file pickers come from the desktop portal: those dialogs carry the portal's app id, such as `xdg-desktop-portal-gtk`, not the application's. A rule that matches the dialog itself takes precedence over its parent's.
 
@@ -178,7 +178,7 @@ default_scrolling_column_order = 20
 
 The name is local to a workspace. The first matching window creates the column and sets its extent.
 
-Add `default_column_display = "tabbed"` to keep such a column as [tabs](layout.md#tab-groups): each matching window that opens tabs itself with the windows stacked beside it in the column it joins or creates.
+Add `default_column_display = "tabbed"` to keep such a column as [tabs](tab-groups.md): each matching window that opens tabs itself with the windows stacked beside it in the column it joins or creates.
 
 ## Settings updated while a window is open
 

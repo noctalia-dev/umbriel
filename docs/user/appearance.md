@@ -61,31 +61,6 @@ badge = "#7AA3FFFF"
 
 See [Workspaces Overview](workspaces-overview.md#settings-and-behavior) for overview behavior.
 
-### Tab bar colors
-
-```toml
-[colors.tab_bar]
-background = "#1A1A1FFF"
-text = "#8A8A92FF"
-active = "#7AA3FFFF"
-active_text = "#141419FF"
-active_unfocused = "#292933FF"
-active_unfocused_text = "#E8E8EAFF"
-urgent = "#FF6B6BFF"
-urgent_text = "#141419FF"
-```
-
-| Key                     | Description                                       |
-| ----------------------- | ------------------------------------------------- |
-| `background`            | Slots of tabs that are neither active nor urgent. |
-| `text`                  | Their titles.                                     |
-| `active`                | The active tab's slot in the focused column.      |
-| `active_text`           | Its title.                                        |
-| `active_unfocused`      | The active tab's slot in any other column.        |
-| `active_unfocused_text` | Its title.                                        |
-| `urgent`                | The slot of a hidden tab that asks for attention. |
-| `urgent_text`           | Its title.                                        |
-
 ## Window appearance
 
 ```toml
@@ -179,7 +154,7 @@ Buttons show a drawn X for close, an outlined square for maximize, and an unders
 
 The `close`, `maximize`, and `minimize` colors control button backgrounds. Each button has independent `*_glyph` and `*_glyph_hover` colors for its idle and hovered or pressed symbol. All six glyph colors default to `"#141419FF"`, with no color difference on hover. These colors apply with or without backgrounds, support alpha, and are not adjusted automatically. For symbols alone on a dark title bar, choose lighter glyph colors. Disabled buttons keep their idle glyph color and appear dimmed. Backgrounds retain their hover and pressed feedback.
 
-`button_corner_radius` uses logical pixels, from `0` to `100`. Its default, `-1`, follows the window's `corner_radius`, including window rules. Use `0` for square buttons or a small positive value for rounded squares. The radius is capped at half the button size, producing circles at larger values. Buttons and symbols scale with the output and overview zoom, and update on reload. The maximize button is disabled for fixed-size windows. The minimize button shows only while the window can [minimize](layout.md#minimize), so tiled and pinned windows do not have one. `background` and `text` apply to the focused window; their `_unfocused` variants apply to other windows. Colors and title bar settings reload live.
+`button_corner_radius` uses logical pixels, from `0` to `100`. Its default, `-1`, follows the window's `corner_radius`, including window rules. Use `0` for square buttons or a small positive value for rounded squares. The radius is capped at half the button size, producing circles at larger values. Buttons and symbols scale with the output and overview zoom, and update on reload. The maximize button is disabled for fixed-size windows. The minimize button shows only while the window can [minimize](window-states.md#minimize), so tiled and pinned windows do not have one. `background` and `text` apply to the focused window; their `_unfocused` variants apply to other windows. Colors and title bar settings reload live.
 
 The title bar follows its window's `blur`, `blur_optimized`, and `blur_ignore_alpha` rules, together with the global [blur settings](#blur). Give `background` and `background_unfocused` some transparency, such as `"#292933CC"`, to see the blurred backdrop. The alpha threshold applies to the title bar's own background color, independently of the application's content. Opaque title bar backgrounds remain opaque with blur enabled, including after leaving overview or switching focus between windows. No layer rule is needed. Dragging, overview previews, and close animations keep the blur with the window.
 
@@ -209,44 +184,7 @@ The bar occupies space inside a tile's allocation; configure sizes, IPC window c
 
 ### Tab bar
 
-A [tab group](layout.md#tab-groups) draws a bar along one edge, with a slot for each tab. Its `‹` and `›` buttons become `▴` and `▾` on a side bar.
-
-```toml
-[appearance.tab_bar]
-style = "titles"
-position = "top"
-height = 24
-font = "sans 10"
-padding = 8
-tab_gap = 2
-gap = -1
-corner_radius = -1
-title_format = "{title}"
-title_align = "center"
-visible = true
-hide_when_single = false
-max_tabs = 0
-overflow = "scroll"
-```
-
-| Key                | Default     | Description                                                                                                                                                                                                                                                                     |
-| ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `style`            | `"titles"`  | `"titles"` shows each tab's title in its slot. `"indicator"` draws the slots alone; pair it with a small `height` for a thin strip.                                                                                                                                             |
-| `position`         | `"top"`     | The group edge the bar sits on: `"top"`, `"bottom"`, `"left"`, or `"right"`. On the top or bottom the slots sit side by side; on the left or right they stack, a vertical tab list whose titles still read across.                                                              |
-| `height`           | `24`        | Thickness in logical pixels, from 2 to 400: the bar's height on the top or bottom, its width on the left or right. The group reserves the bar and its `gap` beside it. Give a side bar with titles room for them, such as `160`.                                                |
-| `font`             | `"sans 10"` | Title font as a Pango description, such as `"Inter Bold 9"`.                                                                                                                                                                                                                    |
-| `padding`          | `8`         | Space a title keeps from either end of its slot.                                                                                                                                                                                                                                |
-| `tab_gap`          | `2`         | Space between neighbouring slots.                                                                                                                                                                                                                                               |
-| `gap`              | `-1`        | Space between the bar and its window, from 0 to 500; `-1` follows the [layout `gap`](layout.md#shared-settings).                                                                                                                                                                |
-| `corner_radius`    | `-1`        | Slot corner radius; `-1` follows `corner_radius`.                                                                                                                                                                                                                               |
-| `title_format`     | `"{title}"` | Slot label. `{title}`, `{app_id}`, and `{index}` (from 1) are replaced; a window without a title shows its app id.                                                                                                                                                              |
-| `title_align`      | `"center"`  | `"left"`, `"center"`, or `"right"` within the slot.                                                                                                                                                                                                                             |
-| `visible`          | `true`      | Draw bars. `false` hides the bar of every group that has not shown its own with `column-show-tab-bar` or `column-toggle-tab-bar`; the tabs take its space and keep working from the keyboard. Those actions hide or show one group's bar whatever this says.                    |
-| `hide_when_single` | `false`     | Draw no bar, and reserve no space, while a tab group holds one window. It stays a group, so the next window to join becomes a tab.                                                                                                                                              |
-| `max_tabs`         | `0`         | Slots the bar shows at once, from 0 to 64; `0` shows every tab.                                                                                                                                                                                                                 |
-| `overflow`         | `"scroll"`  | What a bar does with more tabs than `max_tabs`. `"scroll"` keeps the slots at their size and shows a run of tabs that follows the active one, with a `‹` and a `›` button at the ends that select the previous and next tab. `"shrink"` narrows the slots until every tab fits. |
-
-The bar is hidden while its window is fullscreen or maximized to the edges. Titles are drawn at the output's scale and cached, so switching tabs never renders them again. A scrolled bar draws and renders titles only for the tabs it shows, however many the group holds. Clicking `‹` or `›` cycles through every tab, wrapping from the last to the first and back, and the strip follows. The wheel over the bar, the tab actions, and focus move the active tab too, and the strip follows it one slot at a time.
+The look of [tab group](tab-groups.md) bars is set under `[appearance.tab_bar]` and `[colors.tab_bar]`; see [Tab bar](tab-groups.md#tab-bar).
 
 ### Blur
 

@@ -89,7 +89,7 @@ Changing a window stream to an output, or an output stream to a window, is suppo
 
 ## Move & size
 
-Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
+Sizing rules per layout live in [Window sizing and states](window-states.md#extent-actions).
 
 | Action                                                                                         | Effect                                                      |
 | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -181,7 +181,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-toggle-maximize-to-edges`      | Toggle maximize without gaps, struts, or borders           |
 | `window-toggle-pinned`                 | Pin the focused window above other windows                 |
 
-Which windows minimize and how they come back is described in [Minimize](layout.md#minimize).
+Which windows minimize and how they come back is described in [Minimize](window-states.md#minimize).
 
 `window-close` asks the application to close a window. `window-kill` forcefully closes its client, even if it ignores close requests, and can lose unsaved work. For native Wayland clients, it sends `SIGKILL` to the owning process and closes all windows owned by that process; an unavailable client PID returns an error. For Xwayland clients, it disconnects the owning X11 connection and destroys its windows and other X11 resources, including windows retained after the process exits. Other windows sharing that X11 connection also close; the process may continue running if it handles losing the connection.
 
@@ -322,6 +322,6 @@ See [Layout](layout.md) for geometry, directions, and resizing behavior.
 - `column-focus-tab-next` and `column-focus-tab-previous` wrap unless `layout.tabs.wrap_focus` is off. In the scrolling layout a tab group is one row of its column: `window-focus-up` and `window-focus-down` step over it, and `window-move-up` and `window-move-down` take a tab out of it or a window into it. In a tabbed master area they step through its tabs without wrapping.
 - Floating and pinned behavior is described in [Layout](layout.md) and [Scratchpads](scratchpad.md).
 - An action unavailable in the active layout does nothing from a keybind and returns an explanatory error through `umbriel msg`.
-- `spawn` supplies an activation token and records the pointer-preferred output and its active workspace. The launched application's first window opens there even if you switch workspaces while it starts. Opening on a workspace you left is silent, and explicit `default_output`, `default_workspace`, and `default_scratchpad` window rules take precedence. `focus_on_activate` controls whether an activation request focuses the window, not the recorded launch destination. Autostart commands do not receive a token or recorded placement. A `spawn` reply says nothing about the launched program, so a program that starts nothing still answers `{"ok": null}`; Umbriel records the launch in its own log, naming the command and the process it created, and [Logs](installation.md#logs) describes the queries that find a launch and whatever the program wrote.
+- `spawn` supplies an activation token and records the pointer-preferred output and its active workspace. The launched application's first window opens there even if you switch workspaces while it starts. Opening on a workspace you left is silent, and explicit `default_output`, `default_workspace`, and `default_scratchpad` window rules take precedence. `focus_on_activate` controls whether an activation request focuses the window, not the recorded launch destination. Autostart commands do not receive a token or recorded placement. A `spawn` reply says nothing about the launched program, so a program that starts nothing still answers `{"ok": null}`; Umbriel records the launch in its own log, naming the command and the process it created, and [A launched program does not appear](troubleshooting.md#a-launched-program-does-not-appear) describes the queries that find a launch and whatever the program wrote.
 - `spawn-floating` records the same launch and opens that first window floating, as a `default_floating = true` window rule would; a window rule that sets `default_floating` takes precedence.
 - Bare `session-quit` asks for confirmation. Use `session-quit skip-confirmation` only when an immediate exit is intended.

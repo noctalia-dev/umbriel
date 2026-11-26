@@ -2,6 +2,8 @@
 
 The overview displays every workspace and lets you navigate, focus, close, and move windows.
 
+![The workspace overview showing the windows of each workspace](assets/workspaces-overview.webp)
+
 ## Settings and behavior
 
 ```toml

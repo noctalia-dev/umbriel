@@ -14,7 +14,7 @@ mod_right_double_click = "none"
 
 `middle_click_paste = false` disables primary-selection paste, including Shift+Insert. The regular Ctrl+C and Ctrl+V clipboard is unaffected. Applications started while primary selection is disabled must be restarted after it is re-enabled.
 
-Edge and corner drag placement is configured with [`layout.stacking.drop_zones`](layout.md#drop-zones-and-region-placement). It is enabled by default in stacking workspaces. Individual floating windows above tiling layouts use free placement instead.
+Edge and corner drag placement is configured with [`layout.stacking.drop_zones`](layout-stacking.md#drop-zones-and-region-placement). It is enabled by default in stacking workspaces. Individual floating windows above tiling layouts use free placement instead.
 
 Dragging a window out of a region placement or maximize restores its normal size under the pointer, keeping the title bar and content aligned while the application redraws. Placing it on another monitor maps the normal restore position to that monitor. Shared monitor edges require a 150 ms dwell before offering a drop zone, so dragging straight across monitors remains possible. Tiled, pinned, overview, data-device, and toplevel-transfer drags do not use these zones; a scratchpad window uses its own scratchpad's layout settings. The explicit `window-set-region <region>` and `window-clear-region` actions work independently of the pointer setting within stacking. See [Actions](actions.md).
 
