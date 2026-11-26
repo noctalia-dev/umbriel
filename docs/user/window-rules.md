@@ -67,6 +67,8 @@ Named `default_workspace` targets remain valid when their output is unavailable 
 
 A `default_maximize` rule opens the window at the full column width. [`client_maximize`](layout.md#maximize-and-fullscreen) governs the client's own or restored maximize request instead, deciding whether that request lands in the edges. A rule that never sees a client request stays on the column unless `default_maximize_to_edges` is set.
 
+`default_focused = false` leaves focus where it was. In scrolling, `default_fullscreen` and `default_maximize_to_edges` then do not reveal the new window: the strip stays on the focused column and the opener does not cover it.
+
 Dialogs float by default. Use `default_floating = false` in a matching rule to force one into the layout.
 
 X11 windows marked as notifications, popup menus, dropdowns, tooltips, or other client-placed popups bypass window rules, including broad application rules that force tiling or maximize. Persistent torn-off menus marked `_NET_WM_WINDOW_TYPE_MENU` remain managed and follow window rules unless they request override-redirect. If an application publishes its popup type or override-redirect flag after opening, Umbriel switches it to popup handling immediately, restores its client-requested position and size, and clears maximize and fullscreen state. These popups do not appear in `umbriel windows`.

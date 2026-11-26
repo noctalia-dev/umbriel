@@ -147,7 +147,7 @@ default_extent_fraction = 0.4
 
 A workspace rule can override both global and output defaults. Reloading these settings affects new columns only.
 
-When focus moves to a hidden column, Umbriel scrolls just far enough to reveal it. Dragged windows show an insertion preview and can be dropped into a new or existing column.
+When focus moves to a hidden column, Umbriel scrolls just far enough to reveal it. A window that opens without taking focus does not scroll the strip to itself, even when a rule opens it fullscreen or maximized to edges. Dragged windows show an insertion preview and can be dropped into a new or existing column.
 
 During an application drag-and-drop operation, holding the pointer near either edge of the scrolling axis reveals offscreen columns after a short delay. The strip moves faster as the pointer approaches the edge, and stops when the pointer moves away or the drag ends. A window revealed beneath a stationary pointer becomes the active drop target, so the file or other payload can be dropped without extra pointer motion.
 

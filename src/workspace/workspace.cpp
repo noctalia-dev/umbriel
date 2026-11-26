@@ -2697,6 +2697,11 @@ namespace umbriel {
     if (scrolling == nullptr || m_group == nullptr || m_group->output() == nullptr) {
       return;
     }
+    // A width or fullscreen change on a window that does not hold focus must not pull the strip away from the focused
+    // column. Focus-driven reveals go through activateFocusedColumn instead.
+    if (m_focusedView != nullptr && m_focusedView != view) {
+      return;
+    }
     scrolling->snapVisible(scrolling->columnOf(view), scrollViewportExtent());
   }
 
