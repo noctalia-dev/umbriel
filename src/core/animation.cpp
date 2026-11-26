@@ -802,13 +802,16 @@ namespace umbriel {
       settleSpring(to, curve.spring, m_velocity);
       return;
     }
+    retargetTimed(to, curve.easing == Easing::Spring ? springDurationMs(curve.spring) : durationMs, curve);
+  }
+
+  void AnimatedValue::retargetTimed(double to, int durationMs, const AnimationCurve& curve) {
     const AnimationTransition transition = beginAnimationTransition();
     m_transitionId = transition.id;
     m_shaderSeed = transition.seed;
     m_from = m_current;
     m_target = to;
-    m_durationMsec = curve.easing == Easing::Spring ? static_cast<uint64_t>(springDurationMs(curve.spring))
-                                                    : static_cast<uint64_t>(std::max(1, durationMs));
+    m_durationMsec = static_cast<uint64_t>(std::max(1, durationMs));
     m_curve = curve;
     m_startMsec = 0;
     m_progress = 0.0;

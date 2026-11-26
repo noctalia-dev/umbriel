@@ -528,6 +528,7 @@ namespace {
     case A::OverviewToggle:
     case A::OverviewOpen:
     case A::OverviewClose:
+    case A::OverviewSpread:
       return Group::Overview;
     case A::ConfigReload:
     case A::CursorHide:

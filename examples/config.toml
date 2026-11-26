@@ -253,6 +253,8 @@ numlock_toggle = true
 "Mod+WheelUp" = "window-focus-left"
 "Mod+WheelDown" = "window-focus-right"
 "Mod+O" = { action = "overview-toggle", repeat = false }
+# Optional live window overview, independent of the workspace overview.
+# "Mod+Shift+O" = { action = "overview-spread", repeat = false }
 
 # Workspaces
 # Move the whole workspace, retaining its name, layout, and windows.
@@ -462,12 +464,38 @@ blur_popups = true
 match.namespace = "^noctalia-(notification|dock|panel|attached-panel|osd)$"
 blur_optimized = false
 
+# Optional Noctalia window-overview search field and results blur.
+# [[layer_rule]]
+# match.namespace = "^noctalia-overview-search$"
+# blur = true
+# blur_ignore_alpha = 0.1
+# blur_optimized = false
+
 # ==============================================================================
 # Overview
 # Built-in overview and animation values are used. The top-left hot corner opens
 # the overview after a short delay.
 # Overview: https://docs.noctalia.dev/umbriel/workspaces-overview/
 # Animation: https://docs.noctalia.dev/umbriel/animation/
+#
+# Optional window overview preferences. all_outputs = true gathers windows on
+# the invoking screen; false keeps each monitor's windows on their own screen.
+# Noctalia can manage these in Settings > Umbriel > Window Overview.
+# [overview.spread]
+# all_workspaces = true
+# all_outputs = true
+# duration_ms = 250 # Entry and exit duration, 0 to 2000 ms; 0 is instant.
+# spacing = 32.0 # Gap in logical pixels, 0 to 128.
+# max_scale = 1.0 # Maximum preview scale, 0.1 to 1.0.
+# show_titles = true
+# show_workspace_numbers = true
+# show_close_buttons = true
+# inset_wallpaper = false # Rounded wallpaper on every screen.
+# wallpaper_dim = 0.0 # Darken the inset wallpaper, 0 to 1.
+# dim = 0.4 # Darken the full-screen backdrop, 0 to 1.
+# background_blur = true # Requires appearance.blur.enabled.
+# blur_strength = 1.0 # Background blur strength, 0 to 1.
+#
 [hot_corners.top_left]
 enabled = true
 delay_ms = 500

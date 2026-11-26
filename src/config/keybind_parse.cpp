@@ -452,6 +452,7 @@ namespace umbriel {
          ActionArgKind::Output},
         {"overview-close", "", "Close the workspace overview", KeybindAction::OverviewClose},
         {"overview-open", "", "Open the workspace overview", KeybindAction::OverviewOpen},
+        {"overview-spread", "", "Toggle the live overview of all windows", KeybindAction::OverviewSpread},
         {"overview-toggle", "", "Open or close the workspace overview", KeybindAction::OverviewToggle},
         {"scratchpad-focus-next", "[<scratchpad>]", "Focus the next visible scratchpad window",
          KeybindAction::ScratchpadFocusNext, ActionArgKind::OptionalScratchpad},

@@ -2,6 +2,7 @@
 # needs compositor code. Either way a test never lists or recompiles a source.
 unit_tests = [
   ['overview-navigation', ['unit/overview_navigation.cpp'], []],
+  ['overview-spread-geometry', ['unit/overview_spread_geometry.cpp'], []],
   ['gesture-physics', ['unit/gesture_physics.cpp'], []],
   ['overview-preview-geometry', ['unit/overview_preview_geometry.cpp'], [umbriel_core_dep]],
   ['presented-crop', ['unit/presented_crop.cpp'], []],
