@@ -341,6 +341,9 @@ namespace umbriel {
       if (rule.defaultPinned) {
         resolved.defaultPinned = rule.defaultPinned;
       }
+      if (rule.rememberFloatingGeometry) {
+        resolved.rememberFloatingGeometry = rule.rememberFloatingGeometry;
+      }
       if (rule.confinePointer) {
         resolved.confinePointer = rule.confinePointer;
       }

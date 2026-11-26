@@ -3115,6 +3115,7 @@ focus_on_activate = true
 match.app_id = "^game$"
 default_focused = false
 default_pinned = true
+remember_floating_geometry = true
 default_scrolling_column = "browser-stack"
 default_scrolling_column_order = 20
 focus_on_activate = false
@@ -3136,6 +3137,8 @@ default_position = { x = 0, y = 0 }
   CHECK(!*store.config().windowRules[0].defaultFocused);
   CHECK(store.config().windowRules[0].defaultPinned.has_value());
   CHECK(*store.config().windowRules[0].defaultPinned);
+  CHECK(store.config().windowRules[0].rememberFloatingGeometry.value_or(false));
+  CHECK(!store.config().windowRules[1].rememberFloatingGeometry.has_value());
   CHECK(store.config().windowRules[0].defaultScrollingColumn == "browser-stack");
   CHECK(store.config().windowRules[0].defaultScrollingColumnOrder == 20);
   CHECK(store.config().windowRules[0].focusOnActivate.has_value());

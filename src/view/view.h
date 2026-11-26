@@ -871,6 +871,10 @@ namespace umbriel {
     // Resolves the rules with `alone` forced, so the alone effect can compare both outcomes, and so the opening paths
     // can read the alone rules before the view is in the layout.
     ResolvedWindowRule resolveRulesWithAlone(bool alone) const;
+    // `remember_floating_geometry`: turn the geometry saved at the last close into floating size and position rules,
+    // and save it again when this window closes.
+    void applyRememberedFloatingGeometry(ResolvedWindowRule& rule) const;
+    void saveFloatingGeometryForReopen();
     ResolvedWindowRule aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
     void revertAloneRuleEffects();

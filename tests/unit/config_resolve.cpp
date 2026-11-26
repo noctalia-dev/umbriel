@@ -609,6 +609,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   app.blur = true;
   app.defaultFocused = false;
   app.defaultPinned = true;
+  app.rememberFloatingGeometry = true;
   app.defaultScrollingColumn = "browser-stack";
   app.defaultScrollingColumnOrder = 20;
   app.focusOnActivate = false;
@@ -632,6 +633,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   title.allowShortcutsInhibit = true;
   title.hdr = umbriel::HdrMode::On;
   title.defaultPinned = false;
+  title.rememberFloatingGeometry = false;
   title.defaultScrollingColumn = "terminals";
   title.defaultScrollingColumnOrder = 10;
   config.windowRules.push_back(std::move(title));
@@ -652,6 +654,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
   CHECK(resolved.defaultPosition->anchor == umbriel::WindowPositionAnchor::TopRight);
   CHECK(resolved.defaultFocused && !*resolved.defaultFocused);
   CHECK(resolved.defaultPinned && !*resolved.defaultPinned);
+  CHECK(resolved.rememberFloatingGeometry && !*resolved.rememberFloatingGeometry);
   CHECK(resolved.defaultScrollingColumn && *resolved.defaultScrollingColumn == "terminals");
   CHECK(resolved.defaultScrollingColumnOrder && *resolved.defaultScrollingColumnOrder == 10);
   CHECK(resolved.focusOnActivate && *resolved.focusOnActivate);
@@ -662,6 +665,7 @@ UMBRIEL_TEST(windowRulesMergeMatchingFieldsInOrder) {
 
   const auto appOnly = umbriel::resolveWindowRules(config, "foot", "editor", std::nullopt, ContentType::None, {}, 0);
   CHECK(appOnly.defaultPinned && *appOnly.defaultPinned);
+  CHECK(appOnly.rememberFloatingGeometry && *appOnly.rememberFloatingGeometry);
   CHECK(appOnly.defaultScrollingColumn && *appOnly.defaultScrollingColumn == "browser-stack");
   CHECK(appOnly.defaultScrollingColumnOrder && *appOnly.defaultScrollingColumnOrder == 20);
   CHECK(appOnly.vrr == VrrMode::Disabled);

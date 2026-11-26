@@ -233,6 +233,7 @@ namespace umbriel {
           boolean("default_maximize", &W::defaultMaximize),
           boolean("default_focused", &W::defaultFocused),
           boolean("default_pinned", &W::defaultPinned),
+          boolean("remember_floating_geometry", &W::rememberFloatingGeometry),
           boolean("focus_on_activate", &W::focusOnActivate),
           boolean("attach_to_parent", &W::attachToParent),
           boolean("confine_pointer", &W::confinePointer),

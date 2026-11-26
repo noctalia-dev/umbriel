@@ -102,6 +102,7 @@ attach_to_parent = false
 | `default_scrolling_extent_px` | Scrolling  | Initial logical-pixel extent along the strip, up to 4 viewports. |
 | `default_scrolling_extent`    | Scrolling  | Initial fractional extent along the strip, 0.1 to 4.0.           |
 | `default_position`            | Floating   | Position from a named anchor.                                    |
+| `remember_floating_geometry`  | Floating   | Reopen at the size and position the app ID last closed at.       |
 
 Pixel values take precedence over fractions. Each axis is optional. A tiled window remembers floating size and position rules until it first floats, and a floating window remembers its scrolling extent until it first tiles.
 
@@ -123,6 +124,17 @@ default_position = { x = 32, y = 24, anchor = "bottom_left" }
 ```
 
 Accepted anchors are `center`, `top_left`, `top_right`, `bottom_left`, `bottom_right`, `top`, `bottom`, `left`, and `right`. Right and bottom anchors measure inward from those edges.
+
+### Remembered floating geometry
+
+With `remember_floating_geometry = true`, closing a floating window saves its size and its offset from the output's usable area under its app ID. The next window with that app ID opens with that size and position in place of the size and position rules, the way a `default_floating_size_px` and a `top_left` `default_position` would. A window that closes maximized, fullscreen, tiled, attached to its parent, or hidden in a scratchpad saves nothing, so the previous geometry stays. The geometry is kept in memory only and is forgotten when Umbriel restarts. The key does not make a window float; combine it with `default_floating`:
+
+```toml
+[[window_rule]]
+match.app_id = "^org[.]example[.]Viewer$"
+default_floating = true
+remember_floating_geometry = true
+```
 
 ## Scratchpad placement
 

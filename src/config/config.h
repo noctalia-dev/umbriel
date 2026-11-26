@@ -487,6 +487,8 @@ namespace umbriel {
     std::optional<bool> defaultMaximize;
     std::optional<bool> defaultFocused;
     std::optional<bool> defaultPinned;
+    // Reopen floating at the size and position the last window with this app ID closed at.
+    std::optional<bool> rememberFloatingGeometry;
     std::optional<bool> focusOnActivate;
     // Lets a modal dialog hang on its parent's frame (true, the default) or opens it as an ordinary window (false).
     std::optional<bool> attachToParent;
@@ -564,6 +566,7 @@ namespace umbriel {
           && defaultMaximize == other.defaultMaximize
           && defaultFocused == other.defaultFocused
           && defaultPinned == other.defaultPinned
+          && rememberFloatingGeometry == other.rememberFloatingGeometry
           && focusOnActivate == other.focusOnActivate
           && attachToParent == other.attachToParent
           && confinePointer == other.confinePointer
@@ -616,6 +619,8 @@ namespace umbriel {
     std::optional<bool> defaultMaximize;
     std::optional<bool> defaultFocused;
     std::optional<bool> defaultPinned;
+    // Reopen floating at the size and position the last window with this app ID closed at.
+    std::optional<bool> rememberFloatingGeometry;
     std::optional<bool> focusOnActivate;
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;

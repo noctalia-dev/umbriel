@@ -28,6 +28,7 @@
 #include <string>
 #include <string_view>
 #include <sys/types.h>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -213,6 +214,17 @@ namespace umbriel {
     wlr_scene_tree* xdgTree() const { return m_xdgTree; }
     wlr_scene_tree* scratchpadTree() const { return m_scratchpadTree; }
     ScratchpadManager* scratchpadManager() const { return m_scratchpadManager.get(); }
+    // Floating geometry of the last closed window per app ID, for `remember_floating_geometry`. Offsets are from the
+    // output's usable area. shortcut: kept in memory only, so it is lost when the compositor restarts.
+    struct RememberedFloatingGeometry {
+      int x = 0;
+      int y = 0;
+      int width = 0;
+      int height = 0;
+    };
+    std::unordered_map<std::string, RememberedFloatingGeometry>& rememberedFloatingGeometry() {
+      return m_rememberedFloatingGeometry;
+    }
     // Between layer-shell background and bottom: overview wallpaper blur renders
     // before bottom-layer surfaces so they remain sharp.
     wlr_scene_tree* overviewBlurTree() const { return m_overviewBlurTree; }
@@ -937,6 +949,7 @@ namespace umbriel {
     std::unique_ptr<SessionLock> m_sessionLock;
     std::unique_ptr<Overview> m_overview;
     std::unique_ptr<ScratchpadManager> m_scratchpadManager;
+    std::unordered_map<std::string, RememberedFloatingGeometry> m_rememberedFloatingGeometry;
     std::unique_ptr<HintRect> m_insertHint;
     std::unique_ptr<ConfigWatcher> m_configWatcher;
     std::unique_ptr<Ipc> m_ipc;

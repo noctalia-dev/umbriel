@@ -265,6 +265,7 @@ namespace umbriel {
     if (m_launchFloating && !rule.defaultFloating) {
       rule.defaultFloating = true;
     }
+    applyRememberedFloatingGeometry(rule);
     m_initialRules = rule;
     m_initialRuleHistory.clear();
     m_initialRuleHistory.push_back(rule);
@@ -550,6 +551,8 @@ namespace umbriel {
   }
 
   void View::handleUnmap(bool animateClose) {
+    // Before anything below detaches the window from its workspace or resets its opening rules.
+    saveFloatingGeometryForReopen();
     m_server->seat()->toplevelDrags().unmapped(this);
     if (m_effectSelectionIdle != nullptr) {
       wl_event_source_remove(m_effectSelectionIdle);
@@ -861,6 +864,7 @@ namespace umbriel {
       if (m_launchFloating && !rule.defaultFloating) {
         rule.defaultFloating = true;
       }
+      applyRememberedFloatingGeometry(rule);
       ScratchpadManager* scratchpadManager = m_server->scratchpadManager();
       const bool launchRuleOverride = m_launchPlacementPending
           && (rule.defaultOutput.has_value()

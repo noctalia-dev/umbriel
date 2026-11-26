@@ -70,6 +70,52 @@ namespace umbriel {
     );
   }
 
+  void View::applyRememberedFloatingGeometry(ResolvedWindowRule& rule) const {
+    if (!rule.rememberFloatingGeometry.value_or(false) || appId() == nullptr) {
+      return;
+    }
+    const auto& remembered = m_server->rememberedFloatingGeometry();
+    const auto found = remembered.find(appId());
+    if (found == remembered.end()) {
+      return;
+    }
+    const Server::RememberedFloatingGeometry& geometry = found->second;
+    // Pixel sizes win over fractions, but clearing the fractions keeps the resolved rule unambiguous.
+    rule.defaultFloatingWidthPx = geometry.width;
+    rule.defaultFloatingHeightPx = geometry.height;
+    rule.defaultFloatingWidth.reset();
+    rule.defaultFloatingHeight.reset();
+    rule.defaultPosition = WindowPosition{.x = geometry.x, .y = geometry.y, .anchor = WindowPositionAnchor::TopLeft};
+  }
+
+  void View::saveFloatingGeometryForReopen() {
+    if (!m_initialRules.rememberFloatingGeometry.value_or(false)
+        || appId() == nullptr
+        || m_tiled
+        || !m_positioned
+        || attached()
+        || scheduledFullscreen()
+        || scheduledMaximized()) {
+      return;
+    }
+    // A hidden scratchpad member is parked off its home position; keep the geometry from its last normal close.
+    if (const ScratchpadManager* scratchpad = m_server->scratchpadManager();
+        scratchpad != nullptr && scratchpad->contains(this)) {
+      return;
+    }
+    const auto [width, height] = floatingSize();
+    const wlr_box usable = floatingUsableArea();
+    if (width <= 0 || height <= 0 || usable.width <= 0 || usable.height <= 0) {
+      return;
+    }
+    m_server->rememberedFloatingGeometry()[appId()] = {
+        .x = layoutTargetX() - usable.x,
+        .y = layoutTargetY() - usable.y,
+        .width = width,
+        .height = height,
+    };
+  }
+
   // The difference between the alone and not-alone rules. Only the five size-related fields are kept: the others
   // are handled by the normal dynamic rules.
   ResolvedWindowRule View::aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const {
@@ -345,10 +391,11 @@ namespace umbriel {
     // Late app ID or title settlement may select opening rules, but identity hints changed after map must not select
     // new one-shot behavior. is_alone never selects opening settings: alone effects are applied and undone on every
     // change to the workspace's tiled set.
-    const ResolvedWindowRule rule = resolveWindowRules(
+    ResolvedWindowRule rule = resolveWindowRules(
         config(), m_initialRulesAppId, m_initialRulesTitle, m_initialRulesXdgTag, m_initialRulesContentType,
         m_initialRuleState, m_server->uptimeMs()
     );
+    applyRememberedFloatingGeometry(rule);
     // An attached dialog's placement is its parent's, so the placement rules have nothing to act on.
     if (attached()) {
       m_initialRules = rule;
