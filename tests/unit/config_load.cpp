@@ -4265,9 +4265,7 @@ UMBRIEL_TEST(effectPresetsNeedAKindAndKeepTheirNameWithoutAShader) {
   );
   CHECK(store.reload().success);
   CHECK(umbriel::findEffectPreset(store.config().effects, "nokind") == nullptr);
-  CHECK(
-      containsDiagnostic(store, "ignoring effects.preset.nokind (kind must be animation|border|window|screen|cursor)")
-  );
+  CHECK(containsDiagnostic(store, "ignoring effects.preset.nokind"));
   const umbriel::EffectPreset* missing = umbriel::findEffectPreset(store.config().effects, "missing");
   CHECK(missing != nullptr && missing->inert());
   CHECK(containsDiagnostic(store, "cannot read shader file"));
@@ -4320,6 +4318,47 @@ UMBRIEL_TEST(effectSelectorsLoadAtEveryLevel) {
   CHECK(!containsDiagnostic(store, "unknown key"));
   const umbriel::EffectPreset* ring = umbriel::findEffectPreset(config.effects, "ring");
   CHECK(ring != nullptr && ring->overlay == "lines");
+}
+
+UMBRIEL_TEST(backdropRulesLoadDisableAndRejectOtherKinds) {
+  const TempConfigTree tree;
+  tree.write("glass.glsl", "vec4 backdrop(vec2 uv) { return umbriel_sample(uv); }");
+  const std::string presets = "[effects.preset.glass]\nkind = 'backdrop'\nshader = 'glass.glsl'\n"
+                              "[effects.preset.lines]\nkind = 'window'\n";
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(tree.path("config.toml"), true);
+  for (const std::string_view selector : {"glass", "off", "", "lines", "missing"}) {
+    tree.write("config.toml", presets + "[[window_rule]]\nbackdrop_effect = '" + std::string(selector) + "'\n");
+    CHECK(store.reload().success);
+    CHECK_EQ(store.config().windowRules.size(), size_t{1});
+    const auto& rule = store.config().windowRules.at(0);
+    if (selector == "lines" || selector == "missing") {
+      CHECK(!rule.backdropEffect);
+      CHECK(containsDiagnostic(store, "backdrop_effect"));
+    } else {
+      CHECK(rule.backdropEffect == selector);
+      CHECK(!containsDiagnostic(store, "backdrop_effect"));
+    }
+    CHECK(!containsDiagnostic(store, "unknown key"));
+  }
+  const auto* preset = umbriel::findEffectPreset(store.config().effects, "glass");
+  CHECK(preset != nullptr && preset->kind == umbriel::EffectKind::Backdrop && !preset->inert());
+  tree.write(
+      "config.toml",
+      presets
+          + "[effects.pool.glasses]\nkind = 'backdrop'\nchoose = ['glass']\n"
+            "[[window_rule]]\nbackdrop_effect = 'glasses'\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(umbriel::findEffectPool(store.config().effects, "glasses") == nullptr);
+  CHECK(!store.config().windowRules.at(0).backdropEffect);
+  tree.write(
+      "config.toml", "[effects]\nbackdrop_enabled = false\n" + presets + "[[window_rule]]\nbackdrop_effect = 'glass'\n"
+  );
+  CHECK(store.reload().success);
+  CHECK(!store.config().effects.backdropEnabled);
+  CHECK(store.config().windowRules.at(0).backdropEffect == "glass");
+  CHECK(!containsDiagnostic(store, "unknown key"));
 }
 
 UMBRIEL_TEST(windowRuleBorderEffectUnfocusedAcceptsOnlyBooleans) {

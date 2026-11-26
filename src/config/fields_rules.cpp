@@ -272,6 +272,7 @@ namespace umbriel {
           optionalEffectField("border_effect", &W::borderEffect),
           boolean("border_effect_unfocused", &W::borderUnfocused),
           optionalEffectField("window_effect", &W::windowEffect),
+          optionalEffectField("backdrop_effect", &W::backdropEffect),
           registry::table<W>("default_floating_size", self, floatingSize),
           registry::table<W>("default_floating_size_px", self, floatingSizePx),
           registry::choice("vrr", &W::vrr, vrrModes()),
@@ -353,6 +354,9 @@ namespace umbriel {
       });
       recordRuleEffect(context, keys, "window_effect", EffectKind::Window, [&loaded, index] {
         loaded.windowRules[index].windowEffect.reset();
+      });
+      recordRuleEffect(context, keys, "backdrop_effect", EffectKind::Backdrop, [&loaded, index] {
+        loaded.windowRules[index].backdropEffect.reset();
       });
       return true;
     }

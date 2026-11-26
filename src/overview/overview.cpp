@@ -693,7 +693,7 @@ namespace umbriel {
     };
     view->syncAnimationEffects(
         card.tree, card.border != nullptr ? &card.border->node : nullptr, &card.surfaceTree->node, &cardGate,
-        card.owner->output, static_cast<float>(zoom())
+        card.owner->output, static_cast<float>(zoom()), card.blur.node()
     );
   }
 
@@ -1336,7 +1336,8 @@ namespace umbriel {
   void Overview::destroyCard(Card* card) {
     card->view->effects().detachNodes(
         card->surfaceTree != nullptr ? &card->surfaceTree->node : nullptr,
-        card->border != nullptr ? &card->border->node : nullptr
+        card->border != nullptr ? &card->border->node : nullptr,
+        card->blur.node() != nullptr ? &card->blur.node()->node : nullptr
     );
     for (const auto& entry : card->surfaces) {
       wl_list_remove(&entry->commit.link);

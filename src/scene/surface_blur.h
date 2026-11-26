@@ -1,8 +1,10 @@
 #pragma once
 
 #include <optional>
+#include <string>
 
 struct fx_corner_radii;
+struct fx_effect_shader;
 struct wlr_box;
 struct wlr_scene_buffer;
 struct wlr_scene_blur;
@@ -15,6 +17,7 @@ namespace umbriel {
     float ignoreAlpha = 0.0F;
     std::optional<bool> enabled;
     std::optional<bool> optimized;
+    std::string backdropEffect;
   };
 
   // True when the surface's opaque region does not cover surfaceBox, given in surface-local coordinates.
@@ -42,10 +45,11 @@ namespace umbriel {
     void setLive(bool live);
     // Disable the node (unmap path); update() re-enables.
     void hide();
+    wlr_scene_blur* node() const { return m_node; }
 
   private:
     wlr_scene_blur* m_node = nullptr;
-    bool m_masked = false;
+    fx_effect_shader* m_backdrop = nullptr;
     bool m_optimized = false;
     bool m_live = false;
     float m_alpha = 1.0F;

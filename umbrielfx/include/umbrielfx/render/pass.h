@@ -190,7 +190,10 @@ struct fx_render_box_shadow_options {
   struct wlr_render_color color;
 };
 
+struct fx_effect_composite;
+
 struct fx_render_blur_pass_options {
+  const struct fx_effect_composite* backdrop;
   struct fx_render_texture_options tex_options;
   struct fx_framebuffer* current_buffer;
   struct blur_data* blur_data;

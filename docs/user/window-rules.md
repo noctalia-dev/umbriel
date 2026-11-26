@@ -211,6 +211,7 @@ Add `default_column_display = "tabbed"` to keep such a column as [tabs](tab-grou
 | `border_effect`           | Replace `effects.border` with a border preset or pool, or `"off"` to disable it.                                                                                                                                                                                       |
 | `border_effect_unfocused` | Override `effects.border_unfocused` with `true` or `false`; omission inherits the global setting. The selected border effect still requires decoration, no urgency, and no fullscreen.                                                                                 |
 | `window_effect`           | Replace `effects.window` with a window preset or pool, or `"off"` to disable it.                                                                                                                                                                                       |
+| `backdrop_effect`         | Replace the window backdrop blur with a `backdrop` preset, or `"off"` to restore the configured native blur. Works with native blur disabled.                                                                                                                          |
 
 These values refresh when matching identity or state changes. Fullscreen bypasses rule opacity unless [`appearance.opaque_fullscreen`](appearance.md#window-appearance) is `false`.
 
@@ -324,7 +325,7 @@ border_effect = "off"
 window_effect = "scanlines"
 ```
 
-Names refer to `[effects.preset.<name>]` or `[effects.pool.<name>]` tables of the matching kind. See [Effects](effects.md#turn-a-default-off-for-one-window-or-output).
+Names refer to `[effects.preset.<name>]` or `[effects.pool.<name>]` tables of the matching kind. The `backdrop_effect` key accepts a `backdrop` preset or `"off"`; see [Backdrop shaders](effects.md#backdrop-shaders). See [Effects](effects.md#turn-a-default-off-for-one-window-or-output) for window and border selection.
 
 ## The only tiled column
 

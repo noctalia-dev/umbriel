@@ -806,11 +806,12 @@ namespace umbriel {
 
   void View::syncAnimationEffects(
       wlr_scene_tree* target, wlr_scene_node* border, wlr_scene_node* surface, const BorderEffectGate* gate,
-      Output* cardOutput, float scale
+      Output* cardOutput, float scale, wlr_scene_blur* backdrop
   ) {
     const bool ownTrees = target == nullptr;
     if (ownTrees) {
       target = m_contentTree;
+      backdrop = m_decoration.blurNode();
       if (m_decoration.borderTree() != nullptr) {
         border = &m_decoration.borderTree()->node;
       }
@@ -889,6 +890,7 @@ namespace umbriel {
       m_effects.apply({
           .surface = surface,
           .border = border,
+          .backdrop = backdrop != nullptr ? &backdrop->node : nullptr,
           .captureSurface = captureSurface,
           .gate = gate != nullptr ? *gate : ownGate,
           .scale = scale,

@@ -757,7 +757,7 @@ namespace umbriel {
     };
     resolve(EffectKind::Border, config().effects.border, rule.borderEffect);
     resolve(EffectKind::Window, config().effects.window, rule.windowEffect);
-    m_effects.syncNames(config().effects);
+    m_effects.syncNames(config().effects, rule.backdropEffect.value_or(""));
     const bool paddingChanged = m_decoration.setBorderPadding(m_effects.borderPadding());
     if (ringChanged || paddingChanged) {
       updateBorderGeometry();

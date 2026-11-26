@@ -527,6 +527,7 @@ namespace umbriel {
     std::optional<std::string> borderEffect;
     std::optional<bool> borderUnfocused;
     std::optional<std::string> windowEffect;
+    std::optional<std::string> backdropEffect;
 
     // See RegexPatterns: the regexes are derived from the patterns, so equality compares the patterns alone.
     bool operator==(const WindowRule& other) const {
@@ -591,7 +592,8 @@ namespace umbriel {
           && shadow == other.shadow
           && borderEffect == other.borderEffect
           && borderUnfocused == other.borderUnfocused
-          && windowEffect == other.windowEffect;
+          && windowEffect == other.windowEffect
+          && backdropEffect == other.backdropEffect;
     }
   };
 
@@ -644,6 +646,7 @@ namespace umbriel {
     std::optional<std::string> borderEffect;
     std::optional<bool> borderUnfocused;
     std::optional<std::string> windowEffect;
+    std::optional<std::string> backdropEffect;
     bool operator==(const ResolvedWindowRule&) const = default;
   };
 

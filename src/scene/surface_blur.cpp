@@ -1,6 +1,11 @@
 #include "scene/surface_blur.h"
 
 #include "config/config.h"
+#include "scene/effect_registry.h"
+
+extern "C" {
+#include <umbrielfx/render/effect.h>
+}
 // clang-format off
 #include <cmath> // IWYU pragma: keep
 #include "wlr.h"
@@ -52,29 +57,27 @@ namespace umbriel {
     wlr_box drawBox = nodeBox;
     if (clipBox != nullptr
         && (!wlr_box_intersection(&drawBox, &nodeBox, clipBox) || drawBox.width <= 0 || drawBox.height <= 0)) {
-      if (m_node != nullptr) {
-        wlr_scene_node_set_enabled(&m_node->node, false);
-      }
+      hide();
       return;
     }
     // A compositor opacity below 1 makes even a client-declared opaque surface
     // reveal the backdrop, so it also requires a blur node. Its opacity does
     // not attenuate the blur itself: client-provided alpha does not either.
-    const bool want = cfg.enabled
-        && options.enabled.value_or(false)
+    fx_effect_shader* backdrop = options.backdropEffect.empty()
+        ? nullptr
+        : effectRegistry().preset(options.backdropEffect, EffectKind::Backdrop);
+    if (m_backdrop != nullptr && backdrop == nullptr) {
+      wlr_scene_node_set_animation(&m_node->node, FX_SLOT_WINDOW, nullptr, nullptr);
+      effectRegistry().removeInstance(m_node);
+      m_backdrop = nullptr;
+    }
+    const bool want = (backdrop != nullptr || (cfg.enabled && options.enabled.value_or(false)))
         && drawBox.width > 0
         && drawBox.height > 0
         && (surfaceOpacity < 1.0F || surfaceTransparent(surface, surfaceBox));
     if (!want) {
-      if (m_node != nullptr) {
-        wlr_scene_node_set_enabled(&m_node->node, false);
-      }
+      hide();
       return;
-    }
-
-    if (m_node != nullptr && m_masked != (options.ignoreAlpha > 0.0F)) {
-      wlr_scene_node_destroy(&m_node->node);
-      m_node = nullptr;
     }
 
     if (m_node == nullptr) {
@@ -83,7 +86,6 @@ namespace umbriel {
         return;
       }
       wlr_scene_node_lower_to_bottom(&m_node->node);
-      m_masked = options.ignoreAlpha > 0.0F;
     }
 
     wlr_scene_buffer* currentMask = wlr_scene_blur_get_transparency_mask_source(m_node);
@@ -101,7 +103,13 @@ namespace umbriel {
       wlr_scene_blur_set_ignore_alpha(m_node, options.ignoreAlpha);
     }
 
-    m_optimized = options.optimized.value_or(cfg.optimized);
+    if (backdrop != nullptr && backdrop != m_backdrop) {
+      const fx_animation_parameters parameters{};
+      wlr_scene_node_set_animation(&m_node->node, FX_SLOT_WINDOW, backdrop, &parameters);
+      m_backdrop = backdrop;
+    }
+    wlr_scene_blur_set_strength(m_node, cfg.enabled && options.enabled.value_or(false) ? 1.0F : 0.0F);
+    m_optimized = backdrop == nullptr && options.optimized.value_or(cfg.optimized);
     wlr_scene_blur_set_should_only_blur_bottom_layer(m_node, m_optimized && !m_live);
 
     wlr_scene_node_set_enabled(&m_node->node, true);
@@ -163,6 +171,11 @@ namespace umbriel {
   }
 
   void SurfaceBlur::hide() {
+    if (m_backdrop != nullptr) {
+      wlr_scene_node_set_animation(&m_node->node, FX_SLOT_WINDOW, nullptr, nullptr);
+      effectRegistry().removeInstance(m_node);
+      m_backdrop = nullptr;
+    }
     if (m_node != nullptr) {
       wlr_scene_node_set_enabled(&m_node->node, false);
     }

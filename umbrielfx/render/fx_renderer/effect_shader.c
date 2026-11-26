@@ -121,6 +121,7 @@ static const char kMaskSection[] =
     "}\n";
 static const char kWindowSuffix[] =
     "\nvoid main() { gl_FragColor = mix(umbriel_sample(v_texcoord), window(v_texcoord), umbriel_mask(v_texcoord)); }\n";
+static const char kBackdropSuffix[] = "\nvoid main() { gl_FragColor = backdrop(v_texcoord); }\n";
 static const char kScreenSuffix[] = "\nvoid main() { gl_FragColor = screen(v_texcoord); }\n";
 // The cursor kind is in place too, so it needs the mask helper before its own uniform.
 static const char kCursorSection[] = "uniform vec2 umbriel_pointer;\n"
@@ -138,6 +139,8 @@ static const char* kind_name(enum fx_effect_kind kind) {
     return "border";
   case FX_EFFECT_WINDOW:
     return "window";
+  case FX_EFFECT_BACKDROP:
+    return "backdrop";
   case FX_EFFECT_SCREEN:
     return "screen";
   case FX_EFFECT_CURSOR:
@@ -161,6 +164,10 @@ static void kind_sections(enum fx_effect_kind kind, const char** section, const 
   case FX_EFFECT_WINDOW:
     *section = kMaskSection;
     *suffix = kWindowSuffix;
+    return;
+  case FX_EFFECT_BACKDROP:
+    *section = "";
+    *suffix = kBackdropSuffix;
     return;
   case FX_EFFECT_SCREEN:
     *section = "";

@@ -44,6 +44,7 @@ enum fx_effect_kind {
   FX_EFFECT_ANIMATION,
   FX_EFFECT_BORDER,
   FX_EFFECT_WINDOW,
+  FX_EFFECT_BACKDROP,
   FX_EFFECT_SCREEN,
   FX_EFFECT_CURSOR,
 };
@@ -133,7 +134,7 @@ static inline struct fx_uniform* fx_parameters_add_uniform(
 }
 
 // Compilation happens with the renderer's context current. Sources provide the
-// kind's entry point (vec4 animation(vec2 uv), border, window, screen, cursor),
+// kind's entry point (vec4 animation(vec2 uv), border, window, backdrop, screen, cursor),
 // not a main function, version, or precision declaration.
 struct fx_effect_shader*
 fx_effect_shader_create(struct wlr_renderer* renderer, enum fx_effect_kind kind, const char* source, const char* label);

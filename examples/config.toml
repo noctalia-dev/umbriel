@@ -337,6 +337,13 @@ default_extent_fraction = 0.5
 # match.app_id = "^io[.]github[.]nokse22[.]high-tide$"
 # border_effect_unfocused = true
 
+# Set [effects] backdrop_enabled = false to disable all backdrop shaders.
+# [effects.preset.glass]
+# kind = "backdrop"
+# shader = "glass.glsl"
+# [[window_rule]]
+# backdrop_effect = "glass" # "off" restores the configured native blur.
+
 # Blur windows over the cached wallpaper blur. Set blur_optimized = false to
 # include overlapping windows behind them, at a GPU cost on every frame that
 # moves anything behind them.

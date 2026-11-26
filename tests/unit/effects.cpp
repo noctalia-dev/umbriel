@@ -25,12 +25,14 @@ UMBRIEL_TEST(effectKindsParseTheirCanonicalNamesOnly) {
   CHECK(umbriel::parseEffectKind("animation") == EffectKind::Animation);
   CHECK(umbriel::parseEffectKind("border") == EffectKind::Border);
   CHECK(umbriel::parseEffectKind("window") == EffectKind::Window);
+  CHECK(umbriel::parseEffectKind("backdrop") == EffectKind::Backdrop);
   CHECK(umbriel::parseEffectKind("screen") == EffectKind::Screen);
   CHECK(umbriel::parseEffectKind("cursor") == EffectKind::Cursor);
   CHECK(!umbriel::parseEffectKind("Border"));
   CHECK(!umbriel::parseEffectKind("overlay"));
   CHECK(!umbriel::parseEffectKind(""));
   CHECK_EQ(umbriel::effectKindName(EffectKind::Cursor), std::string_view("cursor"));
+  CHECK_EQ(umbriel::effectKindName(EffectKind::Backdrop), std::string_view("backdrop"));
 }
 
 UMBRIEL_TEST(effectReferencesRequireAnExistingPresetOfTheRightKind) {

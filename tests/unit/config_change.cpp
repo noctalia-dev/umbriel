@@ -966,6 +966,18 @@ UMBRIEL_TEST(windowRulesRaiseEffectsOnlyWhenARuleSelectsAnEffect) {
   Config rematched = selecting;
   rematched.windowRules[0].appIdPatterns = RegexPatterns{}.add("^kitty$");
   CHECK(ConfigEffects::between(selecting, rematched).effects);
+
+  Config backdrop = before;
+  backdrop.windowRules[0].backdropEffect = "glass";
+  CHECK(ConfigEffects::between(before, backdrop).effects);
+  CHECK(ConfigEffects::between(before, backdrop).viewChrome);
+  Config disabled = backdrop;
+  disabled.windowRules[0].backdropEffect = "off";
+  CHECK(ConfigEffects::between(backdrop, disabled).effects);
+  CHECK(ConfigEffects::between(backdrop, disabled).viewChrome);
+  Config globallyDisabled = backdrop;
+  globallyDisabled.effects.backdropEnabled = false;
+  CHECK(ConfigEffects::between(backdrop, globallyDisabled).effects);
 }
 
 UMBRIEL_TEST(borderUnfocusedRuleChangesRefreshWindowChromeAndOverview) {

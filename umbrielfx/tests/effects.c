@@ -16,6 +16,7 @@ static const char* const kSources[] = {
     [FX_EFFECT_BORDER] =
         "vec4 border(vec2 uv) { return vec4(umbriel_border_distance(uv) < 0.0 ? 1.0 : 0.0, 0.0, 0.0, 1.0); }",
     [FX_EFFECT_WINDOW] = "vec4 window(vec2 uv) { return umbriel_sample(uv).bgra; }",
+    [FX_EFFECT_BACKDROP] = "vec4 backdrop(vec2 uv) { return umbriel_sample(uv); }",
     [FX_EFFECT_SCREEN] = "vec4 screen(vec2 uv) { return umbriel_sample(uv) * 0.5; }",
     [FX_EFFECT_CURSOR] = "vec4 cursor(vec2 uv) { return vec4(umbriel_pointer, 0.0, 1.0); }",
 };
@@ -597,50 +598,60 @@ static bool test_persistent_scene(struct fixture* fixture) {
   return ok;
 }
 
-// A persistent window effect reads its input under an opaque node above it.
-// Layout: blue background, a white 8x8 effect node at (4,4) whose window slot
-// mirrors it horizontally, and an opaque red 8x8 rect at (8,4) over its right half.
+// Window and backdrop effects can sample input covered by an opaque foreground node.
 static bool test_occlusion(struct fixture* fixture) {
-  struct wlr_scene* scene = wlr_scene_create();
-  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
-  const float blue[4] = {0, 0, 1, 1}, red[4] = {1, 0, 0, 1}, white[4] = {1, 1, 1, 1};
-  wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, blue);
-  struct wlr_scene_rect* effect = wlr_scene_rect_create(&scene->tree, 8, 8, white);
-  wlr_scene_node_set_position(&effect->node, 4, 4);
-  struct wlr_scene_rect* cover = wlr_scene_rect_create(&scene->tree, 8, 8, red);
-  wlr_scene_node_set_position(&cover->node, 8, 4);
-  struct fx_effect_shader* mirror = fx_effect_shader_create(
-      fixture->renderer, FX_EFFECT_WINDOW, "vec4 window(vec2 uv) { return umbriel_sample(vec2(1.0 - uv.x, uv.y)); }",
-      "occlusion"
-  );
-  bool ok = check(mirror != NULL, "mirror program compiles");
-  struct fx_animation_parameters parameters = {.progress = 1, .linear_progress = 1, .direction = 1};
-  wlr_scene_node_set_animation(&effect->node, FX_SLOT_WINDOW, mirror, &parameters);
-  ok &= check(
-      pixman_region32_contains_point(&effect->node.visible, 10, 8, NULL),
-      "the covered half stays in the effect node's visible region"
-  );
-
-  struct wlr_output_state state;
-  struct wlr_buffer* rendered = fixture_render_scene(fixture, scene_output, &state);
-  ok &= check(rendered != NULL, "scene renders");
-  if (rendered != NULL) {
-    uint8_t mirrored[4], covered[4];
-    const bool pixels_read =
-        fixture_read_pixel(fixture, rendered, 5, 8, mirrored) && fixture_read_pixel(fixture, rendered, 10, 8, covered);
-    ok &= pixels_read;
-    if (pixels_read) {
-      ok &= check(
-          mirrored[0] > 250 && mirrored[1] > 250 && mirrored[2] > 250,
-          "the covered input is captured and mirrored into the left half"
-      );
-      ok &= check(covered[2] > 250 && covered[0] < 5 && covered[1] < 5, "the red rect still covers the right half");
+  bool ok = true;
+  for (int backdrop = 0; backdrop < 2; ++backdrop) {
+    struct wlr_scene* scene = wlr_scene_create();
+    struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+    const float blue[4] = {0, 0, 1, 1}, red[4] = {1, 0, 0, 1}, white[4] = {1, 1, 1, 1};
+    wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, blue);
+    struct wlr_scene_node* effect;
+    if (backdrop) {
+      struct wlr_scene_rect* underneath = wlr_scene_rect_create(&scene->tree, 4, 8, white);
+      wlr_scene_node_set_position(&underneath->node, 8, 4);
+      effect = &wlr_scene_blur_create(&scene->tree, 8, 8)->node;
+    } else {
+      effect = &wlr_scene_rect_create(&scene->tree, 8, 8, white)->node;
     }
-    wlr_buffer_unlock(rendered);
+    wlr_scene_node_set_position(effect, 4, 4);
+    struct wlr_scene_rect* cover = wlr_scene_rect_create(&scene->tree, 8, 8, red);
+    wlr_scene_node_set_position(&cover->node, 8, 4);
+    struct fx_effect_shader* mirror = fx_effect_shader_create(
+        fixture->renderer, backdrop ? FX_EFFECT_BACKDROP : FX_EFFECT_WINDOW,
+        backdrop ? "vec4 backdrop(vec2 uv) { return umbriel_sample(vec2(1.0 - uv.x, uv.y)); }"
+                 : "vec4 window(vec2 uv) { return umbriel_sample(vec2(1.0 - uv.x, uv.y)); }",
+        "occlusion"
+    );
+    ok &= check(mirror != NULL, "mirror program compiles");
+    struct fx_animation_parameters parameters = {.progress = 1, .linear_progress = 1, .direction = 1};
+    wlr_scene_node_set_animation(effect, FX_SLOT_WINDOW, mirror, &parameters);
+    ok &= check(
+        pixman_region32_contains_point(&effect->visible, 10, 8, NULL),
+        "the covered half stays in the effect node's visible region"
+    );
+
+    struct wlr_output_state state;
+    struct wlr_buffer* rendered = fixture_render_scene(fixture, scene_output, &state);
+    ok &= check(rendered != NULL, "scene renders");
+    if (rendered != NULL) {
+      uint8_t mirrored[4], covered[4];
+      const bool pixels_read = fixture_read_pixel(fixture, rendered, 5, 8, mirrored)
+          && fixture_read_pixel(fixture, rendered, 10, 8, covered);
+      ok &= pixels_read;
+      if (pixels_read) {
+        ok &= check(
+            mirrored[0] > 250 && mirrored[1] > 250 && mirrored[2] > 250,
+            "the covered input is captured and mirrored into the left half"
+        );
+        ok &= check(covered[2] > 250 && covered[0] < 5 && covered[1] < 5, "the red rect still covers the right half");
+      }
+      wlr_buffer_unlock(rendered);
+    }
+    wlr_output_state_finish(&state);
+    fx_effect_shader_unref(mirror);
+    wlr_scene_node_destroy(&scene->tree.node);
   }
-  wlr_output_state_finish(&state);
-  fx_effect_shader_unref(mirror);
-  wlr_scene_node_destroy(&scene->tree.node);
   return ok;
 }
 
