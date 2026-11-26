@@ -17,6 +17,7 @@
 extern "C" {
 #include <umbrielfx/render/effect.h>
 }
+#include "view/popup_constraint.h"
 #include "view/size_hints.h"
 #include "view/view_internal.h"
 // clang-format off
@@ -1028,32 +1029,52 @@ namespace umbriel {
       return;
     }
 
-    wlr_box target = output->usableArea();
-    if (target.width <= 0 || target.height <= 0) {
-      wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &target);
+    wlr_box outputBox{};
+    wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &outputBox);
+    if (outputBox.width <= 0 || outputBox.height <= 0) {
+      outputBox = fullscreenArea();
     }
-    if (target.width <= 0 || target.height <= 0) {
+    if (outputBox.width <= 0 || outputBox.height <= 0) {
       return;
     }
 
-    int lx = 0;
-    int ly = 0;
-    if (!wlr_scene_node_coords(&m_sceneTree->node, &lx, &ly)) {
+    wlr_box usable = output->usableArea();
+    if (usable.width <= 0 || usable.height <= 0) {
+      usable = outputBox;
+    }
+
+    int winX = 0;
+    int winY = 0;
+    const bool fullscreen = scheduledFullscreen() || currentFullscreen();
+    const Cursor* cursor = m_server->cursor();
+    const bool isDragging = cursor != nullptr && cursor->isDraggingView(this);
+    if (fullscreen) {
+      const wlr_box fullBox = fullscreenLayoutBox();
+      winX = fullBox.width > 0 ? fullBox.x : outputBox.x;
+      winY = fullBox.height > 0 ? fullBox.y : outputBox.y;
+    } else if (!isDragging && m_workspace != nullptr) {
+      const wlr_box winBox = targetBox();
+      if (winBox.width > 0 && winBox.height > 0) {
+        winX = winBox.x;
+        winY = winBox.y;
+      } else if (!wlr_scene_node_coords(&m_sceneTree->node, &winX, &winY)) {
+        return;
+      }
+    } else if (!wlr_scene_node_coords(&m_sceneTree->node, &winX, &winY)) {
       return;
     }
 
-    // wlroots supports flip, slide, and resize adjustments from the client's xdg-positioner. For tiled views, constrain
-    // horizontally to the window geometry, so a nested menu at the right edge flips or slides left even when the tile
-    // itself is flush with the output edge. Vertically, use the output working area. Floating popups can use the whole
-    // area. The box is in root toplevel surface coordinates. The xdg scene root is positioned at the window geometry,
-    // not at the surface origin.
-    const wlr_box& geometry = geometryBox();
-    const wlr_box box{
-        .x = m_tiled ? geometry.x : target.x - lx + geometry.x,
-        .y = target.y - ly + geometry.y,
-        .width = m_tiled ? geometry.width : target.width,
-        .height = target.height,
+    const PopupConstraintInput input{
+        .fullscreen = fullscreen,
+        .tiled = m_tiled,
+        .geometry = geometryBox(),
+        .scheduledWidth = scheduledSize().width,
+        .outputBox = outputBox,
+        .usableArea = usable,
+        .winX = winX,
+        .winY = winY,
     };
+    const wlr_box box = calculatePopupConstraintBox(input);
     wlr_xdg_popup_unconstrain_from_box(popup, &box);
   }
 
