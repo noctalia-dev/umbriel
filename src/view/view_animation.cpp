@@ -1249,6 +1249,7 @@ namespace umbriel {
     // scheduled (not current): on leave, scheduled clears immediately while current lags until the client acks.
     const bool fullscreen = scheduledFullscreen();
     const wlr_box content = committedContentBox();
+    syncCaptureClip();
     trackPresentedSize(content.width, content.height);
     if (!fullscreen && !m_tiled) {
       syncFloatingSurfaceClip();

@@ -8,6 +8,7 @@ set -euo pipefail
 readonly CLIENT="${UMBRIEL_SUBSURFACE_CLIENT:-./build-debug/tests/subsurface-client}"
 readonly CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/stale-geometry-client.log"
 readonly SCREENSHOT="$UMBRIEL_RUNTIME_DIR/stale-geometry.png"
+readonly WINDOW_SCREENSHOT="$UMBRIEL_RUNTIME_DIR/stale-geometry-window.png"
 # The child surface covers the whole window box with opaque blue.
 readonly CONTENT_COLOR=0000FF
 
@@ -29,7 +30,7 @@ field_of() {
 
 pixel_color() {
   local r g b
-  read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$SCREENSHOT" pixel "$1" "$2")
+  read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$1" pixel "$2" "$3")
   printf '%02X%02X%02X\n' "$r" "$g" "$b"
 }
 
@@ -86,17 +87,38 @@ drawn_w=${drawn%x*}
 grim -o HEADLESS-1 "$SCREENSHOT"
 
 # Inside the pinned box the content has always been drawn; past it is the region the stale box would crop.
-control=$(pixel_color "$((x + pinned_w / 2))" "$((y + 100))")
+control=$(pixel_color "$SCREENSHOT" "$((x + pinned_w / 2))" "$((y + 100))")
 if [[ $control != "$CONTENT_COLOR" ]]; then
   echo "content missing inside the client's own geometry box: $control"
   exit 1
 fi
 for column in $((x + pinned_w + 10)) $((x + drawn_w - 1)); do
-  beyond=$(pixel_color "$column" "$((y + 100))")
+  beyond=$(pixel_color "$SCREENSHOT" "$column" "$((y + 100))")
   if [[ $beyond != "$CONTENT_COLOR" ]]; then
     echo "window cropped to its stale ${pinned} geometry: pixel at ${column},$((y + 100)) is $beyond"
     exit 1
   fi
 done
 
-echo "a window whose geometry lags its configure is presented and reported at ${drawn}, not cropped to ${pinned}"
+# Toplevel capture uses its own isolated scene and must apply the same committed content bounds.
+window_id=$(field_of id)
+grim -T "$window_id" "$WINDOW_SCREENSHOT"
+window_size=$("$UMBRIEL_PIXEL_PROBE" "$WINDOW_SCREENSHOT" size)
+if [[ $window_size != "$drawn" ]]; then
+  echo "toplevel capture reports $window_size for a window drawn at $drawn, pinned at $pinned"
+  exit 1
+fi
+window_control=$(pixel_color "$WINDOW_SCREENSHOT" "$((pinned_w / 2))" 100)
+if [[ $window_control != "$CONTENT_COLOR" ]]; then
+  echo "toplevel capture missing content inside geometry box: $window_control"
+  exit 1
+fi
+for column in $((pinned_w + 10)) $((drawn_w - 1)); do
+  window_beyond=$(pixel_color "$WINDOW_SCREENSHOT" "$column" 100)
+  if [[ $window_beyond != "$CONTENT_COLOR" ]]; then
+    echo "toplevel capture cropped to stale ${pinned} geometry: pixel at ${column},100 is $window_beyond"
+    exit 1
+  fi
+done
+
+echo "a window whose geometry lags its configure is presented, captured, and reported at ${drawn}, not cropped to ${pinned}"
