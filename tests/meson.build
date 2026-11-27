@@ -85,6 +85,7 @@ unit_tests = [
   ['preset-cycle', ['unit/preset_cycle.cpp'], []],
   ['maximize', ['unit/maximize.cpp'], []],
   ['deferred-unfullscreen', ['unit/deferred_unfullscreen.cpp'], []],
+  ['popup-constraint', ['unit/popup_constraint.cpp'], []],
   ['config-section', ['unit/config_section.cpp'], []],
   ['config-change', ['unit/config_change.cpp'], []],
   ['config-schema', ['unit/config_schema.cpp'], [umbriel_core_dep]],

@@ -761,6 +761,7 @@ pure_sources = files(
   'src/view/floating.cpp',
   'src/view/window_region.cpp',
   'src/view/drag_physics.cpp',
+  'src/view/popup_constraint.cpp',
   'src/xwayland/xsettings.cpp',
 )
 
