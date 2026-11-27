@@ -161,6 +161,7 @@ radius = 3
 # Draw the border on every decorated, non-urgent, non-fullscreen window, not
 # just the focused one (overview cards included).
 # border_unfocused = true
+# Window rules can override this with border_effect_unfocused = true or false.
 # For a screen effect only while an output is shared (a portal screen share or a
 # screenshot), include /usr/share/umbriel/effects/screen/vignette/effect.toml and
 # set screen_cast = "vignette" in [effects]; add in_capture = true for viewers to see it.
@@ -341,6 +342,11 @@ default_extent_fraction = 0.5
 # Rules combine in order, with later values overriding earlier ones.
 # https://docs.noctalia.dev/umbriel/window-rules/
 
+# Keep the selected border effect on an audio player even without focus.
+# [[window_rule]]
+# match.app_id = "^io[.]github[.]nokse22[.]high-tide$"
+# border_effect_unfocused = true
+
 # Blur windows over the cached wallpaper blur. Set blur_optimized = false to
 # include overlapping windows behind them, at a GPU cost on every frame that
 # moves anything behind them.
@@ -396,7 +402,7 @@ default_pinned = true
 # background_render = true
 
 # Keep matching windows visible locally but absent from screenshots and recordings.
-# See docs/user/window-rules.md#capture-protection.
+# https://docs.noctalia.dev/umbriel/window-rules-behavior/#hide-a-window-from-screenshots
 # [[window_rule]]
 # match.app_id = "^private-app$"
 # block_capture = true
@@ -415,6 +421,10 @@ default_pinned = true
 # hide_when_empty = true
 # Preserve each window's current size proportions when moving between monitors.
 # proportional_size = true
+# A shown scratchpad hides when you click or focus a window behind it. Turn this off to keep it up instead.
+# modal = false
+# A shown scratchpad hides when you switch workspace. Turn this on to keep it up across workspaces.
+# sticky = true
 # Tile the scratchpad's windows instead of floating them; takes the [[workspace]] layout keys.
 # layout.mode = "dwindle"
 
@@ -486,13 +496,6 @@ action = "overview-open"
 # curve = "spring:1,900"
 # duration_ms = 250 # For non-spring curves; a spring sets its own length.
 
-# Without a size animation, a resized window shows its stretched old frame until
-# it redraws. Wait for the redraws instead (at most 150 ms), then switch to the
-# new layout in one frame.
-# [animation.windows_resize]
-# enabled = false
-# wait_for_redraw = true
-
 # Optional live workspace reveal (see docs/user/animation.md).
 # Add the bundled effects/animation/workspace_wipe/effect.toml to your includes.
 # [animation.workspaces]
@@ -509,4 +512,4 @@ action = "overview-open"
 # [[layer_rule]]
 # match.namespace = "^vicinae$"
 # dim_behind = 0.5
-# Window rules accept dim_behind too; see docs/user/window-rules.md.
+# Window rules accept dim_behind too: https://docs.noctalia.dev/umbriel/window-rules-appearance/#dim-behind

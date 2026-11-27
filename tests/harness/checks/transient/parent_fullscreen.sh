@@ -37,6 +37,7 @@ wait_for_position() {
 
 # $1 is the rule that opens the parent in the state under test. A left strut keeps the tiles away from the output's
 # corner, so a dialog centered on the parent's tile lands elsewhere than one centered on the output or the usable area.
+# The unrelated window floats: a tile joining a Dwindle layout ends the parent's maximize to edges.
 write_config() {
   cat "$BASE_CONFIG" > "$UMBRIEL_CONFIG"
   cat >> "$UMBRIEL_CONFIG" <<EOF2
@@ -53,6 +54,10 @@ left = 100
 [[window_rule]]
 match.title = "^transient-parent$"
 $1 = true
+
+[[window_rule]]
+match.title = "^transient-unrelated$"
+default_floating = true
 EOF2
   "$UMBRIEL" msg config-reload > /dev/null
 }

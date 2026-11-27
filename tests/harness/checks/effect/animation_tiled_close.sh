@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # A tiled close keeps its natural windows_out shader timeline while survivor geometry follows its independent
-# windows_move clock. Exercise ordinary closure, interrupted consume and expel, plus disabled movement, where the
-# survivor snaps immediately without shortening the close lifecycle.
+# windows_move clock, which starts once the survivor has redrawn at its new size. Exercise ordinary closure,
+# interrupted consume and expel, plus disabled movement, where the survivor snaps at its redraw without shortening the
+# close lifecycle.
 set -euo pipefail
 
 readonly SHOTS="$UMBRIEL_RUNTIME_DIR/tiled-close-shader-visibility"
@@ -85,15 +86,22 @@ EOF
 # Animation time only moves by clock-advance. Samples land every 100 ms after the close request.
 "$UMBRIEL" clock-freeze
 
-# Runs every started animation to its end.
+# Runs every started animation and held reflow to its end. A hold times out only on a tick after its first, so one
+# advance may not reach the motion it releases.
 finish() {
-  "$UMBRIEL" clock-advance 3000
-  "$UMBRIEL" settle
+  for _ in $(seq 10); do
+    "$UMBRIEL" clock-advance 3000
+    "$UMBRIEL" settle 2> /dev/null && return 0
+  done
+  echo "animations did not finish"
+  return 1
 }
 
+# Every client redraws at each configured size, so a reflow's hold ends on the redraw the check waits for.
 spawn() {
   local title=$1 color=$2
-  FILL_COLOR="$color" "$UMBRIEL_UNMAP_CLIENT" "$title" 1280 720 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
+  FILL_COLOR="$color" FOLLOW_CONFIGURES=1 "$UMBRIEL_UNMAP_CLIENT" "$title" 1280 720 \
+    > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
   for _ in $(seq 100); do
     window=$("$UMBRIEL" windows --json | jq -c --arg title "$title" '.[] | select(.title == $title)')
     [[ -n $window ]] && return 0
@@ -113,6 +121,18 @@ wait_unmapped() {
     sleep 0.025
   done
   echo "timed out waiting for $title to unmap"
+  return 1
+}
+
+# Waits until a window has committed a buffer of the given size.
+wait_drawn() {
+  local title=$1 width=$2 height=$3
+  for _ in $(seq 100); do
+    "$UMBRIEL" windows --json | jq -e --arg title "$title" --argjson w "$width" --argjson h "$height" \
+      'any(.[]; .title == $title and .w == $w and .h == $h)' > /dev/null && return 0
+    sleep 0.025
+  done
+  echo "timed out waiting for $title to draw ${width}x${height}"
   return 1
 }
 
@@ -163,6 +183,8 @@ verify_close() {
   id=$(jq -r .id <<< "$closing")
   "$UMBRIEL" msg window-close "$id" > /dev/null
   wait_unmapped "$closing_title"
+  # The survivor's redraw at its final size releases the reflow hold at this frozen instant, before the first sample.
+  wait_drawn "${closing_title%-close}-survivor" "$expected_width" "$expected_height"
 
   # Each frame is measured in the background while the next one is captured. The loop runs in a subshell so its
   # wait covers only those measurements, not the clients this shell spawned.
@@ -308,6 +330,7 @@ finish
 spawn shader-visible-consume-close "$CLOSER_COLOR"
 finish
 "$UMBRIEL" msg window-consume-left > /dev/null
+wait_drawn shader-visible-consume-survivor 640 360
 "$UMBRIEL" clock-advance 280
 verify_close consume shader-visible-consume-close animated 0 0 640 720
 
@@ -320,6 +343,7 @@ finish
 "$UMBRIEL" msg window-consume-left > /dev/null
 finish
 "$UMBRIEL" msg window-consume-or-expel-right > /dev/null
+wait_drawn shader-visible-expel-survivor 640 720
 "$UMBRIEL" clock-advance 80
 verify_close expel shader-visible-expel-close animated 0 0 640 720
 

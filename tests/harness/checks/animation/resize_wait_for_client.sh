@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# windows_resize.wait_for_redraw holds a reflow that resizes windows at its starting frames until each resized client
-# has redrawn at its new size, then switches to the final layout in one frame. A client that never redraws releases
-# the hold once the compositor's fixed wait passes. With windows_out disabled, a closed tile's last frame stays until
-# that same switch.
+# A reflow that resizes windows holds at its starting frames until each resized client has redrawn at its new size.
+# Without windows_move it then switches to the final layout in one frame; with windows_move it moves there from the held
+# boxes. A client that never redraws releases the hold once the compositor's fixed wait passes. With windows_out
+# disabled, a closed tile's last frame stays until that same release.
 set -euo pipefail
 source "$UMBRIEL_HARNESS_LIB"
 
@@ -12,7 +12,15 @@ readonly TIMEOUT_MS=150
 readonly SHOTS="$UMBRIEL_RUNTIME_DIR/resize-wait"
 mkdir -p "$SHOTS"
 
-cat >> "$UMBRIEL_CONFIG" <<EOF
+readonly BASE_CONFIG="$UMBRIEL_RUNTIME_DIR/base-config.toml"
+cp "$UMBRIEL_CONFIG" "$BASE_CONFIG"
+
+# windows_move and windows_resize on or off together.
+apply_config() {
+  local motion=$1
+  {
+    cat "$BASE_CONFIG"
+    cat <<EOF
 
 [colors]
 backdrop = "#000000FF"
@@ -36,15 +44,19 @@ enabled = false
 enabled = false
 
 [animation.windows_move]
-enabled = true
+enabled = $motion
 duration_ms = $MOVE_MS
 curve = "linear"
 
 [animation.windows_resize]
-enabled = false
-wait_for_redraw = true
+enabled = $motion
+duration_ms = $MOVE_MS
+curve = "linear"
 EOF
-"$UMBRIEL" msg config-reload > /dev/null
+  } > "$UMBRIEL_CONFIG"
+  "$UMBRIEL" msg config-reload > /dev/null
+}
+apply_config false
 # Animation time only moves by clock-advance; clients still configure and commit in real time.
 "$UMBRIEL" clock-freeze
 
@@ -77,7 +89,7 @@ expect_bounds() {
 # The blue left window closes, so the red survivor both moves from the right half to x=0 and grows to the full width.
 # It follows configures only when told to on its control fifo.
 run_case() {
-  local name=$1 answer=$2
+  local name=$1 answer=$2 motion=${3:-false}
   local fifo="$UMBRIEL_RUNTIME_DIR/$name-control" log="$UMBRIEL_RUNTIME_DIR/$name-survivor.log"
   mkfifo "$fifo"
   local control_fd
@@ -115,20 +127,29 @@ run_case() {
 
     echo r >&"$control_fd"
     await_lines "$log" 'resized 1280x720' 1 0.025
-    # The next tick switches at once: the survivor is at its target with its own new frame, without moving there.
     "$UMBRIEL" clock-advance 1 > /dev/null
     grim "$SHOTS/$name-switched.png"
-    expect_bounds "$name survivor once its client redrew" "$SHOTS/$name-switched.png" 2 0 0 1280 720
+    if [[ $motion == true ]]; then
+      # The motion starts from the held box once the client has redrawn, instead of having run while it was held.
+      expect_bounds "$name survivor as its motion starts" "$SHOTS/$name-switched.png" 2 640 0 640 720
+      "$UMBRIEL" clock-advance "$MOVE_MS" > /dev/null
+      grim "$SHOTS/$name-moved.png"
+      expect_bounds "$name survivor after its motion" "$SHOTS/$name-moved.png" 2 0 0 1280 720
+    else
+      # The next tick switches at once: the survivor is at its target with its own new frame, without moving there.
+      expect_bounds "$name survivor once its client redrew" "$SHOTS/$name-switched.png" 2 0 0 1280 720
+    fi
     expect_no_blue "$name closed tile after the switch" "$SHOTS/$name-switched.png"
   else
     "$UMBRIEL" clock-advance $((TIMEOUT_MS / 2)) > /dev/null
     grim "$SHOTS/$name-held.png"
     expect_bounds "$name survivor before the timeout" "$SHOTS/$name-held.png" 2 640 0 640 720
-    # Past the timeout the reflow switches without the client, which never redraws.
+    # Past the timeout the reflow switches without the client, which never redraws: its half-width frame is drawn at
+    # its own size, centered in the target, rather than stretched to a size it never drew.
     "$UMBRIEL" clock-advance "$TIMEOUT_MS" > /dev/null
     "$UMBRIEL" clock-advance 1 > /dev/null
     grim "$SHOTS/$name-switched.png"
-    expect_bounds "$name survivor after the timeout" "$SHOTS/$name-switched.png" 2 0 0 1280 720
+    expect_bounds "$name survivor after the timeout" "$SHOTS/$name-switched.png" 2 320 0 640 720
     expect_no_blue "$name closed tile after the timeout" "$SHOTS/$name-switched.png"
   fi
 }
@@ -177,5 +198,9 @@ run_case resize-wait-timeout silent
 "$UMBRIEL" msg workspace-switch 3 > /dev/null
 "$UMBRIEL" clock-advance 1500 > /dev/null
 open_case
+"$UMBRIEL" msg workspace-switch 4 > /dev/null
+"$UMBRIEL" clock-advance 1500 > /dev/null
+apply_config true
+run_case resize-wait-motion answer true
 
-echo "resizing reflows held their frozen frames, closed tiles, and hidden openers until the clients redrew or the timeout passed, then switched in one frame"
+echo "resizing reflows held their frozen frames, closed tiles, and hidden openers until the clients redrew or the timeout passed, then switched in one frame or moved from the held boxes"

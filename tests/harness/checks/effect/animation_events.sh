@@ -68,8 +68,8 @@ wait_for_mapped_layers() {
 }
 
 configure windows_move
-"$UMBRIEL_UNMAP_CLIENT" shader-events-a 700 700 > "$UMBRIEL_RUNTIME_DIR/a.log" 2>&1 &
-"$UMBRIEL_UNMAP_CLIENT" shader-events-b 700 700 > "$UMBRIEL_RUNTIME_DIR/b.log" 2>&1 &
+FOLLOW_CONFIGURES=1 "$UMBRIEL_UNMAP_CLIENT" shader-events-a 700 700 > "$UMBRIEL_RUNTIME_DIR/a.log" 2>&1 &
+FOLLOW_CONFIGURES=1 "$UMBRIEL_UNMAP_CLIENT" shader-events-b 700 700 > "$UMBRIEL_RUNTIME_DIR/b.log" 2>&1 &
 for _ in $(seq 60); do
   [[ $("$UMBRIEL" windows --json | jq length) == 2 ]] && break
   sleep 0.05
@@ -78,7 +78,14 @@ done
 first=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shader-events-a") | .id')
 second=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "shader-events-b") | .id')
 assert_no_red move
+first_width() { "$UMBRIEL" windows --json | jq '.[] | select(.title == "shader-events-a") | .w'; }
+width_before=$(first_width)
 "$UMBRIEL" msg window-toggle-maximize > /dev/null
+# The resize is held until the client redraws, so the motion starts on the frozen instant of that commit.
+for _ in $(seq 100); do
+  [[ $(first_width) != "$width_before" ]] && break
+  sleep 0.02
+done
 assert_transition resize
 
 configure border

@@ -61,11 +61,30 @@ The separate window-capture scene has no desktop opacity marker, so its surfaces
 
 Renderer-owned offscreen buffers with texture-renderable formats bind their EGLImage to one texture when storage is allocated and attach that same texture to their rendering framebuffer. Later passes sample the texture that received the rendering commands, avoiding separate renderbuffer and texture siblings of the EGLImage. The texture and its binding live until the storage is destroyed, so the output color-transform pass does not call `glEGLImageTargetTexture2DOES` again. Replacing the buffer after a size or format change creates a new texture binding. Stencil storage attaches independently. Client-produced 2D DMA-BUFs retain their renderbuffer attachment and refresh their texture view on each import.
 
+When scene blur is enabled and blur needs to sample the current composition, SDR composition uses an output-owned, texture-backed target shared across swapchain buffers. Blur samples the current composition through that texture instead of reimporting the output's renderbuffer image. Pixels retain their normal SDR encoding and alpha blending, and submission copies the updated region to the output unchanged, including RGB where alpha is zero, so a frame looks the same whether it composed offscreen or directly.
+
+The scene selects the target before the pass begins. It is used when:
+
+- An optimized-blur node is dirty and rebuilds its cache.
+- Blur samples live pixels, it doesn't read the cache, the cache is missing or doesn't match the output buffer's size and format, or the node sits under a drag animation, whose capture can lie off the output.
+- A capture-exclusion pass has a blur node the exclusion policy keeps. That pass draws its own node list, which can include blur the display list hides, and its blur never reads the cache.
+- The render list holds any blur or optimized-blur node, even a clean marker with no visible blur, and either the target can't be replaced by the cache or something else reads the composition.
+
+An output format other than 8-bit 8888 keeps composing offscreen. A direct frame would blend at the output's precision, and clamp values above 1.0 that an FP16 target keeps until later layers blend, while the shared target uses 8-bit precision without FP16 support. Mixing the two would make identical layers differ by cache state, and partial damage could leave both in one frame. A linear color transform composes offscreen. Active scene effects and capture saves copy the current target, and would reimport the output image if rendered directly.
+
+Frames whose blur only reads a clean cache render directly, including at reduced strength, and skip the blur padding save, which would otherwise sample the output image. Outputs without blur render directly unless an output color transform requires linear composition.
+
+The SDR target uses ABGR8888, or ABGR16161616F for opaque XR30 and XB30 outputs when FP16 rendering and linear filtering are supported. A new, resized, reformatted, or invalidated target requires whole-output damage before incremental updates can preserve untouched pixels. Failed submission invalidates the target. Direct rendering or scanout invalidates both shared composition targets, and switching between encoded SDR and linear composition invalidates the other target. Effect-buffer cleanup releases the SDR target. It remains separate from the linear FP16 blend buffer and the generation-matched HDR-to-SDR capture sidecar described in [HDR capture view](client-buffer-constraints.md#hdr-capture-view).
+
 Opaque 10-bit XR30 and XB30 buffers use renderbuffer attachments because their RGB10 texture views are not color-renderable in GLES. This includes the SDR sidecar used to capture an HDR output. Their sampling textures refresh the EGLImage view on import so later captures observe the current frame. `hdr-sdr-capture` checks real GPU rendering and 8-bit pixel readback across successive frames for 8-bit, XR30, and XB30 targets, including reuse of the output-local sidecar.
 
-This preserves the purpose of commit `c517ecd6fd2a`: removing repeated EGLImage reattachment from the output color-transform pass. A DDC-enabled NVIDIA trace attributed the dominant driver stalls to DMA unmap/free calls during that reattachment and map calls during the following draw. The earlier gamma query optimization did not resolve the reported lag. Rendering and sampling through one texture retains the reduced attachment count without depending on visibility between separate EGLImage siblings. Intermittent flashing and the effect on the original driver stalls still need running-session verification on the affected NVIDIA system with DDC enabled.
-
 `color-framebuffer-texture-binding` checks the actual color attachment, counts real EGLImage attachments, and samples pixels across full and partial FP16 updates, stencil attachment, storage replacement, and repeated client-buffer imports. A partial update must change the painted region and preserve its neighbor without another EGLImage attachment. Restoring the internal renderbuffer path must fail the texture-attachment check; restoring repeated texture reattachment must fail the owned-buffer reuse check.
+
+`color-sdr-composition-selection` renders a scene through the output pass and checks which frames use the shared SDR target: a dirty cache rebuild, live blur with a clean cache, and an invalid cache use it, while a clean cache renders directly. A partial-damage frame at reduced strength checks that cache-only blur adds no padding to the damage and preserves untouched pixels.
+
+`color-sdr-composition-10bit-selection` repeats the selection on an opaque 10-bit output, with or without FP16 support, and checks that a clean cache and a marker-only frame keep composing offscreen. It skips when the output has no such format.
+
+`color-sdr-composition-alpha-copy` seeds the shared SDR target with nonzero RGB at zero alpha and checks that submission preserves all four channels in the output buffer. This isolates the copy from cache selection and from the scene API's premultiplied color requirements.
 
 ### Gamma capability queries
 

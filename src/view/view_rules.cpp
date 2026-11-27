@@ -336,6 +336,8 @@ namespace umbriel {
 
   std::optional<bool> View::tearingRuleOverride() { return resolvedRules().allowTearing; }
 
+  bool View::borderUnfocused() { return resolvedRules().borderUnfocused.value_or(config().effects.borderUnfocused); }
+
   void View::applyWindowRules() {
     if (!m_mapped) {
       return;
