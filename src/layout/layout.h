@@ -2,6 +2,7 @@
 
 #include "layout/tab_state.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -220,6 +221,13 @@ namespace umbriel {
       }
     }
     return presets.front();
+  }
+
+  // `current` stepped by `delta` within [0.1, ceiling], or nullopt when the step does not move it. A size already
+  // outside that range never moves against the step: shrinking never grows it and growing never shrinks it.
+  inline std::optional<double> stepFraction(double current, double delta, double ceiling) {
+    const double stepped = std::clamp(current + delta, std::min(current, 0.1), std::max(current, ceiling));
+    return stepped == current ? std::nullopt : std::optional(stepped);
   }
 
   // Steps a layout extent to the next preset. `apply` sets a fraction, clamped to what the layout can realize, and

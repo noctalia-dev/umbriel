@@ -1244,8 +1244,9 @@ namespace umbriel {
     bool actionModifyWidth(Server& server, const Keybind& bind, std::string* /*error*/) {
       if (View* view = placementTarget(server, {}, FocusSource::Scratchpad).value_or(nullptr)) {
         if (const auto* arg = payloadIf<FractionArg>(bind); arg != nullptr) {
-          if (const auto current = view->floatingFraction(true)) {
-            view->resizeFloatingFractions(std::clamp(*current + arg->fraction, 0.1, 1.0), std::nullopt);
+          const auto current = view->floatingFraction(true);
+          if (const auto stepped = current ? stepFraction(*current, arg->fraction, 1.0) : std::nullopt) {
+            view->resizeFloatingFractions(stepped, std::nullopt);
           }
         }
         return true;
@@ -1276,8 +1277,9 @@ namespace umbriel {
     bool actionModifyHeight(Server& server, const Keybind& bind, std::string* /*error*/) {
       if (View* view = placementTarget(server, {}, FocusSource::Scratchpad).value_or(nullptr)) {
         if (const auto* arg = payloadIf<FractionArg>(bind); arg != nullptr) {
-          if (const auto current = view->floatingFraction(false)) {
-            view->resizeFloatingFractions(std::nullopt, std::clamp(*current + arg->fraction, 0.1, 1.0));
+          const auto current = view->floatingFraction(false);
+          if (const auto stepped = current ? stepFraction(*current, arg->fraction, 1.0) : std::nullopt) {
+            view->resizeFloatingFractions(std::nullopt, stepped);
           }
         }
         return true;
