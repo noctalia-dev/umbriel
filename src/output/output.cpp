@@ -1054,9 +1054,8 @@ namespace umbriel {
         case RenderedStateCommitResult::Committed:
           return FormatCommitResult::Committed;
         case RenderedStateCommitResult::CommitFailed:
-          // A commit that keeps the live mode can fail because a page-flip is still pending, this is a transient
-          // failure. The next frame can retry after the flip completes. Actual permanent format rejections are caught
-          // earlier in the test phase and do not reach here.
+          // wlroots refuses a non-blocking commit while the previous page flip is pending. That is transient, so
+          // retry at the next frame boundary; a commit that fails again there takes the normal fallbacks.
           if (m_output->enabled && m_pageFlipRetry.shouldDefer(m_output->frame_pending, modesetAllowed)) {
             deferredForPageFlip = true;
             return FormatCommitResult::Retry;
@@ -1149,7 +1148,7 @@ namespace umbriel {
       updateSceneSdrWhite();
       markBlurBackgroundDirty();
       m_server->updateColorPreferences();
-      kLog.info("output '{}': page flip pending, deferring configured state to the next frame)", m_output->name);
+      kLog.info("output '{}': page flip pending, deferring configured state to the next frame", m_output->name);
       scheduleFullFrame();
       return true;
     }
