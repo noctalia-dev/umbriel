@@ -36,7 +36,7 @@ namespace umbriel {
 
   bool View::currentFullscreen() const {
     return m_toplevel != nullptr
-        ? m_toplevel->current.fullscreen && !m_windowedFullscreen && !m_windowedFullscreenExitPending
+        ? m_toplevel->current.fullscreen && !m_windowedFullscreen && !m_windowedFullscreenExitSerial
         : m_xState.fullscreen;
   }
 
@@ -121,8 +121,14 @@ namespace umbriel {
   void View::setFullscreenState(bool fullscreen) {
     // The IPC window listing reports the scheduled state.
     m_server->scheduleIpcWindowsEvent();
+    const bool windowedExit = !fullscreen && (m_windowedFullscreen || m_windowedFullscreenExitSerial);
+    m_windowedFullscreen = false;
+    m_windowedFullscreenExitSerial.reset();
     if (m_toplevel != nullptr) {
-      wlr_xdg_toplevel_set_fullscreen(m_toplevel, fullscreen);
+      const uint32_t serial = wlr_xdg_toplevel_set_fullscreen(m_toplevel, fullscreen);
+      if (windowedExit) {
+        m_windowedFullscreenExitSerial = serial;
+      }
     } else {
       m_xState.fullscreen = fullscreen;
       m_xFullscreenSize.reset();

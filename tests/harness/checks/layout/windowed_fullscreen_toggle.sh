@@ -42,7 +42,7 @@ wait_for_configured_state() {
 
 mkfifo "$CONTROL_FIFO"
 exec {control_fd}<>"$CONTROL_FIFO"
-FULLSCREEN_ON_STDIN=1 LOG_CONFIGURES=1 FOLLOW_CONFIGURES=1 "$CLIENT" windowed-video \
+REMAP_ON_STDIN=1 FULLSCREEN_ON_STDIN=1 LOG_CONFIGURES=1 FOLLOW_CONFIGURES=1 "$CLIENT" windowed-video \
   <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
 
 for _ in $(seq 60); do
@@ -71,6 +71,15 @@ wait_for_configured_state "$tile windowed"
 expect_field windowed_fullscreen false
 expect_field fullscreen false
 
+# After leaving the state, the client's next fullscreen request is ordinary fullscreen.
+printf f >&"$control_fd"
+wait_for_configured_state "1280x720 fullscreen"
+"$UMBRIEL" settle
+expect_field fullscreen true
+printf u >&"$control_fd"
+wait_for_configured_state "$tile windowed"
+"$UMBRIEL" settle
+
 # The client asking for fullscreen while windowed fullscreen stays in its tile.
 "$UMBRIEL" msg window-toggle-windowed-fullscreen > /dev/null
 wait_for_configured_state "$tile fullscreen"
@@ -92,5 +101,35 @@ wait_for_configured_state "$tile windowed"
 "$UMBRIEL" settle
 expect_field windowed_fullscreen false
 expect_field fullscreen false
+
+# Floating, retiling, and scratchpad hide/show preserve the client-facing state at the new geometry.
+"$UMBRIEL" msg window-toggle-windowed-fullscreen > /dev/null
+for action in window-toggle-floating window-toggle-floating window-toggle-scratchpad scratchpad-toggle scratchpad-toggle scratchpad-toggle window-toggle-scratchpad; do
+  "$UMBRIEL" msg "$action" > /dev/null
+  "$UMBRIEL" settle
+  expect_field windowed_fullscreen true
+  expect_field fullscreen false
+  wait_for_configured_state "$(field w)x$(field h) fullscreen"
+done
+
+# Reusing the same xdg toplevel after unmap must not retain the compositor's client-state override.
+"$UMBRIEL" msg window-close > /dev/null
+for _ in $(seq 60); do
+  [[ -z $(field id) ]] && break
+  sleep 0.05
+done
+if [[ -n $(field id) ]]; then
+  echo "the windowed fullscreen fixture did not unmap"
+  exit 1
+fi
+printf r >&"$control_fd"
+for _ in $(seq 60); do
+  [[ -n $(field id) ]] && break
+  sleep 0.05
+done
+"$UMBRIEL" settle
+expect_field windowed_fullscreen false
+expect_field fullscreen false
+wait_for_configured_state "$(field w)x$(field h) windowed"
 
 echo "windowed fullscreen keeps the tile while the client sees fullscreen"

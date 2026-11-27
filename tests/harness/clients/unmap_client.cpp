@@ -41,6 +41,8 @@
 // over its old buffer, the way a client whose frames are presented from another thread can; `r` then redraws at that
 // size. LOG_SUSPENDED binds xdg-shell at version 6 and prints "suspended" and "resumed" whenever the toplevel's
 // suspended state changes.
+// QUEUE_CONFIGURES_ON_STDIN makes `h` hold every later configure in order, `r` commit the oldest held configure,
+// and `b` commit the current buffer without acknowledging a configure.
 
 #include "color-management-v1-client-protocol.h"
 #include "content-type-v1-client-protocol.h"
@@ -58,6 +60,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <optional>
 #include <poll.h>
 #include <print>
@@ -150,6 +153,13 @@ namespace {
     int resizeStep = 1;
     bool pendingResizeAcked = false;
     std::optional<uint32_t> pendingResizeSerial;
+    struct HeldConfigure {
+      uint32_t serial;
+      int width;
+      int height;
+    };
+    bool queueConfigures = false;
+    std::deque<HeldConfigure> heldConfigures;
     bool requestFullscreen = false;
     bool fullscreenRequested = false;
     bool requestHdr = false;
@@ -471,6 +481,12 @@ namespace {
 
   void xdgSurfaceConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial) {
     auto& state = *static_cast<State*>(data);
+    if (state.mapped && state.queueConfigures) {
+      state.heldConfigures.push_back({serial, state.configuredWidth, state.configuredHeight});
+      std::println("configure-held {}", serial);
+      std::fflush(stdout);
+      return;
+    }
     const bool followSize = (state.resizeFillColor || (state.followConfigures && state.mapped))
         && state.configuredWidth > 0
         && state.configuredHeight > 0
@@ -877,6 +893,7 @@ int main(int argc, char** argv) {
   const bool maximizeOnStdin = std::getenv("MAXIMIZE_ON_STDIN") != nullptr;
   const bool minimizeOnStdin = std::getenv("MINIMIZE_ON_STDIN") != nullptr;
   const bool fullscreenOnStdin = std::getenv("FULLSCREEN_ON_STDIN") != nullptr;
+  const bool queueConfiguresOnStdin = std::getenv("QUEUE_CONFIGURES_ON_STDIN") != nullptr;
   const bool repaintOnStdin = std::getenv("REPAINT_ON_STDIN") != nullptr;
   const bool updateOnStdin = repaintOnStdin
       || updatedContentType != nullptr
@@ -885,6 +902,7 @@ int main(int argc, char** argv) {
       || maximizeOnStdin
       || minimizeOnStdin
       || fullscreenOnStdin
+      || queueConfiguresOnStdin
       || std::getenv("RESIZE_ON_STDIN") != nullptr;
   if (parseContentType(initialContentType) < 0 || parseContentType(updatedContentType) < 0) {
     std::println(stderr, "unmap-client: CONTENT_TYPE values must be none, photo, video, or game");
@@ -1262,7 +1280,33 @@ int main(int argc, char** argv) {
         sources[0].revents = 0;
         char command = 0;
         if (read(STDIN_FILENO, &command, 1) > 0) {
-          if (repaintOnStdin && state.mapped && (command == 'R' || command == 'G' || command == 'B')) {
+          if (queueConfiguresOnStdin && command == 'h') {
+            state.queueConfigures = true;
+            std::println("configure-queue-enabled");
+            std::fflush(stdout);
+          } else if (state.queueConfigures && command == 'b') {
+            wl_surface_commit(state.surface);
+            wl_display_roundtrip(state.display);
+            std::println("committed-without-ack");
+            std::fflush(stdout);
+          } else if (state.queueConfigures && command == 'r' && !state.heldConfigures.empty()) {
+            const auto configure = state.heldConfigures.front();
+            state.heldConfigures.pop_front();
+            const int latestWidth = state.configuredWidth;
+            const int latestHeight = state.configuredHeight;
+            state.configuredWidth = configure.width;
+            state.configuredHeight = configure.height;
+            state.queueConfigures = false;
+            const bool resizeOnStdin = std::exchange(state.resizeOnStdin, false);
+            xdgSurfaceConfigure(&state, state.xdgSurface, configure.serial);
+            state.resizeOnStdin = resizeOnStdin;
+            state.queueConfigures = true;
+            state.configuredWidth = latestWidth;
+            state.configuredHeight = latestHeight;
+            wl_display_roundtrip(state.display);
+            std::println("configure-committed {}", configure.serial);
+            std::fflush(stdout);
+          } else if (repaintOnStdin && state.mapped && (command == 'R' || command == 'G' || command == 'B')) {
             state.repaintColor = command == 'R' ? 0xFFFF0000 : command == 'G' ? 0xFF00FF00 : 0xFF0000FF;
             if (state.repaintFrame == nullptr) {
               state.repaintFrame = wl_surface_frame(state.surface);

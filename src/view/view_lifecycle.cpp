@@ -608,8 +608,6 @@ namespace umbriel {
     clearRegionState();
     m_restorePinnedAfterFullscreen = false;
     m_xCompositorFullscreen = false;
-    m_windowedFullscreen = false;
-    m_windowedFullscreenExitPending = false;
     if (m_pinned) {
       m_pinned = false;
       m_restoreTiledAfterUnpin = false;
@@ -778,6 +776,11 @@ namespace umbriel {
     m_pendingFloatingPosition.reset();
     m_savedScrollingExtentPx.reset();
     m_savedScrollingExtent.reset();
+    if (m_windowedFullscreen && roleInitialized()) {
+      sendClientFullscreen(false);
+    }
+    m_windowedFullscreen = false;
+    m_windowedFullscreenExitSerial.reset();
     if (m_displacedHome) {
       m_server->scheduleDisplacedViewRestore();
     }
@@ -837,8 +840,8 @@ namespace umbriel {
 
   void View::handleCommit(bool reconfigureOpeningState) {
     UMBRIEL_ZONE("View::handleCommit");
-    if (m_windowedFullscreenExitPending && m_toplevel != nullptr && !m_toplevel->current.fullscreen) {
-      m_windowedFullscreenExitPending = false;
+    if (m_windowedFullscreenExitSerial && configureSettled(*m_windowedFullscreenExitSerial)) {
+      m_windowedFullscreenExitSerial.reset();
     }
     // Client transparency can change on any commit. An unmap commit reaches here after handleUnmap hid the backdrop.
     if (m_mapped) {

@@ -152,6 +152,20 @@ namespace {
     constexpr std::string_view prefix = "state ";
     if (command.starts_with(prefix) && command.size() > prefix.size()) {
       reportState(state, command.substr(prefix.size()));
+    } else if (command == "fullscreen") {
+      const auto cookie =
+          xcb_get_property(state.connection, false, state.windows[0], state.atoms.netWmState, XCB_ATOM_ATOM, 0, 32);
+      auto* reply = xcb_get_property_reply(state.connection, cookie, nullptr);
+      bool fullscreen = false;
+      if (reply != nullptr && reply->type == XCB_ATOM_ATOM && reply->format == 32) {
+        const auto* atoms = static_cast<const xcb_atom_t*>(xcb_get_property_value(reply));
+        const auto count = xcb_get_property_value_length(reply) / static_cast<int>(sizeof(xcb_atom_t));
+        for (int index = 0; index < count; ++index) {
+          fullscreen |= atoms[index] == state.atoms.netWmStateFullscreen;
+        }
+      }
+      std::free(reply);
+      std::println("fullscreen={}", fullscreen);
     } else if (command == "geometry") {
       // The window's root position and size as the X server holds them, which is what the client was configured to.
       const xcb_get_geometry_cookie_t geometryCookie = xcb_get_geometry(state.connection, state.windows[0]);

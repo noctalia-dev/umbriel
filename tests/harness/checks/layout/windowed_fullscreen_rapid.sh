@@ -68,7 +68,7 @@ release() {
 
 mkfifo "$CONTROL_FIFO"
 exec {control_fd}<>"$CONTROL_FIFO"
-FULLSCREEN_ON_STDIN=1 RESIZE_ON_STDIN=1 LOG_CONFIGURES=1 FOLLOW_CONFIGURES=1 "$CLIENT" rapid-video \
+QUEUE_CONFIGURES_ON_STDIN=1 FULLSCREEN_ON_STDIN=1 RESIZE_ON_STDIN=1 LOG_CONFIGURES=1 FOLLOW_CONFIGURES=1 "$CLIENT" rapid-video \
   <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
 
 # The client holds its first tile configure too; release it before reading the tile.
@@ -112,5 +112,41 @@ wait_for_configured_state "$tile windowed"
 expect_field windowed_fullscreen false
 expect_field fullscreen false
 expect_field w "${tile%x*}"
+
+# A client may commit its old windowed state, then acknowledge the intermediate fullscreen configure, before it
+# reaches the exit configure. The intermediate state must not become compositor fullscreen.
+printf h >&"$control_fd"
+await_line '^configure-queue-enabled$'
+"$UMBRIEL" msg window-toggle-windowed-fullscreen > /dev/null
+await_line '^configure-held '
+enter_serial=$(grep '^configure-held ' "$CLIENT_LOG" | tail -1 | cut -d' ' -f2)
+"$UMBRIEL" msg window-toggle-windowed-fullscreen > /dev/null
+wait_for_configured_state "$tile windowed"
+for _ in $(seq 60); do
+  [[ $(grep -c '^configure-held ' "$CLIENT_LOG") -ge 2 ]] && break
+  sleep 0.05
+done
+exit_serial=$(grep '^configure-held ' "$CLIENT_LOG" | tail -1 | cut -d' ' -f2)
+if [[ $enter_serial == "$exit_serial" ]]; then
+  echo "the client did not hold distinct entry and exit configures: $(cat "$CLIENT_LOG")"
+  exit 1
+fi
+printf b >&"$control_fd"
+await_line '^committed-without-ack$'
+printf r >&"$control_fd"
+await_line "^configure-committed $enter_serial$"
+expect_field windowed_fullscreen false
+expect_field fullscreen false
+expect_field w "${tile%x*}"
+foreign_state=$("$UMBRIEL_FOREIGN_TOPLEVEL_CLIENT" rapid-video "$(field output)" fullscreen)
+if [[ $foreign_state != fullscreen=0 ]]; then
+  echo "an intermediate windowed-fullscreen configure escaped into foreign-toplevel: $foreign_state"
+  exit 1
+fi
+printf r >&"$control_fd"
+await_line "^configure-committed $exit_serial$"
+"$UMBRIEL" settle
+expect_field windowed_fullscreen false
+expect_field fullscreen false
 
 echo "windowed fullscreen settles on the latest transition with acks outstanding"

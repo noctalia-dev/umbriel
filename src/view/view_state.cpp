@@ -552,7 +552,7 @@ namespace umbriel {
 
   void View::setWindowedFullscreen(bool windowed) {
     if (windowed == m_windowedFullscreen) {
-      sendClientFullscreen(windowed);
+      reassertRoleState();
       return;
     }
     kLog.debug(
@@ -561,8 +561,11 @@ namespace umbriel {
     );
     m_deferredUnfullscreen.clear();
     m_windowedFullscreen = windowed;
-    m_windowedFullscreenExitPending = !windowed && m_toplevel != nullptr;
     sendClientFullscreen(windowed);
+    m_windowedFullscreenExitSerial.reset();
+    if (!windowed && m_toplevel != nullptr) {
+      m_windowedFullscreenExitSerial = m_toplevel->base->scheduled_serial;
+    }
   }
 
   void View::applyDeferredUnfullscreen() {
@@ -1051,10 +1054,6 @@ namespace umbriel {
     if (continuePresentation) {
       m_presentation.setSize(presentedWidth, presentedHeight);
     }
-    // Real fullscreen, entered or left, replaces windowed fullscreen. Leaving still hides the client's acked state.
-    m_windowedFullscreenExitPending =
-        !fullscreen && m_toplevel != nullptr && (m_windowedFullscreen || m_windowedFullscreenExitPending);
-    m_windowedFullscreen = false;
     setFullscreenState(fullscreen);
     if (m_workspace != nullptr) {
       m_workspace->syncFloatingStack(this);

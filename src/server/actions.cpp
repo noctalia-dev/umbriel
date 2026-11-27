@@ -1292,13 +1292,8 @@ namespace umbriel {
     }
 
     bool actionToggleWindowedFullscreen(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
-      View* view = placementTarget(server, {}, FocusSource::Scratchpad).value_or(nullptr);
-      if (view == nullptr) {
-        if (Workspace* workspace = activeWorkspace(server)) {
-          view = workspace->focusedView();
-        }
-      }
-      if (view != nullptr && view->mapped()) {
+      if (View* view = placementTarget(server, {}, FocusSource::Layout).value_or(nullptr);
+          view != nullptr && view->mapped()) {
         view->toggleWindowedFullscreen();
       }
       return true;
