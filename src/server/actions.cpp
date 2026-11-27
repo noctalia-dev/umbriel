@@ -1689,6 +1689,38 @@ namespace umbriel {
       return true;
     }
 
+    bool actionWorkspaceArrange(Server& server, const Keybind& bind, std::string* error) {
+      Workspace* workspace = windowActionWorkspace(server);
+      if (workspace == nullptr) {
+        return true;
+      }
+      if (workspace->layoutMode() != LayoutMode::Stacking) {
+        return reject(error, "workspace-arrange requires the stacking layout");
+      }
+      const auto* arg = payloadIf<ArrangeLayoutArg>(bind);
+      if (arg == nullptr || arg->mode == LayoutMode::Stacking) {
+        return reject(error, "workspace-arrange requires scrolling, dwindle, or master");
+      }
+
+      // An empty workspace, or one whose windows are all minimized, pinned, attached, or fullscreen, is a no-op.
+      wlr_box focusedTarget{};
+      if (!workspace->arrangeFloatingWithLayout(arg->mode, &focusedTarget)) {
+        return true;
+      }
+      invalidateHoverFocusAfterSceneChange(server, true);
+      // Warp to the box the focused window is heading for. warpToView() would pair the new origin with the size
+      // still presented at the start of the resize animation, which can put the pointer over a neighbouring tile.
+      const Overview* overview = server.overview();
+      if (!wlr_box_empty(&focusedTarget)
+          && config().input.cursor.followsFocus
+          && (overview == nullptr || !overview->active())) {
+        server.cursor()->warpToPreservingFocus(
+            focusedTarget.x + (focusedTarget.width / 2.0), focusedTarget.y + (focusedTarget.height / 2.0)
+        );
+      }
+      return true;
+    }
+
     template <int Direction> bool actionWorkspaceMove(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       Workspace* workspace = activeWorkspace(server);
       if (workspace == nullptr || workspace->group() == nullptr) {
@@ -2398,6 +2430,7 @@ namespace umbriel {
         &actionOutputSdrWhite,
         &actionWindowSetRegion,
         &actionWindowClearRegion,
+        &actionWorkspaceArrange,
         &actionSpawn,
     };
 

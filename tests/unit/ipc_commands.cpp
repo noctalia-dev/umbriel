@@ -492,6 +492,8 @@ namespace {
       return {" 200", " 300 --output DP-1"};
     case ActionArgKind::LayoutMode:
       return {" master", " toggle", " toggle scrolling master"};
+    case ActionArgKind::ArrangeLayout:
+      return {" scrolling", " dwindle", " master"};
     case ActionArgKind::WindowMoveTo:
       return {" top_left -10 20", " center 1 1 --window w1"};
     case ActionArgKind::WindowMoveBy:
@@ -542,6 +544,26 @@ UMBRIEL_TEST(actionRequestWorkspaceTypeSelectsPositionOrName) {
   }
 }
 
+UMBRIEL_TEST(workspaceArrangeRequestRoundTripsItsTemplateLayout) {
+  std::string error;
+  const auto decoded = decode(R"({"cmd":"action","action":"workspace-arrange","layout":"master"})", error);
+  CHECK(decoded.has_value());
+  CHECK(error.empty());
+  if (!decoded) {
+    return;
+  }
+
+  CHECK(decoded->action == umbriel::KeybindAction::WorkspaceArrange);
+  const auto* arg = umbriel::payloadIf<umbriel::ArrangeLayoutArg>(*decoded);
+  CHECK(arg != nullptr && arg->mode == umbriel::LayoutMode::Master);
+
+  // The JSON encoder used by `umbriel msg` sends the same typed layout field.
+  const nlohmann::json encoded = umbriel::actionRequest(*decoded);
+  CHECK(encoded["action"] == "workspace-arrange");
+  CHECK(encoded["layout"] == "master");
+  CHECK(!encoded.contains("cycle"));
+}
+
 UMBRIEL_TEST(actionRequestsRejectMalformedFieldsWithTheReason) {
   const std::pair<std::string_view, std::string_view> cases[] = {
       {R"({"cmd":"action"})", R"(missing "action")"},
@@ -563,6 +585,13 @@ UMBRIEL_TEST(actionRequestsRejectMalformedFieldsWithTheReason) {
        R"("cycle" needs "layout": "toggle")"},
       {R"({"cmd":"action","action":"workspace-set-layout","layout":"toggle","cycle":["master","master"]})",
        "two or more distinct layouts"},
+      {R"({"cmd":"action","action":"workspace-arrange","layout":"stacking"})",
+       "\"layout\" must be scrolling, dwindle, or master"},
+      {R"({"cmd":"action","action":"workspace-arrange","layout":"spiral"})",
+       "\"layout\" must be scrolling, dwindle, or master"},
+      {R"({"cmd":"action","action":"workspace-arrange"})", "missing \"layout\""},
+      {R"({"cmd":"action","action":"workspace-arrange","layout":"master","cycle":["dwindle"]})",
+       R"(unknown field "cycle")"},
       {R"({"cmd":"action","action":"effect-window-cycle","pool":"off"})", R"("pool" cannot be off)"},
       {R"({"cmd":"action","action":"effect-cursor-set","effect":"halo","window":"w1"})", R"(unknown field "window")"},
       {R"({"cmd":"action","action":"effect-screen-set","effect":"x","window":"w1"})", R"(unknown field "window")"},

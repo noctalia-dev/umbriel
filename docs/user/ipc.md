@@ -52,6 +52,7 @@ Programs run an [action](actions.md) with a typed request instead of the words p
 | effect `cycle`                                           | optional `pool`: string; optional `window` or `output` as for `set`                                              |
 | `<nits> [--output <output>]`                             | `nits`: number; optional `output`: string                                                                        |
 | layout mode                                              | `layout`: `"scrolling"`, `"dwindle"`, `"master"`, `"stacking"`, or `"toggle"`; with `"toggle"`, optional `cycle` |
+| arrangement layout                                       | `layout`: `"scrolling"`, `"dwindle"`, or `"master"` for `workspace-arrange`                                      |
 | `<normal\|tabbed>`                                       | `display`: `"normal"` or `"tabbed"`                                                                              |
 | `<index>`                                                | `index`: integer                                                                                                 |
 | `[skip-confirmation]`                                    | optional `skip_confirmation`: boolean                                                                            |
@@ -70,6 +71,7 @@ Programs run an [action](actions.md) with a typed request instead of the words p
 ```json
 {"cmd":"action","action":"workspace-switch","workspace":2,"output":"DP-1"}
 {"cmd":"action","action":"workspace-set-layout","layout":"toggle","cycle":["scrolling","master"]}
+{"cmd":"action","action":"workspace-arrange","layout":"master"}
 {"cmd":"action","action":"session-quit","skip_confirmation":true}
 ```
 

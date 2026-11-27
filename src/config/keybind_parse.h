@@ -217,6 +217,7 @@ namespace umbriel {
     OutputSdrWhite,
     WindowSetRegion,
     WindowClearRegion,
+    WorkspaceArrange,
     SpawnFloating,
     Count,
   };
@@ -276,6 +277,12 @@ namespace umbriel {
         toggleSequence; // distinct modes in toggle order; empty = scrolling, dwindle, master, stacking
     bool operator==(const LayoutModeArg&) const = default;
   };
+  // A one-shot arrangement template. Unlike LayoutModeArg, this cannot toggle
+  // or select stacking: it only describes geometry for a temporary layout.
+  struct ArrangeLayoutArg {
+    LayoutMode mode = LayoutMode::Master;
+    bool operator==(const ArrangeLayoutArg&) const = default;
+  };
   struct WindowRegionArg {
     WindowRegion region = WindowRegion::Left;
     bool operator==(const WindowRegionArg&) const = default;
@@ -327,8 +334,8 @@ namespace umbriel {
 
   using KeybindPayload = std::variant<
       std::monostate, SpawnArg, SubmapArg, FractionArg, WorkspaceArg, OutputArg, ScratchpadArg, WindowIdArg,
-      LayoutModeArg, ColumnDisplayArg, TabIndexArg, QuitArg, EffectWindowArg, EffectScreenArg, EffectCursorArg,
-      SdrWhiteArg, WindowMoveToArg, WindowMoveByArg, WindowRegionArg, WorkspaceMoveToOutputArg>;
+      LayoutModeArg, ArrangeLayoutArg, ColumnDisplayArg, TabIndexArg, QuitArg, EffectWindowArg, EffectScreenArg,
+      EffectCursorArg, SdrWhiteArg, WindowMoveToArg, WindowMoveByArg, WindowRegionArg, WorkspaceMoveToOutputArg>;
 
   struct Keybind {
     // What triggers the bind.
@@ -388,6 +395,7 @@ namespace umbriel {
     OptionalWindowId,
     FractionDelta,
     LayoutMode,
+    ArrangeLayout,
     WindowRegion,
     ColumnDisplay,
     TabIndex,

@@ -439,6 +439,14 @@ UMBRIEL_TEST(stackingLayoutModeIsNamedInTheActionLabel) {
   CHECK_EQ(rows[0].action, std::string{"workspace-set-layout stacking"});
 }
 
+UMBRIEL_TEST(temporaryArrangementActionIncludesItsLayout) {
+  Keybind binding = bind(KeybindAction::WorkspaceArrange, XKB_KEY_m);
+  binding.payload = umbriel::ArrangeLayoutArg{.mode = umbriel::LayoutMode::Master};
+  const auto rows = buildCheatsheetRows(std::vector<Keybind>{binding});
+  CHECK_EQ(rows.size(), size_t{1});
+  CHECK_EQ(rows[0].action, std::string{"workspace-arrange master"});
+}
+
 UMBRIEL_TEST(regionActionLabelsNameTheRegion) {
   Keybind binding = bind(KeybindAction::WindowSetRegion, XKB_KEY_h);
   binding.payload = umbriel::WindowRegionArg{.region = umbriel::WindowRegion::BottomLeft};

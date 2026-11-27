@@ -362,6 +362,20 @@ namespace umbriel {
       }
       case ActionArgKind::LayoutMode:
         return layoutPayload(fields);
+      case ActionArgKind::ArrangeLayout: {
+        ArrangeLayoutArg arg;
+        std::string layout;
+        if (!fields.only({"layout"}) || !fields.string("layout", true, layout)) {
+          return std::nullopt;
+        }
+        const auto mode = layoutModeNamed(layout);
+        if (!mode || *mode == LayoutMode::Stacking) {
+          fields.fail("\"layout\" must be scrolling, dwindle, or master");
+          return std::nullopt;
+        }
+        arg.mode = *mode;
+        return arg;
+      }
       case ActionArgKind::WindowMoveTo: {
         WindowMoveToArg arg;
         std::string anchor;
@@ -480,6 +494,8 @@ namespace umbriel {
                 request["cycle"] = std::move(cycle);
               }
             }
+          } else if constexpr (std::is_same_v<Arg, ArrangeLayoutArg>) {
+            request["layout"] = layoutModeName(arg.mode);
           } else if constexpr (std::is_same_v<Arg, ColumnDisplayArg>) {
             request["display"] = arg.display == ColumnDisplay::Tabbed ? "tabbed" : "normal";
           } else if constexpr (std::is_same_v<Arg, TabIndexArg>) {
