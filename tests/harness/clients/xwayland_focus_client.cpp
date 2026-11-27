@@ -1,5 +1,6 @@
 // Maps a managed X11 window and reports both forms of X focus. Commands on
 // stdin use `state LABEL`; each produces one line after a server round trip.
+// REQUEST_FULLSCREEN sends a fullscreen request on MapNotify. APP_ID overrides the WM_CLASS application name.
 
 #include <array>
 #include <cerrno>
@@ -233,6 +234,17 @@ namespace {
 
   void handleEvent(State& state, const xcb_generic_event_t& event) {
     const uint8_t type = event.response_type & static_cast<uint8_t>(~0x80U);
+    if (type == XCB_MAP_NOTIFY && std::getenv("REQUEST_FULLSCREEN") != nullptr) {
+      requestFullscreen(state, true);
+      return;
+    }
+    if (type == XCB_PROPERTY_NOTIFY) {
+      const auto& property = reinterpret_cast<const xcb_property_notify_event_t&>(event);
+      if (property.atom == state.atoms.netWmState) {
+        std::println("fullscreen-state-updated");
+      }
+      return;
+    }
     if (type == XCB_FOCUS_IN || type == XCB_FOCUS_OUT) {
       const auto& focus = reinterpret_cast<const xcb_focus_in_event_t&>(event);
       std::println("focus {} window={}", type == XCB_FOCUS_IN ? "in" : "out", windowName(state, focus.event));
@@ -266,6 +278,7 @@ namespace {
     const xcb_window_t window = xcb_generate_id(state.connection);
     state.windows[index] = window;
     constexpr uint32_t eventMask = XCB_EVENT_MASK_STRUCTURE_NOTIFY
+        | XCB_EVENT_MASK_PROPERTY_CHANGE
         | XCB_EVENT_MASK_FOCUS_CHANGE
         | XCB_EVENT_MASK_KEY_PRESS
         | XCB_EVENT_MASK_KEY_RELEASE
@@ -286,7 +299,8 @@ namespace {
         state.connection, XCB_PROP_MODE_REPLACE, window, state.atoms.netWmName, state.atoms.utf8String, 8,
         static_cast<uint32_t>(name.size()), name.data()
     );
-    const std::string wmClass = name + '\0' + "UmbrielXwaylandFocus" + '\0';
+    const char* appId = std::getenv("APP_ID");
+    const std::string wmClass = name + '\0' + (appId != nullptr ? appId : "UmbrielXwaylandFocus") + '\0';
     xcb_change_property(
         state.connection, XCB_PROP_MODE_REPLACE, window, XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 8,
         static_cast<uint32_t>(wmClass.size()), wmClass.data()

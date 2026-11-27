@@ -958,8 +958,19 @@ namespace umbriel {
         rule.defaultScrollingColumnOrder = alone.defaultScrollingColumnOrder;
       }
 
+      const bool clientFullscreen = !openingInScratchpad && requestedFullscreen();
+      bool wantWindowedFullscreen = false;
+      if (clientFullscreen && !rule.defaultFullscreen.value_or(false)) {
+        // The request policy sees the opening placement before m_tiled and layout membership are committed.
+        openingState.floating = !wantTiled;
+        openingState.alone = openingAlone;
+        const ResolvedWindowRule fullscreenRule = resolveWindowRules(
+            config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, openingState, m_server->uptimeMs()
+        );
+        wantWindowedFullscreen = fullscreenRule.windowedFullscreen.value_or(false);
+      }
       const bool wantFullscreen =
-          (!openingInScratchpad && requestedFullscreen()) || (rule.defaultFullscreen && *rule.defaultFullscreen);
+          (clientFullscreen && !wantWindowedFullscreen) || rule.defaultFullscreen.value_or(false);
       const bool layoutMaximizeToEdges =
           (target != nullptr ? target->layoutConfig().clientMaximize : config().layout.clientMaximize)
           == ClientMaximize::Edges;
@@ -982,6 +993,9 @@ namespace umbriel {
       // corners and shadows the border cannot follow.
       const bool tiledEdges = wantTiled || config().appearance.preferNoCsd;
       setTiledState(tiledEdges ? WLR_EDGE_TOP | WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT : 0);
+      if (wantWindowedFullscreen) {
+        setWindowedFullscreen(true);
+      }
 
       if (wantFullscreen) {
         // An X11 client can request fullscreen before its first buffer. The request event is too early to configure,

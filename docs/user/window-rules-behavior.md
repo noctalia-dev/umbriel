@@ -18,12 +18,30 @@ vrr = "always"
 | `background_render`       | `false` | Keep drawing while hidden. See [Keep drawing while hidden](#keep-drawing-while-hidden).                                     |
 | `block_capture`           | `false` | Leave the window out of screenshots and recordings. See [Hide a window from screenshots](#hide-a-window-from-screenshots).  |
 | `focus_on_activate`       | global  | Override `general.focus_on_activate`. See [Focus on activation](#focus-on-activation).                                      |
+| `windowed_fullscreen`     | `false` | Keep client-requested fullscreen inside the window. See [Fullscreen inside a window](#fullscreen-inside-a-window).          |
 | `touchpad_scroll_factor`  | unset   | Touchpad scroll speed multiplier, 0.1 to 10.0. See [Touchpad scroll speed](#touchpad-scroll-speed).                         |
 | `vrr`                     | output  | Override the output's [VRR](display-features.md#variable-refresh-rate) policy: `"disabled"`, `"always"`, or `"fullscreen"`. |
 | `tearing`                 | client  | Request (`true`) or veto (`false`) [tearing](display-features.md#tearing).                                                  |
 | `hdr`                     | output  | Override the output's [HDR](display-features.md#hdr) policy.                                                                |
 
 `vrr`, `tearing`, and `hdr` apply while the window is focused. A window rule's `vrr = "fullscreen"` follows the window's own fullscreen state.
+
+## Fullscreen inside a window
+
+```toml
+# Firefox's fullscreen button keeps videos inside the tile or floating window.
+[[window_rule]]
+match.app_id = "^firefox$"
+windowed_fullscreen = true
+```
+
+When the application requests fullscreen, it receives fullscreen state while keeping its normal window size, position, borders, and place in the layout. Panels and neighboring windows stay visible. This also applies to a Wayland application's opening fullscreen request; the rule does not make an ordinary application enter fullscreen by itself.
+
+Leaving fullscreen from the application, for example with Escape, exits the mode. The next fullscreen request uses the rule again. The compositor's `window-toggle-fullscreen` action and the placement rule `default_fullscreen = true` still select real fullscreen. Repeated application requests keep an already real-fullscreen window in real fullscreen.
+
+Rule changes and config reloads affect future requests; they do not change an active fullscreen mode. A later matching rule with `windowed_fullscreen = false` restores ordinary request handling. The manual [`window-toggle-windowed-fullscreen`](window-states.md#maximize-and-fullscreen) action remains available with either rule value.
+
+Run `umbriel windows` to check the application's actual app ID. The rule works with native Wayland and Xwayland windows; attached modal dialogs keep their existing fullscreen restrictions. Opening client fullscreen requests remain ignored for windows placed into a scratchpad.
 
 ## Games
 

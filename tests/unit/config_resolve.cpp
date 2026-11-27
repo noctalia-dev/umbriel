@@ -1560,4 +1560,29 @@ UMBRIEL_TEST(scratchpadLayoutDefaultsToStackingAndTakesItsOwnOverrides) {
   CHECK_EQ(resolved.totalGap, 3 + 2 * config.appearance.totalBorderWidth());
 }
 
+UMBRIEL_TEST(windowedFullscreenRuleMatchesAppsAndAllowsFalseOverrides) {
+  Config config;
+  const auto resolve = [&](std::string_view appId, std::string_view title) {
+    return umbriel::resolveWindowRules(config, appId, title, std::nullopt, ContentType::None, {}, 0);
+  };
+  CHECK(!resolve("player", "video").windowedFullscreen.has_value());
+  WindowRule enabled;
+  enabled.appIdPatterns.add("^player$");
+  enabled.windowedFullscreen = true;
+  config.windowRules.push_back(enabled);
+  CHECK(resolve("player", "video").windowedFullscreen.value_or(false));
+  CHECK(!resolve("other", "video").windowedFullscreen.has_value());
+  WindowRule disabled;
+  disabled.appIdPatterns.add("^player$");
+  disabled.titlePatterns.add("^presentation$");
+  disabled.windowedFullscreen = false;
+  config.windowRules.push_back(disabled);
+  CHECK(resolve("player", "presentation").windowedFullscreen.has_value());
+  CHECK(!*resolve("player", "presentation").windowedFullscreen);
+  CHECK(resolve("player", "video").windowedFullscreen.value_or(false));
+  config.windowRules.emplace_back();
+  CHECK(!resolve("player", "presentation").windowedFullscreen.value_or(true));
+  CHECK(resolve("player", "video").windowedFullscreen.value_or(false));
+}
+
 int main() { return RUN_TESTS(); }

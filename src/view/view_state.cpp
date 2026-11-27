@@ -474,6 +474,15 @@ namespace umbriel {
       setWindowedFullscreen(requested);
       return;
     }
+    if (requested && !m_mapped && m_toplevel != nullptr && !scheduledFullscreen()) {
+      // A request after the first configure still needs the predicted opening placement until the window maps.
+      handleCommit(true);
+      return;
+    }
+    if (requested && !scheduledFullscreen() && resolvedRules().windowedFullscreen.value_or(false)) {
+      setWindowedFullscreen(true);
+      return;
+    }
     if (!requested && scheduledFullscreen() && m_xCompositorFullscreen) {
       kLog.debug("request_fullscreen denied for compositor-owned X11 '{}'", appId() != nullptr ? appId() : "?");
       reassertRoleState();

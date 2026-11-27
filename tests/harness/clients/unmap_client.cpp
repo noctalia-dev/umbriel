@@ -28,6 +28,8 @@
 // FOLLOW_CONFIGURES maps at its own size, then redraws at every later configured size, as a real client would; by
 // default the window keeps its own size.
 // FULLSCREEN_ON_STDIN makes `f` request fullscreen and `u` request windowed state.
+// REQUEST_FULLSCREEN_BEFORE_MAP requests fullscreen before the initial surface commit.
+// REQUEST_FULLSCREEN_AFTER_CONFIGURE requests fullscreen after the initial configure but before mapping a buffer.
 // REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer.
 // FILL_COLOR=<ARGB> paints the buffer that colour (default 0xFF5577AA), so screenshots can tell windows apart.
 // OPAQUE_BUFFER uses XRGB so the compositor can cull completely covered clients.
@@ -161,6 +163,7 @@ namespace {
     bool queueConfigures = false;
     std::deque<HeldConfigure> heldConfigures;
     bool requestFullscreen = false;
+    bool requestFullscreenAfterConfigure = false;
     bool fullscreenRequested = false;
     bool requestHdr = false;
     bool requestWindowsScrgb = false;
@@ -525,6 +528,12 @@ namespace {
       return;
     }
     if (state.closed) {
+      return;
+    }
+    if (state.requestFullscreenAfterConfigure && !state.fullscreenRequested) {
+      xdg_toplevel_set_fullscreen(state.toplevel, nullptr);
+      wl_surface_commit(state.surface);
+      state.fullscreenRequested = true;
       return;
     }
     if (state.requestMaximizedAfterConfigure && !state.maximizeRequested) {
@@ -931,6 +940,7 @@ int main(int argc, char** argv) {
     state.resizeStep = (*parsed)[0];
   }
   state.requestFullscreen = std::getenv("REQUEST_FULLSCREEN") != nullptr;
+  state.requestFullscreenAfterConfigure = std::getenv("REQUEST_FULLSCREEN_AFTER_CONFIGURE") != nullptr;
   state.requestHdr = std::getenv("COLOR_HDR") != nullptr;
   state.requestWindowsScrgb = std::getenv("COLOR_WINDOWS_SCRGB") != nullptr;
   state.requestWindowsBt2100 = std::getenv("COLOR_WINDOWS_BT2100") != nullptr;
@@ -1217,6 +1227,10 @@ int main(int argc, char** argv) {
     // the compositor include it in the first configure instead of treating it
     // as a post-map maximize request.
     xdg_toplevel_set_maximized(state.toplevel);
+  }
+  if (std::getenv("REQUEST_FULLSCREEN_BEFORE_MAP") != nullptr) {
+    xdg_toplevel_set_fullscreen(state.toplevel, nullptr);
+    state.fullscreenRequested = true;
   }
   if (mappedTogether) {
     state.parentOnFirstConfigure = transientParent.toplevel;

@@ -423,6 +423,11 @@ default_pinned = true
 # match.app_id = "^spotify$"
 # default_scratchpad = "music"
 
+# Keep Firefox's fullscreen video inside its tile or floating window.
+# [[window_rule]]
+# match.app_id = "^firefox$"
+# windowed_fullscreen = true
+
 # Give scratchpad windows their own border colors.
 # [[window_rule]]
 # match.is_scratchpad = true
