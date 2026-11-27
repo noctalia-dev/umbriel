@@ -46,7 +46,7 @@ window_effect = "scanlines"
 ```
 
 > [!TIP]
-> Run `umbriel windows` to see the app ID, title, tags, and content type of every window, or `umbriel focused-window` for the focused one. Prefer `app_id`: titles change.
+> Run `umbriel windows --json | jq` to see every field of every window, labeled. To inspect one window, run `sleep 3; umbriel focused-window --json | jq` and focus that window before the delay ends. Prefer `match.app_id`: it stays the same for the life of a window, while many apps change their title as you use them.
 
 ### Identity selectors
 
