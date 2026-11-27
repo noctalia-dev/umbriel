@@ -2,7 +2,8 @@
 # harness: outputs=2
 # A window chosen while an exclusive layer (a window switcher, a launcher) holds the keyboard receives focus when that
 # layer closes, even when it sits on another output than the pointer. The layer release must not fall back to the
-# window last focused on the pointer's output. Closing the layer without a choice still restores the previous focus.
+# window last focused on the pointer's output. Closing the layer without a choice still restores the previous focus,
+# unless keybinds run under the layer switched away from that window's workspace or minimized it.
 set -euo pipefail
 
 readonly CLIENT="${UMBRIEL_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
@@ -134,5 +135,44 @@ fi
 hold_field "$FAR" active true
 kill "$layer_pid" 2> /dev/null || true
 wait "$layer_pid" 2> /dev/null || true
+
+active_workspace() {
+  "$UMBRIEL" workspaces --json | jq -r '.[] | select(.active and .output == "HEADLESS-1") | .index'
+}
+
+# Phase four: switching workspace under the layer leaves the previous window behind instead of switching back to it.
+"$UMBRIEL" msg window-focus "$near_id" > /dev/null
+wait_for_field "$NEAR" active true
+"$LAYER_CLIENT" HEADLESS-1 40 keyboard=exclusive > "$UMBRIEL_RUNTIME_DIR/layer-switch.log" 2>&1 &
+layer_pid=$!
+wait_for_ready "$UMBRIEL_RUNTIME_DIR/layer-switch.log"
+wait_for_field "$NEAR" active false
+"$UMBRIEL" msg workspace-switch 2 > /dev/null
+[[ $(active_workspace) == 2 ]]
+kill "$layer_pid" 2> /dev/null || true
+wait "$layer_pid" 2> /dev/null || true
+for _ in $(seq 10); do
+  if [[ $(active_workspace) != 2 ]]; then
+    echo "closing the layer switched back to the workspace of the window focused before it: $("$UMBRIEL" workspaces --json | jq -c 'map(select(.active))')"
+    exit 1
+  fi
+  sleep 0.05
+done
+hold_field "$NEAR" active false
+"$UMBRIEL" msg workspace-switch 1 > /dev/null
+
+# Phase five: a window minimized under the layer stays minimized when the layer closes.
+"$UMBRIEL" msg window-focus "$near_id" > /dev/null
+wait_for_field "$NEAR" active true
+"$LAYER_CLIENT" HEADLESS-1 40 keyboard=exclusive > "$UMBRIEL_RUNTIME_DIR/layer-minimize.log" 2>&1 &
+layer_pid=$!
+wait_for_ready "$UMBRIEL_RUNTIME_DIR/layer-minimize.log"
+wait_for_field "$NEAR" active false
+"$UMBRIEL" msg window-minimize "$near_id" > /dev/null
+wait_for_field "$NEAR" minimized true
+kill "$layer_pid" 2> /dev/null || true
+wait "$layer_pid" 2> /dev/null || true
+hold_field "$NEAR" minimized true
+hold_field "$NEAR" active false
 
 echo "a window chosen under an exclusive layer keeps focus across outputs when the layer closes"

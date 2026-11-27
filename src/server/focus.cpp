@@ -367,16 +367,22 @@ namespace umbriel {
 
   View* FocusManager::takeDeferredView() {
     View* candidate = std::exchange(m_deferredView, nullptr);
-    if (candidate == nullptr) {
+    // Keybinds still run under the layer: a window minimized or left on an inactive workspace meanwhile must not be
+    // brought back, exactly as retainCurrentKeyboardFocus() would not keep it.
+    if (candidate == nullptr
+        || !candidate->mapped()
+        || !candidate->acceptsKeyboardFocus()
+        || candidate->placementRoot()->minimized()
+        || (!candidate->onActiveWorkspace() && !candidate->pinned())) {
       return nullptr;
     }
-    // The pointer is only an identity: the window may have closed while the layer was up.
-    for (const auto& entry : m_server.registry().all()) {
-      if (entry.get() == candidate) {
-        return candidate->mapped() && candidate->acceptsKeyboardFocus() ? candidate : nullptr;
-      }
+    return candidate;
+  }
+
+  void FocusManager::forgetView(View* view) {
+    if (m_deferredView == view) {
+      m_deferredView = nullptr;
     }
-    return nullptr;
   }
 
   void FocusManager::refocus(Output* preferred) {

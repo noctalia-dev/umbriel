@@ -70,6 +70,8 @@ namespace umbriel {
     void refocusExplicit(Output* preferred);
     // A layer is taking the keyboard from `from`; refocus() returns it there unless a window is chosen meanwhile.
     void noteSeatHandoffToLayer(View* from);
+    // `view` is being destroyed; drop any reference kept for a later refocus.
+    void forgetView(View* view);
 
     // Drop activation, focus ring, and foreign-activated on every mapped view
     // except `except`.
@@ -94,7 +96,7 @@ namespace umbriel {
   private:
     [[nodiscard]] bool retainCurrentKeyboardFocus();
     void refocusFallback(Output* preferred);
-    // The window chosen while an exclusive layer held the seat, or null when it no longer exists.
+    // The window chosen while an exclusive layer held the seat, or null when it can no longer take focus.
     [[nodiscard]] View* takeDeferredView();
 
     Server& m_server;
