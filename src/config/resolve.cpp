@@ -291,6 +291,9 @@ namespace umbriel {
       if (rule.matchFloating && *rule.matchFloating != state.floating) {
         continue;
       }
+      if (rule.matchMaximized && *rule.matchMaximized != state.maximized) {
+        continue;
+      }
       if (rule.matchMaximizedToEdges && *rule.matchMaximizedToEdges != state.maximizedToEdges) {
         continue;
       }

@@ -71,6 +71,7 @@ These update while the window is open.
 | `match.layout`                | The workspace layout: `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`.                                                                             |
 | `match.is_focused`            | Focus.                                                                                                                                                     |
 | `match.is_floating`           | Floating.                                                                                                                                                  |
+| `match.is_maximized`          | Maximized.                                                                                                                                                 |
 | `match.is_maximized_to_edges` | Maximized to the edges.                                                                                                                                    |
 | `match.is_pinned`             | Pinned.                                                                                                                                                    |
 | `match.is_scratchpad`         | In a scratchpad.                                                                                                                                           |
