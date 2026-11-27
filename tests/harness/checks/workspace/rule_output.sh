@@ -55,6 +55,11 @@ match.output = "HEADLESS-2"
 default_scrolling_extent = 0.75
 
 [[window_rule]]
+match.app_id = "^output-left$"
+match.output = "HEADLESS-2"
+title_bar = "forced"
+
+[[window_rule]]
 match.app_id = "^cycle$"
 match.output = "HEADLESS-1"
 default_output = "HEADLESS-2"
@@ -97,4 +102,20 @@ if [[ $cycle_output != HEADLESS-2 ]]; then
   exit 1
 fi
 
-echo "match.output chose per-output extents and cyclic placement settled on HEADLESS-2"
+if [[ $(window_field output-left title_bar) != false ]]; then
+  echo "output-left showed the HEADLESS-2 title bar on HEADLESS-1"
+  exit 1
+fi
+
+# Dynamic rules follow the window's output when its workspace moves, also for a window whose focus does not change.
+APP_ID=output-left FOLLOW_CONFIGURES=1 "$CLIENT" output-left-focus 800 600 \
+  > "$UMBRIEL_RUNTIME_DIR/output-left-focus.log" 2>&1 &
+wait_for_window output-left-focus HEADLESS-1
+"$UMBRIEL" msg workspace-move-to-output HEADLESS-2 LEFT > /dev/null
+"$UMBRIEL" settle > /dev/null
+if [[ $(window_field output-left output) != HEADLESS-2 || $(window_field output-left title_bar) != true ]]; then
+  echo "moving output-left to HEADLESS-2 did not apply its output rule: $("$UMBRIEL" windows --json)"
+  exit 1
+fi
+
+echo "match.output chose per-output extents, followed a moved workspace, and cyclic placement settled on HEADLESS-2"
