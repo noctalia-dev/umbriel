@@ -1011,12 +1011,24 @@ namespace umbriel {
       return;
     }
     if (m_captureSource != nullptr) {
-      umbrielfx_scene_capture_source_set_scale(m_captureSource, output->wlr()->scale);
+      umbrielfx_scene_capture_source_set_scale(m_captureSource, captureScale(*output));
     }
     forEachSurface(&Output::notifySurfaceScaleIter, output);
     forEachPopupSurface(&Output::notifySurfaceScaleIter, output);
     // Chrome that renders text follows the scale too.
     layoutChromeAttachment(m_chromeContentWidth, m_chromeContentHeight);
+  }
+
+  float View::captureScale(const Output& output) const {
+    return m_captureScaleOverride > 0.0F ? m_captureScaleOverride : output.wlr()->scale;
+  }
+
+  void View::setCaptureScaleOverride(float scale) {
+    m_captureScaleOverride = scale;
+    Output* output = currentOutput();
+    if (m_captureSource != nullptr && output != nullptr) {
+      umbrielfx_scene_capture_source_set_scale(m_captureSource, captureScale(*output));
+    }
   }
 
   void View::unconstrainPopup(wlr_xdg_popup* popup) {

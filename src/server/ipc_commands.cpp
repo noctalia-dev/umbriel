@@ -913,6 +913,40 @@ namespace umbriel {
 
   // The view the window actions target. The qualified call keeps the shared
   // focus policy distinct from this command's own name.
+  nlohmann::json IpcCommands::captureScale(Server& server, IpcArgs args) {
+    if (args.size() != 2) {
+      return nlohmann::json{{"err", "usage: capture-scale <window-id> <scale|auto>"}};
+    }
+    View* view = nullptr;
+    for (const auto& candidate : server.views()) {
+      const char* id = candidate->extForeignIdentifier();
+      if (candidate->mapped() && id != nullptr && args[0] == id) {
+        view = candidate.get();
+        break;
+      }
+    }
+    if (view == nullptr) {
+      return nlohmann::json{{"err", "unknown window: " + args[0]}};
+    }
+    float scale = 0.0F;
+    if (args[1] != "auto") {
+      try {
+        size_t pos = 0;
+        scale = std::stof(args[1], &pos);
+        if (pos != args[1].size()) {
+          return nlohmann::json{{"err", "invalid scale: " + args[1]}};
+        }
+      } catch (const std::exception&) {
+        return nlohmann::json{{"err", "invalid scale: " + args[1]}};
+      }
+      if (!std::isfinite(scale) || scale < 0.0F || scale > 1.0F) {
+        return nlohmann::json{{"err", "scale must be in [0, 1] or 'auto'"}};
+      }
+    }
+    view->setCaptureScaleOverride(scale);
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
   nlohmann::json IpcCommands::focusedWindow(Server& server, IpcArgs /*args*/) {
     View* view = umbriel::focusedWindow(server);
     if (view == nullptr) {
@@ -1692,6 +1726,9 @@ namespace umbriel {
        &printWindows},
       {"focused-window", "", "print the focused window (app id and title)", IpcCommandGroup::Inspect, false,
        &IpcCommands::focusedWindow, &printWindowRow},
+      {"capture-scale", "<window-id> <scale|auto>",
+       "set a window's image-copy capture render scale (smaller = cheaper captures)", IpcCommandGroup::Control, true,
+       &IpcCommands::captureScale, nullptr},
       {"workspaces", "", "list workspaces and their layouts", IpcCommandGroup::Inspect, false, &IpcCommands::workspaces,
        &printWorkspaces},
       {"submap", "", "show the active keybind submap", IpcCommandGroup::Inspect, false, &IpcCommands::submap,
