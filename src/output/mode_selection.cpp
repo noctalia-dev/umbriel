@@ -3,6 +3,8 @@
 #include "wlr_color.h"
 
 #include <cmath>
+#include <cstdint>
+#include <utility>
 
 extern "C" {
 #include <wlr/types/wlr_output.h>
@@ -24,41 +26,23 @@ namespace umbriel {
     return populated(output->make) || populated(output->model) || populated(output->serial);
   }
 
-  static bool
-  isBetterForTarget(OutputModeTarget target, const wlr_output_mode* current, const wlr_output_mode* candidate) {
-    if (current == nullptr || candidate == nullptr) {
-      return false;
-    }
-
-    const bool higherRefreshRate = candidate->refresh > current->refresh;
-    const bool higherResolution = (candidate->width >= current->width && candidate->height >= current->height)
-        && (candidate->width != current->width || candidate->height != current->height);
-
-    const bool betterPreference = candidate->preferred && !current->preferred;
-    const bool samePreference = candidate->preferred == current->preferred;
-
+  // Keyword targets rank by the target metric, then the other metric; the preferred mark plays no part.
+  static std::pair<int64_t, int64_t> targetRank(OutputModeTarget target, const wlr_output_mode& mode) {
+    const int64_t pixels = int64_t{mode.width} * mode.height;
     if (target == OutputModeTarget::HighRefreshRate) {
-      const bool tieBreaker = betterPreference || (samePreference && higherResolution);
-
-      return higherRefreshRate || (candidate->refresh == current->refresh && tieBreaker);
+      return {mode.refresh, pixels};
     }
-    if (target == OutputModeTarget::HighResolution) {
-      const bool tieBreaker = betterPreference || (samePreference && higherRefreshRate);
-
-      return higherResolution
-          || (candidate->width == current->width && candidate->height == current->height && tieBreaker);
-    }
-
-    return false;
+    return {pixels, mode.refresh};
   }
 
   wlr_output_mode* selectOutputMode(wlr_output* output, const OutputMode& configured) {
     wlr_output_mode* selected = nullptr;
     wlr_output_mode* mode = nullptr;
     wl_list_for_each(mode, &output->modes, link) {
-      if (configured.target != OutputModeTarget::None
-          && (selected == nullptr || isBetterForTarget(configured.target, selected, mode))) {
-        selected = mode;
+      if (configured.target != OutputModeTarget::None) {
+        if (selected == nullptr || targetRank(configured.target, *mode) > targetRank(configured.target, *selected)) {
+          selected = mode;
+        }
         continue;
       }
 

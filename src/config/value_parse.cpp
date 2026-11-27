@@ -44,12 +44,12 @@ namespace umbriel {
 
   bool parseOutputMode(std::string_view text, OutputMode& output, bool allowKeywords) {
     if (allowKeywords) {
-      if (text == "highrr") {
+      if (text == "highest_refresh") {
         output.target = OutputModeTarget::HighRefreshRate;
         return true;
       }
 
-      if (text == "highres") {
+      if (text == "highest_resolution") {
         output.target = OutputModeTarget::HighResolution;
         return true;
       }

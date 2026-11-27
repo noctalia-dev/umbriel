@@ -827,7 +827,7 @@ namespace umbriel {
           stagedMode = selectOutputMode(m_output, *rule->mode);
           if (stagedMode != nullptr) {
             keptLiveMode = keepLiveModeOrStage(state, *m_output, stagedMode);
-          } else {
+          } else if (rule->mode->target == OutputModeTarget::None) {
             wlr_output_state_set_custom_mode(&state, rule->mode->width, rule->mode->height, rule->mode->refreshMHz);
           }
         }

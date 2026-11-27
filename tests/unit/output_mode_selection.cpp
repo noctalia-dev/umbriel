@@ -130,6 +130,48 @@ UMBRIEL_TEST(outputWithoutAdvertisedModesSelectsNoAdvertisedMode) {
   CHECK(selectOutputMode(&output, OutputMode{1280, 720, 0}) == nullptr);
 }
 
+UMBRIEL_TEST(highRefreshRateTargetBreaksTiesByResolution) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+  wlr_output_mode preferred = outputMode(3840, 2160, 60000, true);
+  wlr_output_mode smaller = outputMode(1920, 1080, 165000);
+  wlr_output_mode larger = outputMode(2560, 1440, 165000);
+  addMode(output, preferred);
+  addMode(output, smaller);
+  addMode(output, larger);
+
+  OutputMode configured{};
+  configured.target = umbriel::OutputModeTarget::HighRefreshRate;
+  CHECK(selectOutputMode(&output, configured) == &larger);
+}
+
+// Neither resolution contains the other, so the larger pixel count wins regardless of list order.
+UMBRIEL_TEST(highResolutionTargetComparesPixelCount) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+  wlr_output_mode taller = outputMode(1920, 1200, 144000);
+  wlr_output_mode wider = outputMode(2560, 1080, 60000);
+  addMode(output, taller);
+  addMode(output, wider);
+
+  OutputMode configured{};
+  configured.target = umbriel::OutputModeTarget::HighResolution;
+  CHECK(selectOutputMode(&output, configured) == &wider);
+}
+
+UMBRIEL_TEST(highResolutionTargetPrefersFasterModeOverPreferredMark) {
+  wlr_output output{};
+  wl_list_init(&output.modes);
+  wlr_output_mode preferred = outputMode(2560, 1440, 60000, true);
+  wlr_output_mode faster = outputMode(2560, 1440, 144000);
+  addMode(output, preferred);
+  addMode(output, faster);
+
+  OutputMode configured{};
+  configured.target = umbriel::OutputModeTarget::HighResolution;
+  CHECK(selectOutputMode(&output, configured) == &faster);
+}
+
 UMBRIEL_TEST(failedCustomModeFallsBackToPreferredMode) {
   wlr_output output{};
   wl_list_init(&output.modes);

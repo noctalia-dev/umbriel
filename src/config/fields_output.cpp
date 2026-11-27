@@ -187,7 +187,8 @@ namespace umbriel {
                 if (!value || !parseOutputMode(*value, mode)) {
                   warnAt(
                       node.source(),
-                      R"(ignoring {} (expected "WIDTHxHEIGHT", "WIDTHxHEIGHT@HZ", "highrr" or "highres"))", path
+                      R"(ignoring {} (expected "WIDTHxHEIGHT", "WIDTHxHEIGHT@HZ", "highest_refresh" or "highest_resolution"))",
+                      path
                   );
                 } else {
                   target.mode = mode;
