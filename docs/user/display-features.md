@@ -84,7 +84,7 @@ vrr = "fullscreen"
 
 A focused window can override this policy through a [window rule](window-rules-behavior.md#behavior-keys). A window rule accepts `"disabled"`, `"always"`, or `"fullscreen"`, where `"fullscreen"` follows the focused window's own fullscreen state. Unsupported outputs remain at fixed refresh and produce a warning.
 
-Umbriel switches VRR with the next frame commit, which cannot change the display mode. Some drivers need a full modeset to switch it (for example an Intel eDP laptop panel); the backend then rejects the change, Umbriel logs one warning, and VRR stays as it is until the mode or the output configuration changes. An HDR switch never turns VRR on by itself, so a rejected change cannot leave it on after the fullscreen window is gone.
+Umbriel switches VRR with the next frame commit, which cannot change the display mode. Some drivers need a full modeset to switch it (for example an Intel eDP laptop panel); the backend then rejects the change, Umbriel logs a warning, and VRR stays as it is until the mode, the output configuration, or the HDR state changes. An HDR switch never turns VRR on by itself, so a rejected change cannot leave it on after the fullscreen window is gone.
 
 ## Tearing
 

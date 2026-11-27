@@ -863,9 +863,8 @@ namespace umbriel {
     }
 
     const bool vrrLive = m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
-    if (stageGeometry) {
-      m_vrrTransition.reset();
-    }
+    // A new mode, configuration, or HDR state may let a frame commit switch VRR where it was rejected before.
+    m_vrrTransition.reset();
     // An HDR transition modesets, so it could switch VRR on where a frame commit cannot; if the driver then rejects
     // switching it off again, VRR stays on after the fullscreen content that wanted it is gone. Leave enabling to the
     // frame path, which tests the change and remembers a rejection.
@@ -1230,6 +1229,9 @@ namespace umbriel {
     }
     if (stageGeometry) {
       updateHdrAvailability(hdrRejected);
+    }
+    if (vrrRequested && !tryVrrOn) {
+      updateVrr();
     }
     m_server->updateColorPreferences();
     return true;
@@ -2332,8 +2334,8 @@ namespace umbriel {
               state.committed &= ~WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED;
               m_vrrTransition.reject(enabled);
               kLog.warn(
-                  "output '{}': backend rejected {} VRR without a modeset; leaving it {} until the mode or output "
-                  "configuration changes",
+                  "output '{}': backend rejected {} VRR without a modeset; leaving it {} until the next mode, "
+                  "configuration, or HDR change",
                   m_output->name, enabled ? "enabling" : "disabling", enabled ? "off" : "on"
               );
             }
