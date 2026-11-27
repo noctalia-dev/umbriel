@@ -1032,9 +1032,6 @@ namespace umbriel {
     wlr_box outputBox{};
     wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &outputBox);
     if (outputBox.width <= 0 || outputBox.height <= 0) {
-      outputBox = fullscreenArea();
-    }
-    if (outputBox.width <= 0 || outputBox.height <= 0) {
       return;
     }
 
@@ -1046,22 +1043,21 @@ namespace umbriel {
     int winX = 0;
     int winY = 0;
     const bool fullscreen = scheduledFullscreen() || currentFullscreen();
-    const Cursor* cursor = m_server->cursor();
-    const bool isDragging = cursor != nullptr && cursor->isDraggingView(this);
     if (fullscreen) {
       const wlr_box fullBox = fullscreenLayoutBox();
-      winX = fullBox.width > 0 ? fullBox.x : outputBox.x;
-      winY = fullBox.height > 0 ? fullBox.y : outputBox.y;
-    } else if (!isDragging && m_workspace != nullptr) {
-      const wlr_box winBox = targetBox();
+      winX = fullBox.x;
+      winY = fullBox.y;
+    } else {
+      // Prefer the layout target over scene coordinates, which lag behind while the window animates or rearranges.
+      const Cursor* cursor = m_server->cursor();
+      const bool isDragging = cursor != nullptr && cursor->isDraggingView(this);
+      const wlr_box winBox = !isDragging && m_workspace != nullptr ? targetBox() : wlr_box{};
       if (winBox.width > 0 && winBox.height > 0) {
         winX = winBox.x;
         winY = winBox.y;
       } else if (!wlr_scene_node_coords(&m_sceneTree->node, &winX, &winY)) {
         return;
       }
-    } else if (!wlr_scene_node_coords(&m_sceneTree->node, &winX, &winY)) {
-      return;
     }
 
     const PopupConstraintInput input{

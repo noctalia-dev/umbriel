@@ -16,7 +16,7 @@ namespace {
 
 } // namespace
 
-UMBRIEL_TEST(lucioleFullscreenRegressionUsesOutputBox) {
+UMBRIEL_TEST(fullscreenUsesWholeOutputBeforeResizeCommits) {
   const PopupConstraintInput input{
       .fullscreen = true,
       .tiled = true,
@@ -28,15 +28,7 @@ UMBRIEL_TEST(lucioleFullscreenRegressionUsesOutputBox) {
       .winY = 0,
   };
 
-  const wlr_box box = calculatePopupConstraintBox(input);
-  checkBox(box, 0, 0, 1920, 1080);
-
-  // Verify a 628x601 popup positioned at (646, 241) fits completely inside the constraint box.
-  const wlr_box popup{.x = 646, .y = 241, .width = 628, .height = 601};
-  CHECK(popup.x >= box.x);
-  CHECK(popup.y >= box.y);
-  CHECK(popup.x + popup.width <= box.x + box.width);
-  CHECK(popup.y + popup.height <= box.y + box.height);
+  checkBox(calculatePopupConstraintBox(input), 0, 0, 1920, 1080);
 }
 
 UMBRIEL_TEST(tiledNonFullscreenUsesTileWidthAndUsableArea) {
