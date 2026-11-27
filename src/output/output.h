@@ -8,6 +8,7 @@
 #include "output/hdr_metadata.h"
 #include "output/hdr_transition.h"
 #include "output/page_flip_retry.h"
+#include "output/vrr_transition.h"
 #include "scene/effect_audio.h"
 #include "scene/effect_selection.h"
 
@@ -325,6 +326,7 @@ namespace umbriel {
     std::optional<FormatTier> m_vrrDroppedTier;
     bool m_fullscreenHdrRequested = false;
     HdrTransition m_hdrTransition;
+    VrrTransition m_vrrTransition;
     PageFlipRetry m_pageFlipRetry; // deferred apply while a page-flip is pending
     // Retain an activation rejection until an explicit output reconfiguration
     // probes support again. Ordinary SDR frames must not re-advertise it.
