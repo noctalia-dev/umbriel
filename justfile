@@ -196,6 +196,10 @@ _docs_formatter:
         npm ci --prefix tools/remark --no-audit --no-fund --loglevel=error
     fi
 
+# Regenerate the user-guide screenshots in a nested compositor (needs noctalia, mpvpaper, grim, foot, magick, cwebp).
+screenshots: debug
+    tools/screenshots.sh build-debug/umbriel
+
 # Tracked Markdown and MDX files, parsed with the docs site's remark plugins.
 format-docs: _docs_formatter
     git ls-files -z '*.md' '*.mdx' | xargs -0 -r node tools/remark/format.mjs

@@ -40,6 +40,8 @@ namespace umbriel {
           registry::text("spawn_when_empty", &ScratchpadConfig::spawnWhenEmpty),
           registry::boolean("hide_when_empty", &ScratchpadConfig::hideWhenEmpty),
           registry::boolean("proportional_size", &ScratchpadConfig::proportionalSize),
+          registry::boolean("modal", &ScratchpadConfig::modal),
+          registry::boolean("sticky", &ScratchpadConfig::sticky),
           registry::table("layout", &ScratchpadConfig::layout, workspaceLayoutFields()),
       };
       return fields;
@@ -269,6 +271,7 @@ namespace umbriel {
           integer("corner_radius", 0, 100, &W::cornerRadius),
           boolean("shadow", &W::shadow),
           optionalEffectField("border_effect", &W::borderEffect),
+          boolean("border_effect_unfocused", &W::borderUnfocused),
           optionalEffectField("window_effect", &W::windowEffect),
           registry::table<W>("default_floating_size", self, floatingSize),
           registry::table<W>("default_floating_size_px", self, floatingSizePx),

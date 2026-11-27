@@ -82,23 +82,69 @@ bool fx_render_pass_init_offscreen_buffers(struct wlr_render_pass* render_pass, 
   return true;
 }
 
-// Returns the DRM format that offscreen effect buffers should use for the
-// current pass.
-static uint32_t offscreen_buffer_format(const struct fx_gles_render_pass* pass, bool alpha) {
-  struct fx_renderer* renderer = pass->buffer->renderer;
-  const bool ten_bit_output = pass->output_buffer != NULL
-      && (pass->output_buffer->drm_format == DRM_FORMAT_XRGB2101010
-          || pass->output_buffer->drm_format == DRM_FORMAT_XBGR2101010);
+// Returns the DRM format that offscreen effect buffers should use for an
+// output buffer format.
+static uint32_t effect_buffer_format(struct fx_renderer* renderer, uint32_t output_format, bool linear, bool alpha) {
+  const bool ten_bit_output = output_format == DRM_FORMAT_XRGB2101010 || output_format == DRM_FORMAT_XBGR2101010;
 
   const bool fp16_renderable = renderer->wlr_renderer.features.output_color_transform;
   const bool sdr10_fp16 = ten_bit_output && fp16_renderable && renderer->exts.half_float_linear;
 
-  const bool use_fp16 = pass->has_color_transform || sdr10_fp16;
+  const bool use_fp16 = linear || sdr10_fp16;
   if (use_fp16) {
     return DRM_FORMAT_ABGR16161616F;
   }
 
   return alpha ? DRM_FORMAT_ABGR8888 : DRM_FORMAT_XBGR8888;
+}
+
+static uint32_t offscreen_buffer_format(const struct fx_gles_render_pass* pass, bool alpha) {
+  return effect_buffer_format(
+      pass->buffer->renderer, pass->output_buffer != NULL ? pass->output_buffer->drm_format : DRM_FORMAT_INVALID,
+      pass->has_color_transform, alpha
+  );
+}
+
+bool fx_renderer_sdr_direct_matches_composition(struct wlr_buffer* buffer) {
+  struct wlr_dmabuf_attributes dmabuf;
+  if (!wlr_buffer_get_dmabuf(buffer, &dmabuf)) {
+    return false;
+  }
+  switch (dmabuf.format) {
+  case DRM_FORMAT_XRGB8888:
+  case DRM_FORMAT_ARGB8888:
+  case DRM_FORMAT_XBGR8888:
+  case DRM_FORMAT_ABGR8888:
+  case DRM_FORMAT_RGBX8888:
+  case DRM_FORMAT_RGBA8888:
+  case DRM_FORMAT_BGRX8888:
+  case DRM_FORMAT_BGRA8888:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool fx_renderer_optimized_blur_ready(struct wlr_output* output, struct wlr_buffer* buffer) {
+  const struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_try_get(output);
+  struct wlr_dmabuf_attributes dmabuf;
+  if (fbos == NULL
+      || !wlr_buffer_get_dmabuf(buffer, &dmabuf)
+      || !fbos->optimized_blur_valid
+      || fbos->optimized_blur_sdr_tf != 0) {
+    return false;
+  }
+  const uint32_t format = effect_buffer_format(fbos->renderer, dmabuf.format, false, false);
+  const struct fx_framebuffer* cached[] = {fbos->optimized_blur_buffer, fbos->optimized_no_blur_buffer};
+  for (size_t i = 0; i < sizeof(cached) / sizeof(cached[0]); i++) {
+    if (cached[i] == NULL
+        || cached[i]->buffer->width != buffer->width
+        || cached[i]->buffer->height != buffer->height
+        || cached[i]->drm_format != format) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Allocates or reuses *slot at the requested size. Restores the pass target;
@@ -339,7 +385,7 @@ struct fx_gles_render_pass* fx_get_render_pass(struct wlr_render_pass* render_pa
 }
 
 static bool render_pass_apply_output_transform(struct fx_gles_render_pass* pass) {
-  if (!pass->has_color_transform || !pixman_region32_not_empty(&pass->updated_region)) {
+  if (pass->buffer == pass->output_buffer || !pixman_region32_not_empty(&pass->updated_region)) {
     return true;
   }
 
@@ -371,14 +417,17 @@ static bool render_pass_apply_output_transform(struct fx_gles_render_pass* pass)
   glTexParameteri(texture->target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glUniform1i(shader->tex, 0);
 
-  glUniformMatrix3fv(shader->matrix, 1, GL_FALSE, pass->output_matrix);
-  glUniform1i(shader->inverse_eotf, pass->output_tf);
-  glUniform1i(shader->has_lut, pass->output_lut != 0);
-  glUniform1f(shader->lut_dim, pass->output_lut_dim);
-  if (pass->output_lut != 0) {
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, pass->output_lut);
-    glUniform1i(shader->lut, 1);
+  glUniform1i(shader->copy_encoded_sdr, pass->offscreen_composition);
+  if (!pass->offscreen_composition) {
+    glUniformMatrix3fv(shader->matrix, 1, GL_FALSE, pass->output_matrix);
+    glUniform1i(shader->inverse_eotf, pass->output_tf);
+    glUniform1i(shader->has_lut, pass->output_lut != 0);
+    glUniform1f(shader->lut_dim, pass->output_lut_dim);
+    if (pass->output_lut != 0) {
+      glActiveTexture(GL_TEXTURE1);
+      glBindTexture(GL_TEXTURE_2D, pass->output_lut);
+      glUniform1i(shader->lut, 1);
+    }
   }
 
   set_proj_matrix(shader->proj, pass->projection_matrix, &box);
@@ -459,7 +508,7 @@ static bool render_pass_submit(struct wlr_render_pass* wlr_pass) {
         .y2 = pass->output_buffer->buffer->height,
     };
     if (pixman_region32_contains_rectangle(&pass->updated_region, &output_box) != PIXMAN_REGION_IN) {
-      wlr_log(WLR_ERROR, "Shared HDR blend buffer was not fully initialized");
+      wlr_log(WLR_ERROR, "Shared composition buffer was not fully initialized");
       goto out;
     }
   }
@@ -517,7 +566,9 @@ out:
   if (!pass->effect_capture_saved) {
     fx_framebuffer_release_effect_capture(pass->output_buffer);
   }
-  if (pass->output_buffers != NULL) {
+  if (pass->output_buffers != NULL && pass->offscreen_composition) {
+    pass->output_buffers->sdr_composition_valid = ok;
+  } else if (pass->output_buffers != NULL) {
     if (ok) {
       pass->output_buffers->blend_valid = true;
       if (pixman_region32_not_empty(&pass->updated_region)) {
@@ -1664,7 +1715,7 @@ bool fx_render_pass_end_animation_shadow(
 
 static void
 render_pass_mark_updated(struct fx_gles_render_pass* pass, const struct wlr_box* box, const pixman_region32_t* clip) {
-  if (!pass->has_color_transform || pass->suppress_updated) {
+  if ((!pass->has_color_transform && !pass->offscreen_composition) || pass->suppress_updated) {
     return;
   }
   pixman_region32_t region;
@@ -3309,7 +3360,7 @@ struct fx_gles_render_pass* fx_begin_buffer_pass(
     struct fx_framebuffer* buffer, struct wlr_egl_context* prev_ctx, struct fx_render_timer* timer,
     struct wlr_drm_syncobj_timeline* signal_timeline, uint64_t signal_point,
     struct wlr_color_transform* color_transform, struct fx_offscreen_buffers* output_buffers,
-    enum wlr_color_transfer_function pq_sdr_transfer
+    enum wlr_color_transfer_function pq_sdr_transfer, bool offscreen_composition
 ) {
   struct fx_renderer* renderer = buffer->renderer;
   struct wlr_buffer* wlr_buffer = buffer->buffer;
@@ -3319,7 +3370,7 @@ struct fx_gles_render_pass* fx_begin_buffer_pass(
   buffer->effect_capture_valid = false;
   buffer->capture_protected = false;
   buffer->capture_policy_owner = NULL;
-  buffer->output_buffers = output_buffers;
+  buffer->output_buffers = has_color_transform ? output_buffers : NULL;
   buffer->output_generation = 0;
 
   if (renderer->procs.glGetGraphicsResetStatusKHR) {
@@ -3404,10 +3455,49 @@ struct fx_gles_render_pass* fx_begin_buffer_pass(
       pass->output_lut = lut->texture;
       pass->output_lut_dim = lut->dim;
     }
+  } else if (offscreen_composition) {
+    if (output_buffers == NULL || output_buffers->allocator == NULL) {
+      free(pass);
+      return NULL;
+    }
+
+    bool ten_bit_output = buffer->drm_format == DRM_FORMAT_XRGB2101010 || buffer->drm_format == DRM_FORMAT_XBGR2101010;
+    const uint32_t format =
+        ten_bit_output && renderer->wlr_renderer.features.output_color_transform && renderer->exts.half_float_linear
+        ? DRM_FORMAT_ABGR16161616F
+        : DRM_FORMAT_ABGR8888;
+    struct fx_framebuffer** composition = &output_buffers->sdr_composition_buffer;
+    pass->needs_full_damage = !output_buffers->sdr_composition_valid
+        || *composition == NULL
+        || (*composition)->buffer->width != wlr_buffer->width
+        || (*composition)->buffer->height != wlr_buffer->height
+        || (*composition)->drm_format != format;
+
+    if (pass->needs_full_damage) {
+      output_buffers->sdr_composition_valid = false;
+    }
+
+    bool failed = false;
+    fx_framebuffer_get_or_create_custom(
+        renderer, output_buffers->allocator, wlr_buffer->width, wlr_buffer->height, format, composition, &failed
+    );
+    if (failed || *composition == NULL) {
+      output_buffers->sdr_composition_valid = false;
+      free(pass);
+      return NULL;
+    }
+
+    target = *composition;
+    pass->offscreen_composition = true;
+    wlr_matrix_identity(pass->output_matrix);
+    pass->output_tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
   }
 
   GLint fbo = fx_framebuffer_get_fbo(target);
   if (!fbo) {
+    if (pass->offscreen_composition) {
+      output_buffers->sdr_composition_valid = false;
+    }
     free(pass);
     return NULL;
   }

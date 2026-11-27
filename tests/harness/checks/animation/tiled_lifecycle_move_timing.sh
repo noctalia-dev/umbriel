@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Tiled neighbours use windows_move timing while an opener or closing snapshot independently uses a longer lifecycle
-# effect. By 350 ms the 150 ms reflow must already match its settled geometry in both directions. A window that
-# rejoins the layout from floating reflows its neighbour without replaying its own windows_in.
+# effect. Once the resized neighbour has redrawn, the 150 ms reflow must match its settled geometry 350 ms later in
+# both directions. A window that rejoins the layout from floating reflows its neighbour without replaying its own
+# windows_in.
 set -euo pipefail
+source "$UMBRIEL_HARNESS_LIB"
 
 readonly IMAGE="$UMBRIEL_RUNTIME_DIR/tiled-lifecycle-move-timing.png"
 
@@ -49,17 +51,26 @@ curve = "linear"
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
-spawn() {
-  local title=$1 color=$2
-  FILL_COLOR="$color" "$UMBRIEL_UNMAP_CLIENT" "$title" 1200 700 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
+# Every client follows its tile. A reflow is held until each resized client has redrawn, and on the frozen clock the
+# motion then starts at the current instant, so spawn returns once the new window has redrawn away from its mapped
+# width and await_redrawn waits the same way for a resized neighbour.
+await_redrawn() {
+  local title=$1 old_width=$2
   for _ in $(seq 80); do
-    window=$("$UMBRIEL" windows --json | jq -c --arg title "$title" '.[] | select(.title == $title)')
-    [[ -n $window ]] && return 0
+    window=$(window_by_title "$title") && (($(jq .w <<< "$window") != old_width)) && return 0
     sleep 0.025
   done
-  echo "timed out waiting for $title"
+  echo "$title never redrew away from width $old_width"
   return 1
 }
+
+spawn() {
+  local title=$1 color=$2
+  FOLLOW_CONFIGURES=1 FILL_COLOR="$color" "$UMBRIEL_UNMAP_CLIENT" "$title" 1200 700 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
+  await_redrawn "$title" 1200
+}
+
+survivor_width() { window_by_title lifecycle-move-survivor | jq .w; }
 
 red_width() {
   grim "$IMAGE"
@@ -79,8 +90,10 @@ spawn lifecycle-move-survivor 0xFFFF0000
 "$UMBRIEL" clock-advance 1700
 
 # A transparent opener leaves the survivor fully observable even if broken code keeps it wide underneath the new slot.
+survivor_w=$(survivor_width)
 spawn lifecycle-move-opener 0x00000000
 opener_id=$(jq -r .id <<< "$window")
+await_redrawn lifecycle-move-survivor "$survivor_w"
 "$UMBRIEL" clock-advance 350
 open_early=$(red_width)
 "$UMBRIEL" clock-advance 1700
@@ -90,6 +103,7 @@ if ((open_early < open_final - 20 || open_early > open_final + 20)); then
   exit 1
 fi
 
+survivor_w=$(survivor_width)
 "$UMBRIEL" msg window-close "$opener_id" > /dev/null
 for _ in $(seq 80); do
   if ! "$UMBRIEL" windows --json | jq -e --arg id "$opener_id" 'any(.[]; .id == $id)' > /dev/null; then
@@ -97,6 +111,7 @@ for _ in $(seq 80); do
   fi
   sleep 0.025
 done
+await_redrawn lifecycle-move-survivor "$survivor_w"
 "$UMBRIEL" clock-advance 350
 close_early=$(red_width)
 "$UMBRIEL" clock-advance 1700

@@ -83,4 +83,53 @@ assert_shadow focus
 "$UMBRIEL" msg window-close "$id" > /dev/null
 "$UMBRIEL" clock-advance 200
 assert_shadow closing
-echo "descendant-only border silhouette and its closing snapshot shadow verified"
+
+# A clear client still has an analytic shadow while mapped. Its closing fade
+# tracks the captured alpha.
+sed -i '
+  /^\[animation.border\]$/,/^\[/s/^enabled = true$/enabled = false/
+  s/^effect = "windows_out_identity"$/effect = ""/
+  /^\[animation.windows_out\]$/a style = "fade"
+' "$UMBRIEL_CONFIG"
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+
+[[window_rule]]
+match.title = "^clear-shadow$"
+border_width = 0
+outer_border_width = 0
+default_floating = true
+default_position = { x = 300, y = 500, anchor = "top_left" }
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+FILL_COLOR=0x00000000 "$UMBRIEL_UNMAP_CLIENT" clear-shadow 400 160 > "$UMBRIEL_RUNTIME_DIR/clear.log" 2>&1 &
+for _ in $(seq 80); do
+  window=$("$UMBRIEL" windows --json | jq -c '.[] | select(.title == "clear-shadow")')
+  [[ -n $window ]] && break
+  sleep 0.025
+done
+[[ -n $window ]]
+id=$(jq -r .id <<< "$window")
+x=$(jq -r '.x + (.w / 2 | floor)' <<< "$window")
+y=$(jq -r '.y - 6' <<< "$window")
+"$UMBRIEL" clock-advance 2000
+assert_shadow "clear mapped client"
+"$UMBRIEL" msg window-close "$id" > /dev/null
+unmapped=0
+for _ in $(seq 80); do
+  if grep -q '^unmapped$' "$UMBRIEL_RUNTIME_DIR/clear.log" \
+      && ! "$UMBRIEL" windows --json | jq -e 'any(.[]; .title == "clear-shadow")' > /dev/null; then
+    unmapped=1
+    break
+  fi
+  sleep 0.025
+done
+if (( ! unmapped )); then
+  echo "clear client did not acknowledge unmap after close"; exit 1
+fi
+"$UMBRIEL" clock-advance 200
+grim "$IMAGE"
+read -r r g b < <("$UMBRIEL_PIXEL_PROBE" "$IMAGE" mean "2x2+$x+$y")
+if (( g >= 5 )); then
+  echo "transparent close snapshot retained an analytic shadow: $r $g $b"; exit 1
+fi
+echo "descendant-only closing silhouettes and clear-client closing shadows verified"

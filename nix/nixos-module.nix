@@ -1,9 +1,8 @@
 { xdg-desktop-portal-umbriel }:
 {
   config,
-  pkgs,
   lib,
-  modulesPath,
+  pkgs,
   ...
 }:
 let
@@ -35,7 +34,9 @@ in
   config = lib.mkIf cfg.enable (
     lib.mkMerge [
       {
-        hardware.graphics.enable = lib.mkDefault true;
+        programs.dconf.enable = lib.mkDefault true;
+        services.graphical-desktop.enable = lib.mkDefault true;
+        security.polkit.enable = lib.mkDefault true;
 
         assertions = [
           {
@@ -64,22 +65,16 @@ in
         };
       })
 
-      (lib.mkIf (cfg.portalPackage != null) {
+      {
         xdg.portal = {
-          enable = lib.mkDefault true;
-          extraPortals = [ cfg.portalPackage ];
-          config.umbriel.default = lib.mkDefault [
-            "umbriel"
-            "gtk"
-          ];
+          enable = lib.mkDefault (cfg.portalPackage != null);
+          configPackages = lib.mkIf (cfg.portalPackage != null) [ cfg.portalPackage ];
+          extraPortals = [
+            pkgs.xdg-desktop-portal-gtk
+          ]
+          ++ lib.optional (cfg.portalPackage != null) cfg.portalPackage;
         };
-      })
-
-      (import "${modulesPath}/programs/wayland/wayland-session.nix" {
-        inherit lib pkgs;
-        enableXWayland = false;
-        enableWlrPortal = false;
-      })
+      }
     ]
   );
 }

@@ -12,6 +12,7 @@ unit_tests = [
   ['presentation', ['unit/presentation.cpp'], [umbriel_core_dep]],
   ['animation', ['unit/animation.cpp'], [umbriel_core_dep]],
   ['application-scope', ['unit/application_scope.cpp'], [umbriel_core_dep], [], ['-Wl,--wrap=umbrielCloseRange']],
+  ['session-ready', ['unit/session_ready.cpp'], [umbriel_core_dep]],
   ['shader-source', ['unit/shader_source.cpp'], []],
   ['effects', ['unit/effects.cpp'], []],
   ['effect-selection', ['unit/effect_selection.cpp'], []],

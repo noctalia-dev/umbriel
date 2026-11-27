@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# windows_resize.wait_for_redraw ends its hold when a resized client has drawn a new buffer, at the requested size or at
+# A resizing reflow ends its hold when a resized client has drawn a new buffer, at the requested size or at
 # a size of its own: a new window geometry over the old buffer keeps the hold, and a client that rounds the size to its
 # own step releases it at once instead of at the timeout.
 set -euo pipefail
@@ -38,7 +38,6 @@ curve = "linear"
 
 [animation.windows_resize]
 enabled = false
-wait_for_redraw = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" clock-freeze
@@ -101,7 +100,7 @@ expect "geometry-ahead: opener with the switch" "$SHOTS/geometry-ahead-switched.
 "$UMBRIEL" clock-advance 1500 > /dev/null
 # The client answers 640 with 600, its own step; the switch lands with that answer, not at the timeout.
 open_case rounded RESIZE_STEP=100
-expect "rounded: lone window at its own size" "$SHOTS/rounded-switched.png" "$RED" 0 600 700
+expect "rounded: lone window at its own size, centered" "$SHOTS/rounded-switched.png" "$RED" 20 600 700
 expect "rounded: opener with the switch" "$SHOTS/rounded-switched.png" "$BLUE" 640 640
 
 echo "the hold ended at the client's real redraw, whether at the requested size or its own"

@@ -250,6 +250,9 @@ if build_tests
     'shared-sdr-capture-storage-change',
     'capture-read-format',
     'framebuffer-texture-binding',
+    'sdr-composition-selection',
+    'sdr-composition-10bit-selection',
+    'sdr-composition-alpha-copy',
   ]
     test(
       'color-' + case_name,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# While windows_resize.wait_for_redraw holds a reflow that moves focus, window rules matching is_focused keep showing
+# While a resizing reflow is held for its clients, window rules matching is_focused keep showing
 # what they showed before the move until the switch: here rule ring colours and the unfocused opacity. Opening a
 # window holds the lone window focused and opaque; closing the focused tile holds the survivor unfocused and dimmed
 # until it lands full width.
@@ -54,11 +54,10 @@ enabled = false
 enabled = false
 
 [animation.windows_move]
-enabled = true
+enabled = false
 
 [animation.windows_resize]
 enabled = false
-wait_for_redraw = true
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 "$UMBRIEL" clock-freeze

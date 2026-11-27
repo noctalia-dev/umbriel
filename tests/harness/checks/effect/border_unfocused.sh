@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # With border_unfocused = true, every decorated, calm, non-fullscreen window paints its selected
-# border preset, focused or not. effect/border.sh owns the focused-only default path.
+# border preset, focused or not. Window rules can enable or disable it independently.
+# effect/border.sh owns the focused-only default path.
 set -euo pipefail
 
 source "$UMBRIEL_HARNESS_LIB"
@@ -54,6 +55,8 @@ border_effect = "focused-ring"
 match.is_focused = false
 border_effect = "unfocused-ring"
 EOF
+readonly BASE="$UMBRIEL_RUNTIME_DIR/border-unfocused-base.toml"
+cp "$UMBRIEL_CONFIG" "$BASE"
 "$UMBRIEL" msg config-reload > /dev/null
 
 spawn() {
@@ -107,4 +110,69 @@ if (( $(green_at "2x2+$((row_x + x1 / 2 + w1 / 4))+$((row_y + y1 / 2 - 6))") < 4
   exit 1
 fi
 
-echo "border effects draw on unfocused windows and their overview cards when border_unfocused is on"
+assert_green() {
+  local count
+  count=$(green_at "$1")
+  if [[ $2 == on ]] && (( count < 4 )); then
+    echo "$3 did not paint the unfocused preset"
+    exit 1
+  fi
+  if [[ $2 == off ]] && (( count != 0 )); then
+    echo "$3 painted the unfocused preset despite its rule"
+    exit 1
+  fi
+}
+
+check_override() {
+  "$UMBRIEL" msg overview-close > /dev/null
+  "$UMBRIEL" settle > /dev/null
+  grim "$IMAGE"
+  assert_green "2x2+$((x1 + w1 / 2))+$((y1 - 12))" "$1" "unfocused window"
+  "$UMBRIEL" msg overview-open > /dev/null
+  "$UMBRIEL" settle > /dev/null
+  grim "$IMAGE"
+  assert_green "2x2+$((row_x + x1 / 2 + w1 / 4))+$((row_y + y1 / 2 - 6))" "$1" "overview card"
+}
+
+# A rule can keep one window's border on while the global gate is focused-only.
+sed -i 's/^border_unfocused = true$/border_unfocused = false/' "$UMBRIEL_CONFIG"
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+[[window_rule]]
+match.title = "^border-unfocused-one$"
+border_effect_unfocused = true
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+check_override on
+
+# Reload an explicit false over a global true while the overview is open.
+cp "$BASE" "$UMBRIEL_CONFIG"
+cat >> "$UMBRIEL_CONFIG" <<'EOF'
+[[window_rule]]
+match.title = "^border-unfocused-one$"
+border_effect_unfocused = false
+EOF
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle > /dev/null
+grim "$IMAGE"
+assert_green "2x2+$((row_x + x1 / 2 + w1 / 4))+$((row_y + y1 / 2 - 6))" off "reloaded overview card"
+check_override off
+
+# The false override affects only the unfocused gate, so focus still paints red.
+"$UMBRIEL" msg overview-close > /dev/null
+id1=$(window_by_title border-unfocused-one | jq -r '.id')
+id2=$(window_by_title border-unfocused-two | jq -r '.id')
+"$UMBRIEL" msg window-focus "$id1" > /dev/null
+"$UMBRIEL" settle > /dev/null
+grim "$IMAGE"
+if (( $(red_at "2x2+$((x1 + w1 / 2))+$((y1 - 12))") < 4 )); then
+  echo "border_effect_unfocused = false suppressed the focused preset"
+  exit 1
+fi
+"$UMBRIEL" msg window-focus "$id2" > /dev/null
+
+# Removing the rule restores inheritance of the global true value.
+cp "$BASE" "$UMBRIEL_CONFIG"
+"$UMBRIEL" msg config-reload > /dev/null
+check_override on
+
+echo "global and per-window unfocused borders update on live windows and overview cards"
