@@ -22,6 +22,24 @@ namespace umbriel {
   // Send READY=1 from the compositor process. An empty socket path is a no-op.
   [[nodiscard]] bool notifyServiceReady(std::string_view socketPath);
 
+  // Own an inherited readiness pipe and remove its environment variable before
+  // any child is launched. The descriptor is closed on exec and after reporting.
+  class ServiceReadyPipe {
+  public:
+    explicit ServiceReadyPipe(const char* environmentVariable);
+    ~ServiceReadyPipe();
+    ServiceReadyPipe(const ServiceReadyPipe&) = delete;
+    ServiceReadyPipe& operator=(const ServiceReadyPipe&) = delete;
+
+    bool present() const { return m_present; }
+    bool valid() const { return !m_present || m_fd >= 0; }
+    [[nodiscard]] bool notify();
+
+  private:
+    bool m_present = false;
+    int m_fd = -1;
+  };
+
   // Close every non-standard descriptor before a managed application child
   // hands control to systemd-run. Returns false when a complete close cannot
   // be guaranteed.

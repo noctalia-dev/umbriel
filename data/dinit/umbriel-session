@@ -1,0 +1,4 @@
+type = internal
+restart = false
+depends-on: umbriel
+waits-for.d: $HOME/.config/dinit.d/umbriel-session.d

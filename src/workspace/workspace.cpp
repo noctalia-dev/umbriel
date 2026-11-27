@@ -917,8 +917,9 @@ namespace umbriel {
     releaseLayoutMotion(view);
     std::erase_if(m_motion.openers, [view](const LayoutMotion::Opener& opener) { return opener.view == view; });
     std::erase(m_motion.frozen, view);
-    // Outside the layout it no longer waits for an arrange.
+    // Outside the layout it no longer waits for an arrange, and an opener held for one shows wherever it goes.
     view->applyDeferredBorderFocus();
+    view->resumeTiledOpening();
     view->endLayoutMotion();
     if (scrolling != nullptr && shift != 0.0) {
       scrolling->setScroll(scrolling->scroll() - shift);
@@ -942,10 +943,7 @@ namespace umbriel {
     }
   }
 
-  void Workspace::deferFocusChrome() {
-    const auto& animation = config().animation;
-    m_focusChromeDeferred = animation.windowsResize.waitsForClient(animation.enabled);
-  }
+  void Workspace::deferFocusChrome() { m_focusChromeDeferred = true; }
 
   bool Workspace::defersFocusChrome(const View* view) const {
     return (m_focusChromeDeferred && m_layout->columnOf(view) >= 0)
@@ -1432,13 +1430,29 @@ namespace umbriel {
       });
     }
 
-    // windows_resize.wait_for_redraw turns a reflow that resizes established members into one switch: their frames are
-    // frozen and openers stay hidden until every resized client has redrawn, then all land in the same frame.
+    // A reflow that resizes shown members, or admits an opener whose first frame does not fit its slot while its slot's
+    // configure is still unanswered, is held: members keep their frames (frozen when resized) and openers stay hidden
+    // until every client involved has answered, then the motion starts from the held boxes, or lands in one frame
+    // without windows_move. A hidden tab's redraw is not seen, and an opener that already answered with a size of its
+    // own shows at once, centered in its slot.
     const bool wait = animate
-        && animation.windowsResize.waitsForClient(animation.enabled)
-        && std::ranges::any_of(views, [](const LayoutMotion::ViewEntry& entry) {
-                        return entry.from.width != entry.to.width || entry.from.height != entry.to.height;
-                      });
+        && (std::ranges::any_of(
+                views,
+                [](const LayoutMotion::ViewEntry& entry) {
+                  return !entry.view->presentationSuppressed()
+                      && (entry.from.width != entry.to.width || entry.from.height != entry.to.height);
+                }
+            )
+            || std::ranges::any_of(members, [](const Member& member) {
+                 const wlr_box drawn = member.view->committedContentBox();
+                 const View::ClientSize scheduled = member.view->scheduledSize();
+                 const bool unanswered = !member.view->configureAcknowledged()
+                     || scheduled.width != member.to.width
+                     || scheduled.height != member.to.height;
+                 return member.opening
+                     && unanswered
+                     && (drawn.width != member.to.width || drawn.height != member.to.height);
+               }));
 
     // A fresh map starts windows_in in its final slot on the same tick established members begin windows_move. The
     // opener never joins the geometry motion, so its box is never interpolated, and the reflow it causes does not run
@@ -1511,7 +1525,7 @@ namespace umbriel {
       }
     }
 
-    if (views.empty()) {
+    if (views.empty() && !wait) {
       endLayoutMotion();
       return;
     }
@@ -1534,6 +1548,7 @@ namespace umbriel {
       m_motion.progressPhysics = false;
       m_motion.sizePhysics = false;
       m_motion.waiting = true;
+      m_motion.animateAfterWait = animateMove;
       m_motion.waitStartMsec.reset();
     } else {
       // An interrupted motion hands its speed to the next one, so repeated actions bend the motion instead of stopping
@@ -1594,30 +1609,58 @@ namespace umbriel {
     }
   }
 
-  bool Workspace::tickLayoutMotionWait(double nowMsec) {
-    if (!m_motion.waitStartMsec) {
-      m_motion.waitStartMsec = nowMsec;
-    }
-    const auto answered = [](const View* view) { return !view->tiledSizeRequestPending(); };
-    bool ready =
-        std::ranges::all_of(m_motion.views, [&](const LayoutMotion::ViewEntry& entry) { return answered(entry.view); });
-    for (const LayoutMotion::Opener& opener : m_motion.openers) {
-      ready = ready && (!heldOpenerAlive(opener.view) || answered(opener.view));
-    }
-    if (!ready && nowMsec - *m_motion.waitStartMsec < kRedrawWaitMs) {
-      return true;
-    }
+  bool Workspace::layoutHoldAnswered() const {
+    const bool members = std::ranges::all_of(m_motion.views, [](const LayoutMotion::ViewEntry& entry) {
+      return entry.view->presentationSuppressed() || !entry.view->tiledSizeRequestPending();
+    });
+    // An opener only needs to have acknowledged its slot's configure: the commit carrying that acknowledgement is what
+    // it shows, and one that keeps a size of its own is then drawn centered in its slot.
+    return members && std::ranges::all_of(m_motion.openers, [this](const LayoutMotion::Opener& opener) {
+             return !heldOpenerAlive(opener.view) || opener.view->configureAcknowledged();
+           });
+  }
 
-    // One switch: the frozen frames go, the openers appear, and every member lands at its target in this tick.
+  void Workspace::releaseLayoutHold() {
+    // The frozen frames go and the openers appear; the members move from their held boxes, or land on the next tick.
     m_motion.waiting = false;
     m_motion.waitStartMsec.reset();
     releaseHeldCloseSnapshots();
     resumeHeldOpeners();
-    m_motion.progress.snap(1.0);
-    m_motion.size.snap(1.0);
-    if (Cursor* cursor = m_group != nullptr ? m_group->server()->cursor() : nullptr; cursor != nullptr) {
-      cursor->resumeTiledResize(this);
+    if (m_motion.animateAfterWait && !m_motion.views.empty()) {
+      startLayoutTimelines(0.0, 0.0);
+      // The windows_move effect binds to the running timeline, which only exists from here.
+      for (const LayoutMotion::ViewEntry& entry : m_motion.views) {
+        entry.view->syncAnimationEffects();
+      }
+    } else {
+      m_motion.progress.snap(1.0);
+      m_motion.size.snap(1.0);
     }
+  }
+
+  void Workspace::releaseAnsweredLayoutHold() {
+    if (!m_motion.waiting || !layoutHoldAnswered()) {
+      return;
+    }
+    releaseLayoutHold();
+    if (m_group == nullptr || m_group->output() == nullptr) {
+      return;
+    }
+    if (!m_motion.progress.animating()) {
+      // A switch without windows_move lands with the commit that answered, not on a later tick.
+      (void)tickLayoutMotion(static_cast<double>(m_group->server()->animationClockMsec()));
+    }
+    wlr_output_schedule_frame(m_group->output()->wlr());
+  }
+
+  bool Workspace::tickLayoutMotionWait(double nowMsec) {
+    if (!m_motion.waitStartMsec) {
+      m_motion.waitStartMsec = nowMsec;
+    }
+    if (!layoutHoldAnswered() && nowMsec - *m_motion.waitStartMsec < kRedrawWaitMs) {
+      return true;
+    }
+    releaseLayoutHold();
     return false;
   }
 
@@ -2036,8 +2079,10 @@ namespace umbriel {
         ring.push_back(unitEntry(column, row));
       }
     }
-    std::ranges::copy_if(m_floatingStack, std::back_inserter(ring), [](const View* view) {
-      return !view->minimized();
+    // Stacking navigation follows workspace membership order, which stays stable when focus raises a window.
+    const auto& floatingOrder = m_layoutMode == LayoutMode::Stacking ? m_views : m_floatingStack;
+    std::ranges::copy_if(floatingOrder, std::back_inserter(ring), [](const View* view) {
+      return view->floating() && !view->minimized();
     });
     if (ring.size() < 2) {
       return nullptr;
@@ -3678,7 +3723,8 @@ namespace umbriel {
       return false;
     }
     // A workspace swipe on a scratchpad's output takes the scratchpad away, as a workspace switch does.
-    if (ScratchpadManager* scratchpads = m_server->scratchpadManager()) {
+    if (ScratchpadManager* scratchpads = m_server->scratchpadManager();
+        scratchpads != nullptr && !scratchpads->stickyOn(m_output)) {
       scratchpads->dismissOn(m_output);
     }
     // A settle still running between neighbours is heading for a whole step, so where it is on screen minus that step
@@ -3885,9 +3931,9 @@ namespace umbriel {
     if (m_active == workspace && config().workspaces.backAndForth && m_previous != nullptr && m_previous != m_active) {
       selected = m_previous;
     }
-    // A scratchpad covers the workspace it was shown over, so switching away from it closes the scratchpad.
+    // A scratchpad covers the workspace it was shown over, so switching away from it closes it unless it is sticky.
     if (ScratchpadManager* scratchpads = m_server->scratchpadManager();
-        scratchpads != nullptr && selected != m_active) {
+        scratchpads != nullptr && selected != m_active && !scratchpads->stickyOn(m_output)) {
       scratchpads->dismissOn(m_output);
     }
     activate(selected);

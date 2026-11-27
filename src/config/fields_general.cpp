@@ -18,9 +18,9 @@ namespace umbriel {
 
   namespace {
 
-    constexpr std::array<std::string_view, 8> kReservedEnvironmentNames{
-        "WAYLAND_DISPLAY",     "WAYLAND_SOCKET",      "DISPLAY",          "UMBRIEL_SOCKET", "LIBEI_SOCKET",
-        "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "XDG_SESSION_TYPE",
+    constexpr std::array<std::string_view, 9> kReservedEnvironmentNames{
+        "WAYLAND_DISPLAY",     "WAYLAND_SOCKET",      "DISPLAY",          "UMBRIEL_SOCKET",         "LIBEI_SOCKET",
+        "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "XDG_SESSION_TYPE", "UMBRIEL_DINIT_READY_FD",
     };
 
     const registry::Choices<TitleAlign>& titleAligns() {

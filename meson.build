@@ -1031,6 +1031,22 @@ install_data(
   install_dir: get_option('prefix') / 'lib' / 'systemd' / 'user',
 )
 
+umbriel_dinit_service = configure_file(
+  input: 'data/dinit/umbriel.in',
+  output: 'umbriel.dinit',
+  configuration: umbriel_session_config,
+)
+install_data(
+  umbriel_dinit_service,
+  rename: 'umbriel',
+  install_dir: get_option('prefix') / 'lib' / 'dinit.d' / 'user',
+  install_tag: 'runtime',
+)
+install_data(
+  'data/dinit/umbriel-session',
+  install_dir: get_option('prefix') / 'lib' / 'dinit.d' / 'user',
+)
+
 install_data(
   'examples/config.toml',
   install_dir: get_option('datadir') / 'umbriel',

@@ -1,16 +1,5 @@
 # Configuration
 
-## Starting configuration
-
-The packaged starting configuration is [`examples/config.toml`](https://github.com/noctalia-dev/umbriel/blob/main/examples/config.toml). Copy it before making local changes:
-
-```sh
-mkdir -p ~/.config/umbriel
-cp /usr/share/umbriel/config.toml ~/.config/umbriel/config.toml
-```
-
-A manual installation under `/usr/local` places it at `/usr/local/share/umbriel/config.toml`. Nix users should prefer `programs.umbriel.settings` in Home Manager or hjem.
-
 Umbriel watches the active configuration and applies valid changes when you save. Most options reload immediately; reference tables identify options that require a restart. If a reload fails, Umbriel keeps the last working configuration and tries again on the next save.
 
 Without `-c`, Umbriel checks these locations in order:
@@ -126,7 +115,7 @@ honor_restored_maximize = false
 | `nvidia_sync_workaround`     | bool         | `true`                    | Wait for GPU completion on composed NVIDIA outputs without explicit synchronization. Applies on reload. See [NVIDIA synchronization](#nvidia-synchronization).                       |
 | `show_cheatsheet`            | bool         | `true`                    | Show the keybind cheatsheet when Umbriel starts.                                                                                                                                     |
 | `focus_on_activate`          | bool         | `false`                   | Let application activation requests focus and reveal their target.                                                                                                                   |
-| `attach_modal_dialogs`       | bool         | `true`                    | Attach a modal dialog to its parent, so it follows the parent and holds its input. See [Dialogs](layout.md#dialogs).                                                                 |
+| `attach_modal_dialogs`       | bool         | `true`                    | Attach a modal dialog to its parent, so it follows the parent and holds its input. See [Dialogs](window-states.md#dialogs).                                                          |
 | `honor_restored_maximize`    | bool         | `false`                   | Honor maximize requests an application makes while its window opens, until it acknowledges its opening layout.                                                                       |
 
 `Xwayland` must be installed and available on `PATH` when X11 support is enabled. It starts when the first X11 application connects.
@@ -191,13 +180,13 @@ ELECTRON_OZONE_PLATFORM_HINT = "auto"
 SDL_VIDEODRIVER = "wayland"
 ```
 
-These variables apply to Umbriel and commands started in its session. In a managed native session, they are also published to the systemd user manager for session services such as Noctalia. Nested sessions do not modify the host session environment.
+These variables apply to Umbriel and commands started in its session. In a managed native session, they are also published to the active user service manager for session services such as Noctalia. Nested sessions do not modify the host session environment.
 
-Names must match `[A-Za-z_][A-Za-z0-9_]*`, and values must be strings. Umbriel owns its display, input-emulation, and session variables, so this section cannot override `WAYLAND_DISPLAY`, `WAYLAND_SOCKET`, `DISPLAY`, `UMBRIEL_SOCKET`, `LIBEI_SOCKET`, `XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP`, or `XDG_SESSION_TYPE`.
+Names must match `[A-Za-z_][A-Za-z0-9_]*`, and values must be strings. Umbriel owns its display, input-emulation, session, and readiness variables, so this section cannot override `WAYLAND_DISPLAY`, `WAYLAND_SOCKET`, `DISPLAY`, `UMBRIEL_SOCKET`, `LIBEI_SOCKET`, `XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP`, `XDG_SESSION_TYPE`, or `UMBRIEL_DINIT_READY_FD`.
 
 Environment changes require an Umbriel restart. Fully quit and relaunch long-running applications that survived the restart.
 
-Removing a key does not clear a value already published to the systemd user manager. Run `systemctl --user unset-environment NAME` to remove it immediately, or wait for the user manager to exit.
+Removing a key does not clear a value already published to the user manager. Run `systemctl --user unset-environment NAME` for systemd or `dinitctl --user unsetenv NAME` for dinit to remove it immediately, or wait for the user manager to exit.
 
 ## Events
 

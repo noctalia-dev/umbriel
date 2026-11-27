@@ -30,11 +30,11 @@ To understand the values and philosophy guiding the project, read our [ethos](ht
 
 ## Features
 
-- **Layouts:** scrolling, dwindle, master, and [stacking](docs/user/layout.md#stacking-layout) per workspace, with [tab groups](docs/user/layout.md#tab-groups), [scratchpads](docs/user/scratchpad.md), and mouse-driven resizing and reordering
+- **Layouts:** [scrolling](docs/user/layout-scrolling.md), [dwindle](docs/user/layout-dwindle.md), [master](docs/user/layout-master.md), and [stacking](docs/user/layout-stacking.md) per workspace, with [tab groups](docs/user/tab-groups.md), [scratchpads](docs/user/scratchpad.md), and mouse-driven resizing and reordering
 - **Workspaces and outputs:** independent workspaces per output, hotplug restoration, fractional scaling, and [virtual outputs](docs/user/outputs.md#virtual-outputs) for [game streaming](docs/user/streaming.md)
-- **Windows:** [window rules](docs/user/window-rules.md), [layer rules](docs/user/layer-rules.md), optional [title bars](docs/user/appearance.md#title-bar), [stacking drop zones](docs/user/layout.md#drop-zones-and-region-placement), and an animated overview
+- **Windows:** [window rules](docs/user/window-rules.md), [layer rules](docs/user/layer-rules.md), optional [title bars](docs/user/title-bars.md), [stacking drop zones](docs/user/layout-stacking.md#drop-zones-and-region-placement), and an animated overview
 - **Visuals:** blur, shadows, rounded corners, double borders, animations, and [GLSL effect presets](docs/user/effects.md)
-- **Gaming and display:** opt-in [HDR](docs/user/outputs.md#hdr), [variable refresh rate](docs/user/outputs.md#variable-refresh-rate), [tearing](docs/user/outputs.md#tearing), [direct scanout](docs/user/outputs.md#direct-scanout), and explicit sync, where hardware and clients support them
+- **Gaming and display:** opt-in [HDR](docs/user/display-features.md#hdr), [variable refresh rate](docs/user/display-features.md#variable-refresh-rate), [tearing](docs/user/display-features.md#tearing), [direct scanout](docs/user/display-features.md#direct-scanout), and explicit sync, where hardware and clients support them
 - **Input:** keyboard, touchpad gestures, touch, tablets, input methods, and pointer locking and confinement
 - **Integration:** on-demand Xwayland, [sandboxed connections](docs/user/security.md), layer shell, session lock, and screen sharing through [xdg-desktop-portal-umbriel](https://github.com/noctalia-dev/xdg-desktop-portal-umbriel)
 - **Configuration:** live-reloaded TOML with includes and diagnostics, plus IPC and runtime inspection

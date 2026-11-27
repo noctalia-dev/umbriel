@@ -1384,41 +1384,6 @@ UMBRIEL_TEST(durationBesideASpringCurveIsReportedAsInert) {
   CHECK_EQ(store.config().animation.workspaces.durationMs, 200);
 }
 
-UMBRIEL_TEST(resizeWaitAppliesOnlyWhileTheSizeDoesNotAnimate) {
-  const TempConfig file;
-  ConfigStore& store = umbriel::configStore();
-  store.setRootPath(file.path(), true);
-
-  file.write(
-      "[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n\n[animation.windows_out]\nenabled = "
-      "false\n"
-  );
-  CHECK(store.reload().success);
-  const auto& animation = store.config().animation;
-  CHECK(animation.windowsResize.waitsForClient(animation.enabled));
-  CHECK(animation.holdsClosedTile());
-  CHECK(!containsDiagnostic(store, "has no effect"));
-
-  // An animated close fills the closed tile's space itself, so it holds no frame.
-  file.write("[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n");
-  CHECK(store.reload().success);
-  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
-  CHECK(!store.config().animation.holdsClosedTile());
-
-  // An animated size has nothing to wait for, so the key is reported as inert.
-  file.write("[animation.windows_resize]\nenabled = true\nwait_for_redraw = true\n");
-  CHECK(store.reload().success);
-  CHECK(containsDiagnostic(store, "animation.windows_resize.wait_for_redraw has no effect"));
-  CHECK(!store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
-
-  // With every animation off, nothing animates the size or the close, so the wait applies and holds closed tiles.
-  file.write("[animation]\nenabled = false\n\n[animation.windows_resize]\nwait_for_redraw = true\n");
-  CHECK(store.reload().success);
-  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
-  CHECK(store.config().animation.holdsClosedTile());
-  CHECK(!containsDiagnostic(store, "has no effect"));
-}
-
 UMBRIEL_TEST(workspaceRevealRequiresAnAnimationShader) {
   const TempConfigTree tree;
   tree.write("wipe.glsl", "vec4 animation(vec2 uv) { return umbriel_sample(uv); }");
@@ -3909,6 +3874,7 @@ _PRIVATE = "kept"
 NOT_A_STRING = 1
 WAYLAND_DISPLAY = "wrong"
 LIBEI_SOCKET = "/nonexistent/umbriel-test-eis"
+UMBRIEL_DINIT_READY_FD = "4"
 WLR_DRM_DEVICES = "/dev/dri/card0"
 WLR_RENDER_DRM_DEVICE = "/dev/dri/renderD128"
 )");
@@ -4354,6 +4320,30 @@ UMBRIEL_TEST(effectSelectorsLoadAtEveryLevel) {
   CHECK(!containsDiagnostic(store, "unknown key"));
   const umbriel::EffectPreset* ring = umbriel::findEffectPreset(config.effects, "ring");
   CHECK(ring != nullptr && ring->overlay == "lines");
+}
+
+UMBRIEL_TEST(windowRuleBorderEffectUnfocusedAcceptsOnlyBooleans) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[[window_rule]]\nborder_effect_unfocused = true\n"
+      "[[window_rule]]\nborder_effect_unfocused = false\n"
+      "[[window_rule]]\nopacity = 0.9\n"
+      "[[window_rule]]\nborder_effect_unfocused = \"audio\"\n"
+  );
+  CHECK(store.reload().success);
+  const auto& rules = store.config().windowRules;
+  CHECK_EQ(rules.size(), size_t{4});
+  if (rules.size() != 4) {
+    return;
+  }
+  CHECK(rules[0].borderUnfocused == true);
+  CHECK(rules[1].borderUnfocused == false);
+  CHECK(!rules[2].borderUnfocused.has_value());
+  CHECK(!rules[3].borderUnfocused.has_value());
+  CHECK(containsDiagnostic(store, "border_effect_unfocused"));
+  CHECK(!containsDiagnostic(store, "unknown key"));
 }
 
 UMBRIEL_TEST(windowsDragTuningDefaultsAndBounds) {
