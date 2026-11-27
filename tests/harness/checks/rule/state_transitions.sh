@@ -33,6 +33,11 @@ opacity = 0.5
 match.title = "^state-rules$"
 match.is_pinned = true
 opacity = 0.5
+
+[[window_rule]]
+match.title = "^state-rules$"
+match.is_maximized = true
+opacity = 0.5
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
@@ -99,4 +104,12 @@ pinned=$(expect_state "pinned" applied)
 wait_for_field floating false
 unpinned=$(expect_state "unpinned" absent)
 
-echo "float and pin transitions re-apply state rules: $tiled, $floated, $retiled, $pinned, $unpinned"
+"$UMBRIEL" msg window-toggle-maximize > /dev/null
+wait_for_field maximized true
+maximized=$(expect_state "maximized" applied)
+
+"$UMBRIEL" msg window-toggle-maximize > /dev/null
+wait_for_field maximized false
+unmaximized=$(expect_state "unmaximized" absent)
+
+echo "float, pin, and maximize transitions re-apply state rules: $tiled, $floated, $retiled, $pinned, $unpinned, $maximized, $unmaximized"

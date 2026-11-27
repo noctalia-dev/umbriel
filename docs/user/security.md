@@ -54,6 +54,25 @@ Install matching versions of Umbriel and the portal backend. The portal frontend
 
 For Deskflow with multiple monitors, use version 1.27 or newer. Deskflow 1.26 can submit duplicate barrier IDs and fail to arm capture.
 
+## Global shortcut approval
+
+Umbriel's private global-shortcut bridge asks for approval before registering new shortcut IDs. The requesting application's label is unverified. Review the displayed shortcut IDs, descriptions, candidate chords, and any conflicts. Long requests span multiple pages within the current output's usable area.
+
+Press Enter on a physical keyboard to review the next page. On the final page, a fresh Enter approves the complete request and remembers its shortcut scope. Holding Enter, Wayland virtual keyboards, and emulated input cannot advance or approve. Any other non-modifier physical key or a pointer click cancels. Output changes restart page review; configuration changes cancel the pending request. Approval fails when no panel can be shown or another confirmation, input capture, or session lock prevents review.
+
+Remembered approval is restored only with a private, compositor-issued credential for the same application and shortcut IDs. Application labels alone do not restore it. The store is `$XDG_STATE_HOME/umbriel/global-shortcuts.json`, defaulting to `~/.local/state/umbriel/global-shortcuts.json`. Ordinary configured keybinds and compositor escape chords take priority. Shortcuts do not activate during capture, locking, a confirmation, shortcut inhibition, an active submap, or session inactivity.
+
+Inspect and revoke shortcut approval with:
+
+```sh
+umbriel global-shortcuts
+umbriel global-shortcuts --json
+umbriel global-shortcuts-revoke org.example.App
+umbriel global-shortcuts-revoke all
+```
+
+Inspection includes unassigned candidates and conflict reasons, without exposing restore credentials. Revocation closes matching live sessions and cancels pending review. A durable deletion failure is reported even though live sessions stop; retry revocation before relying on a credential being permanently invalid. See [Global shortcuts IPC](ipc.md#global-shortcuts) for the reply fields and failure behavior.
+
 ## Sandboxed Wayland clients
 
 Umbriel supports version 1 of the [Wayland security-context protocol](https://wayland.app/protocols/security-context-v1). It is always enabled.
@@ -65,7 +84,7 @@ A sandbox engine can create a restricted Wayland connection and label it with th
 Restricted clients retain the protocols needed for ordinary windows, rendering, focused input, clipboard use, output discovery, idle inhibition, and activation. Umbriel withholds compositor-wide authority, including:
 
 - Screen and window capture
-- Direct access to the input-capture bridge
+- Direct access to the input-capture and global-shortcut bridges
 - Virtual input and input-method ownership
 - Clipboard-manager access
 - Layer shell and session locking
@@ -80,7 +99,7 @@ New protocols remain hidden from restricted clients until they receive a securit
 
 ### Per-application grants
 
-Use `[[security_context_rule]]` when a sandboxed application genuinely needs a protocol without a portal equivalent:
+Use `[[security_context_rule]]` when a sandboxed application needs a protocol without a portal equivalent:
 
 ```toml
 [[security_context_rule]]

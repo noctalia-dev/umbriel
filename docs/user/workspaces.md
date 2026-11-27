@@ -172,28 +172,28 @@ Later values replace earlier ones. Strut edges are resolved independently, so a 
 
 ### Available fields
 
-| Key                                          | Description                                                                                                                                 |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                                       | Select an exact name and create it on matching dynamic outputs.                                                                             |
-| `index`                                      | Select a current one-based position from 1 to 64.                                                                                           |
-| `output`                                     | Restrict the rule to a connector or monitor name.                                                                                           |
-| `layout.mode`                                | Use `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`.                                                                                |
-| `layout.gap`                                 | Set the window gap.                                                                                                                         |
-| `layout.struts.{left,right,top,bottom}`      | Reserve signed logical pixels at each edge.                                                                                                 |
-| `layout.extent_presets`                      | Set extent-cycle fractions.                                                                                                                 |
-| `layout.new_exits_fullscreen`                | Choose which arriving windows exit fullscreen; see [Leaving fullscreen](layout.md#leaving-fullscreen).                                      |
-| `layout.client_maximize`                     | Choose `"column"` or `"edges"` for a tiled window's own maximize request; see [Maximize and fullscreen](layout.md#maximize-and-fullscreen). |
-| `layout.stacking.drop_zones`                 | Enable edge and corner drag previews and placement in stacking; defaults to `true`.                                                         |
-| `layout.scrolling.default_extent_fraction`   | Set the initial scrolling-column extent.                                                                                                    |
-| `layout.scrolling.center_underfull_strip`    | Center or start-align an underfull strip.                                                                                                   |
-| `layout.scrolling.center_focused`            | Control when focus changes center a column.                                                                                                 |
-| `layout.scrolling.center_on_overview_select` | Center the column picked in the overview.                                                                                                   |
-| `layout.master.position`                     | Place the master area left, right, or center.                                                                                               |
-| `layout.master.default_width_fraction`       | Set the master-area fraction.                                                                                                               |
-| `layout.master.new_on_top`                   | Place new stack windows at the top or bottom.                                                                                               |
-| `layout.master.new_becomes_master`           | Give the master slot to new windows.                                                                                                        |
-| `layout.dwindle.preserve_split`              | Keep split directions fixed.                                                                                                                |
-| `layout.dwindle.new_toward_cursor`           | Open new windows on the pointer's side of the split.                                                                                        |
+| Key                                          | Description                                                                                                                                                    |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                                       | Select an exact name and create it on matching dynamic outputs.                                                                                                |
+| `index`                                      | Select a current one-based position from 1 to 64.                                                                                                              |
+| `output`                                     | Restrict the rule to a connector or monitor name.                                                                                                              |
+| `layout.mode`                                | Use `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`.                                                                                                   |
+| `layout.gap`                                 | Set the window gap.                                                                                                                                            |
+| `layout.struts.{left,right,top,bottom}`      | Reserve signed logical pixels at each edge.                                                                                                                    |
+| `layout.extent_presets`                      | Set extent-cycle fractions.                                                                                                                                    |
+| `layout.new_exits_fullscreen`                | Choose which arriving windows exit fullscreen; see [Leaving fullscreen](layout.md#leaving-fullscreen).                                                         |
+| `layout.client_maximize`                     | Choose `"column"` or `"edges"` for a tiled or stacking window's own maximize request; see [Maximize and fullscreen](window-states.md#maximize-and-fullscreen). |
+| `layout.stacking.drop_zones`                 | Enable edge and corner drag previews and placement in stacking; defaults to `true`.                                                                            |
+| `layout.scrolling.default_extent_fraction`   | Set the initial scrolling-column extent.                                                                                                                       |
+| `layout.scrolling.center_underfull_strip`    | Center or start-align an underfull strip.                                                                                                                      |
+| `layout.scrolling.center_focused`            | Control when focus changes center a column.                                                                                                                    |
+| `layout.scrolling.center_on_overview_select` | Center the column picked in the overview.                                                                                                                      |
+| `layout.master.position`                     | Place the master area left, right, or center.                                                                                                                  |
+| `layout.master.default_width_fraction`       | Set the master-area fraction.                                                                                                                                  |
+| `layout.master.new_on_top`                   | Place new stack windows at the top or bottom.                                                                                                                  |
+| `layout.master.new_becomes_master`           | Give the master slot to new windows.                                                                                                                           |
+| `layout.dwindle.preserve_split`              | Keep split directions fixed.                                                                                                                                   |
+| `layout.dwindle.new_toward_cursor`           | Open new windows on the pointer's side of the split.                                                                                                           |
 
 ### Examples
 

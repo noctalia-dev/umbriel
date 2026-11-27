@@ -43,7 +43,7 @@ namespace umbriel {
     const std::vector<configmerge::EffectDeclaration>& poolDeclarations;
   };
 
-  // Record a diagnostic in the store and log it.
+  // Record a diagnostic in the store; ConfigStore decides whether it also reaches the log.
   void emitDiag(ConfigDiagnostic::Severity severity, const toml::source_region* src, std::string msg);
 
   template <typename... A> void warnAt(const toml::source_region& src, std::format_string<A...> fmt, A&&... args) {
@@ -68,6 +68,8 @@ namespace umbriel {
   const registry::Choices<HdrMode>& hdrModes();
   const registry::Choices<ContentType>& contentTypes();
   const registry::Choices<LayoutMode>& layoutModes();
+  // The `layout` keys of a [[workspace]] rule, shared by [[scratchpad]].
+  const registry::Fields<WorkspaceLayoutOverrides>& workspaceLayoutFields();
   // Shared by [layout.tabs] and window rules.
   const registry::Choices<ColumnDisplay>& columnDisplays();
   // Shared by [appearance.title_bar] buttons and the title_bar_buttons window rule: an array of distinct buttons, read
@@ -153,6 +155,7 @@ namespace umbriel {
   registry::Field<Config> inputTable();
   registry::Field<Config> outputTable();
   registry::Field<Config> keybindsTable();
+  registry::Field<Config> globalShortcutsTable();
 
   // Checks that need every table read.
   void validateEffectReferences(Config& loaded, std::vector<EffectReference>& references);

@@ -637,11 +637,11 @@ namespace umbriel {
       return false;
     }
     const ErasedRow erased = eraseRow(source, static_cast<size_t>(row));
-    // Joining a tab group adds no unit, so only a row of its own claims the column's free space.
+    // Joining a tab group adds no unit, so only a row of its own claims the column's free space. Its old weight was a
+    // share of another column, so it joins as a new window does.
     const JoinPoint join = joinPoint(destination);
-    const double insertedWeight = join.group
-        ? erased.heightWeight
-        : claimInsertWeight(destination, static_cast<int>(join.row), erased.heightWeight);
+    const double insertedWeight =
+        join.group ? erased.heightWeight : claimInsertWeight(destination, static_cast<int>(join.row), 1.0);
     insertRow(destination, join.row, view, insertedWeight, rememberedExtent, join.group);
     if (source.views.empty()) {
       m_columns.erase(m_columns.begin() + sourceColumn);
@@ -683,7 +683,7 @@ namespace umbriel {
       return true;
     }
     const auto landing = static_cast<size_t>(focusRow + 1);
-    const double insertedWeight = claimInsertWeight(destination, static_cast<int>(landing), erased.heightWeight);
+    const double insertedWeight = claimInsertWeight(destination, static_cast<int>(landing), 1.0);
     insertRow(destination, landing, pulled, insertedWeight, rememberedExtent);
     return true;
   }
@@ -734,13 +734,15 @@ namespace umbriel {
       const size_t edge = direction > 0 ? end - 1 : start;
       const double weight =
           claimInsertWeight(col, static_cast<int>(direction > 0 ? end : start), col.heightWeights[start]);
+      // The group shows the tab before it, or after it when it was first, as when it closes.
+      const View* shown = col.views[at > start ? at - 1 : at + 1];
       if (direction > 0) {
         rotateRows(col, at, at + 1, end);
       } else {
         rotateRows(col, start, at, at + 1);
       }
-      col.tabs.select(edge);
       col.tabs.leave(edge);
+      col.tabs.select(static_cast<size_t>(rowOf(shown)));
       col.heightWeights[edge] = weight;
       return true;
     }
@@ -826,6 +828,11 @@ namespace umbriel {
     eraseRow(column, static_cast<size_t>(rowOf(view)));
     if (column.views.empty()) {
       m_columns.erase(m_columns.begin() + columnIndex);
+      if (m_lastFocusedColumn > columnIndex) {
+        --m_lastFocusedColumn;
+      } else if (m_lastFocusedColumn == columnIndex) {
+        m_lastFocusedColumn = -1;
+      }
       if (m_removedFocusedColumn == columnIndex) {
         m_pendingRemovalReevaluate = true;
       }

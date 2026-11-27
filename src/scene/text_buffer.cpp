@@ -29,7 +29,7 @@ namespace umbriel {
     return result;
   }
 
-  TextBufferResult renderTextBuffer(const TextBufferParams& params) {
+  TextBufferSize measureTextBuffer(const TextBufferParams& params) {
     const double scale = std::max(1.0, params.scale);
 
     // Measure text with a throwaway 1×1 surface, scaled for HiDPI.
@@ -58,12 +58,24 @@ namespace umbriel {
     int textH = 0;
     pango_layout_get_pixel_size(measureLayout, &textW, &textH);
     g_object_unref(measureLayout);
+    pango_font_description_free(fontDesc);
     cairo_destroy(measureCr);
     cairo_surface_destroy(measureSurface);
 
+    return {
+        .logicalWidth = (params.fixedWidth ? std::max(params.maxWidth, textW) : textW) + params.padding * 2,
+        .logicalHeight = textH + params.padding * 2,
+    };
+  }
+
+  TextBufferResult renderTextBuffer(const TextBufferParams& params) {
+    const double scale = std::max(1.0, params.scale);
+    const auto measured = measureTextBuffer(params);
+    const int textW = measured.logicalWidth - params.padding * 2;
+    const int logicalW = measured.logicalWidth;
+    const int logicalH = measured.logicalHeight;
+
     // Compute logical and device-pixel dimensions.
-    const int logicalW = textW + params.padding * 2;
-    const int logicalH = textH + params.padding * 2;
     int pixelW = static_cast<int>(std::ceil(logicalW * scale));
     int pixelH = static_cast<int>(std::ceil(logicalH * scale));
     pixelW = std::max(pixelW, 1);
@@ -81,9 +93,17 @@ namespace umbriel {
 
     // Text (all coordinates are logical; cairo_scale handles device mapping).
     PangoLayout* layout = pango_cairo_create_layout(cr);
+    PangoFontDescription* fontDesc = pango_font_description_from_string(params.font.c_str());
     pango_layout_set_font_description(layout, fontDesc);
     // An ellipsized line keeps the measuring width: shaping it to its own measured width can round into a second cut.
-    shapeLayout(layout, params.ellipsize ? params.maxWidth : textW);
+    pango_layout_set_width(layout, (params.ellipsize || params.fixedWidth ? params.maxWidth : textW) * PANGO_SCALE);
+    if (params.ellipsize) {
+      pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+      pango_layout_set_single_paragraph_mode(layout, TRUE);
+    } else {
+      pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+      pango_layout_set_indent(layout, -params.hangingIndent * PANGO_SCALE);
+    }
     pango_layout_set_markup(layout, params.markup.c_str(), -1);
     cairo_move_to(cr, params.padding, params.padding);
     pango_cairo_show_layout(cr, layout);

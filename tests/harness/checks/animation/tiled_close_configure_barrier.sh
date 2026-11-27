@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# A survivor receives its target configure and begins visible movement immediately while the independent windows_out
-# clock runs. A later stale-size client keeps the compositor endpoint instead of falling back to its old buffer.
+# A survivor resized by a tiled close holds its starting box until its client redraws at the target size, then moves
+# and resizes from that box while the independent windows_out clock runs. A survivor that never redraws is released
+# after the hold times out and stays at the size it drew, unstretched, through later arranges.
 set -euo pipefail
 
 readonly OUT_MS=1000
@@ -113,6 +114,17 @@ pattern_bounds() {
   "$UMBRIEL_PIXEL_PROBE" "$1" bbox '(b > 0.6 || g > 0.6) && r < 0.08'
 }
 
+wait_for_survivor_height() {
+  local title=$1 height=$2 mode=$3
+  for _ in $(seq 100); do
+    [[ $("$UMBRIEL" windows --json | jq --arg title "$title" '.[] | select(.title == $title) | .h') == "$height" ]] \
+      && return 0
+    sleep 0.025
+  done
+  echo "$mode survivor never committed height $height"
+  return 1
+}
+
 bounds_match() {
   local tolerance=$1 ax=$2 ay=$3 aw=$4 ah=$5 bx=$6 by=$7 bw=$8 bh=$9
   ((ax >= bx - tolerance && ax <= bx + tolerance \
@@ -123,49 +135,74 @@ bounds_match() {
 
 verify_layout() {
   local mode=$1
-  local survivor_log="$UMBRIEL_RUNTIME_DIR/close-configure-$mode-survivor.log"
+  local survivor_title="close-configure-$mode-survivor"
+  local survivor_log="$UMBRIEL_RUNTIME_DIR/$survivor_title.log"
   local third_log="$UMBRIEL_RUNTIME_DIR/close-configure-$mode-third.log"
+  local fifo="$UMBRIEL_RUNTIME_DIR/$survivor_title-control" control_fd mark
 
   spawn "close-configure-$mode-first" "$UMBRIEL_RUNTIME_DIR/close-configure-$mode-first.log" 0xFF000080
   finish_animations
-  spawn "close-configure-$mode-survivor" "$survivor_log" 0xFFFF0000
+  # The survivor follows each configure only when told to, so the check decides when it has redrawn.
+  mkfifo "$fifo"
+  exec {control_fd}<> "$fifo"
+  RESIZE_FILL_COLOR=0xFFFF0000 RESIZE_ON_STDIN=1 LOG_CONFIGURES=1 \
+    "$UMBRIEL_UNMAP_CLIENT" "$survivor_title" 1280 720 <&"$control_fd" > "$survivor_log" 2>&1 &
+  wait_for_log "$survivor_log" '^mapped' "$mode survivor did not map"
   finish_animations
+  mark=$(wc -l < "$survivor_log")
   spawn "close-configure-$mode-third" "$third_log" 0xFF808000
   finish_animations
+  wait_for_log_since "$survivor_log" "$mark" '^resize-pending 640x360' \
+    "$mode survivor never received its three-window size"
+  echo r >&"$control_fd"
+  wait_for_log_since "$survivor_log" "$mark" '^resized 640x360' "$mode survivor did not redraw at its three-window size"
+  wait_for_survivor_height "$survivor_title" 360 "$mode"
+  finish_animations
 
-  wait_for_log "$survivor_log" 'configured-size=640x360' "$mode survivor never received its three-window size"
-  local mark closing_id
+  local closing_id
   mark=$(wc -l < "$survivor_log")
   closing_id=$(jq -r .id <<< "$window")
   grim "$SHOTS/$mode-before.png"
   "$UMBRIEL" msg window-close "$closing_id" > /dev/null
   wait_for_log "$third_log" '^unmapped$' "$mode third window did not unmap"
-  wait_for_log_since "$survivor_log" "$mark" 'configured-size=640x720' \
+  wait_for_log_since "$survivor_log" "$mark" '^resize-pending 640x720' \
     "$mode survivor did not receive its target configure"
 
-  # The survivor's target configure proves the close arranged, starting windows_move and windows_out together.
-  "$UMBRIEL" clock-advance 200
+  # Until the survivor redraws, the reflow is held at the starting boxes while windows_out already runs.
+  "$UMBRIEL" clock-advance 100
   grim "$SHOTS/$mode-held.png"
+  echo r >&"$control_fd"
+  wait_for_log_since "$survivor_log" "$mark" '^resized 640x720' "$mode survivor did not redraw at its target"
+  wait_for_survivor_height "$survivor_title" 720 "$mode"
 
-  # windows_move runs for MOVE_MS from the close; windows_out keeps running past it on its own clock.
+  # The redraw releases the hold at this frozen instant, so windows_move and windows_resize start here.
+  "$UMBRIEL" clock-advance 200
+  grim "$SHOTS/$mode-started.png"
   "$UMBRIEL" clock-advance 150
   grim "$SHOTS/$mode-moving.png"
   # After windows_out as well as windows_move, so the close snapshot no longer covers the survivor's bottom band.
   "$UMBRIEL" clock-advance 1500
   grim "$SHOTS/$mode-final.png"
 
-  local before_x before_y before_w before_h held_x held_y held_w held_h
+  local before_x before_y before_w before_h held_x held_y held_w held_h started_x started_y started_w started_h
   local moving_x moving_y moving_w moving_h final_x final_y final_w final_h
   read -r before_x before_y before_w before_h <<< "$(red_bounds "$SHOTS/$mode-before.png")"
   read -r held_x held_y held_w held_h <<< "$(red_bounds "$SHOTS/$mode-held.png")"
+  read -r started_x started_y started_w started_h <<< "$(red_bounds "$SHOTS/$mode-started.png")"
   read -r moving_x moving_y moving_w moving_h <<< "$(red_bounds "$SHOTS/$mode-moving.png")"
   read -r final_x final_y final_w final_h <<< "$(red_bounds "$SHOTS/$mode-final.png")"
-  if ((held_h <= before_h + 20 || held_h >= 700)); then
-    echo "$mode survivor had not started windows_move by the first sample: before=$before_h held=$held_h"
+  if ! bounds_match 3 "$held_x" "$held_y" "$held_w" "$held_h" "$before_x" "$before_y" "$before_w" "$before_h"; then
+    echo "$mode survivor left its starting box before it redrew: before=$before_x $before_y $before_w $before_h" \
+      "held=$held_x $held_y $held_w $held_h"
     exit 1
   fi
-  if ((moving_h <= held_h + 20 || moving_h >= 700)); then
-    echo "$mode survivor did not visibly resize during windows_move: held=$held_h moving=$moving_h"
+  # 200 of 600 ms into a linear 360 to 720 resize is about 480; measured from the release, not from the close.
+  if ((started_h < 460 || started_h > 500)); then
+    echo "$mode survivor did not start windows_move from its held box at its redraw: held=$held_h started=$started_h"
+    exit 1
+  fi
+  if ((moving_h <= started_h + 20 || moving_h >= 700)); then
+    echo "$mode survivor did not visibly resize during windows_move: started=$started_h moving=$moving_h"
     exit 1
   fi
   if ! bounds_match 3 "$final_x" "$final_y" "$final_w" "$final_h" 640 0 640 720; then
@@ -188,8 +225,8 @@ finish_animations
 finish_animations
 verify_layout master
 
-# A client may acknowledge the configure but keep rendering its old size. The compositor-owned endpoint must remain
-# authoritative after windows_move, rather than snapping back to that stale buffer while waiting for a later commit.
+# A client may acknowledge the configure but keep rendering its old size. Once the hold times out and windows_move
+# completes, the survivor is drawn 1:1 at the size it drew instead of stretched to its tile.
 "$UMBRIEL" msg workspace-switch 3 > /dev/null
 finish_animations
 readonly STALE_LOG="$UMBRIEL_RUNTIME_DIR/close-configure-stale-survivor.log"
@@ -220,22 +257,22 @@ wait_for_log_since "$STALE_LOG" "$stale_mark" '^mapped 640x720' "stale-size surv
 "$UMBRIEL" clock-advance 1200
 grim "$SHOTS/stale-final.png"
 read -r final_x final_y final_w final_h <<< "$(pattern_bounds "$SHOTS/stale-final.png")"
-if ! bounds_match 3 "$final_x" "$final_y" "$final_w" "$final_h" 0 0 1280 720; then
-  echo "completed windows_move snapped back to a stale client buffer: got=$final_x $final_y $final_w $final_h"
+if ! bounds_match 3 "$final_x" "$final_y" "$final_w" "$final_h" 0 0 640 720; then
+  echo "stale-size survivor was not drawn 1:1 at its own size: got=$final_x $final_y $final_w $final_h"
   exit 1
 fi
 
-# A later geometry-stable arrange must not discard that endpoint ownership while the client still refuses the
-# configured size. Force at least one layout replacement while keeping a lone tiled view fullscreen in both modes.
+# A later geometry-stable arrange that gives it the whole output keeps drawing it 1:1, centered in its tile, while the
+# client still refuses the configured size. Force at least one layout replacement while keeping a lone tiled view.
 "$UMBRIEL" msg workspace-set-layout master > /dev/null
 "$UMBRIEL" clock-advance 50
 "$UMBRIEL" msg workspace-set-layout dwindle > /dev/null
 "$UMBRIEL" clock-advance 200
 grim "$SHOTS/stale-after-arrange.png"
 read -r final_x final_y final_w final_h <<< "$(pattern_bounds "$SHOTS/stale-after-arrange.png")"
-if ! bounds_match 3 "$final_x" "$final_y" "$final_w" "$final_h" 0 0 1280 720; then
-  echo "stable arrange discarded the stale-client endpoint hold: got=$final_x $final_y $final_w $final_h"
+if ! bounds_match 3 "$final_x" "$final_y" "$final_w" "$final_h" 320 0 640 720; then
+  echo "stable arrange did not keep the stale-size survivor 1:1 and centered: got=$final_x $final_y $final_w $final_h"
   exit 1
 fi
 
-echo "dwindle and master started moving at once, kept the close clock running, and retained stale-client endpoints"
+echo "dwindle and master held survivors until they redrew, kept the close clock running, and kept stale clients 1:1"

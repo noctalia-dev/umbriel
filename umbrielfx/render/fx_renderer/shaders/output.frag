@@ -4,6 +4,7 @@ precision highp float;
 varying vec2 v_texcoord;
 
 uniform sampler2D tex;
+uniform bool copy_encoded_sdr;
 uniform mat3 color_matrix;
 uniform int inverse_eotf;
 uniform sampler2D lut;
@@ -60,6 +61,13 @@ float sample_lut(float value, float row) {
 
 void main() {
   vec4 color = texture2D(tex, v_texcoord);
+
+  // Unconverting would zero RGB where alpha is zero, but a direct frame keeps it.
+  if (copy_encoded_sdr) {
+    gl_FragColor = color;
+    return;
+  }
+
   float alpha = color.a;
   vec3 rgb = alpha == 0.0 ? vec3(0.0) : color.rgb / alpha;
 

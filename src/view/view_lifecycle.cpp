@@ -7,6 +7,7 @@
 #include "input/toplevel_drag.h"
 #include "layer/layer_surface.h"
 #include "layout/scrolling.h"
+#include "output/identity.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/effect_registry.h"
@@ -23,6 +24,7 @@ extern "C" {
 // clang-format off
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <utility>
 #include "wlr.h"
 // clang-format on
@@ -211,6 +213,94 @@ namespace umbriel {
     self->roleDestroyed();
   }
 
+  Output* View::predictedRuleOutput(const ResolvedWindowRule& rule) const {
+    // An attached dialog takes its parent's placement, so its output is wherever the parent lives. Before map
+    // wantsAttach() cannot run yet, so a requested parent stands in for it.
+    if (attached()) {
+      return currentOutput();
+    }
+    if (openingParented() && config().general.attachModalDialogs) {
+      if (const View* parent = shellParent(); parent != nullptr) {
+        return parent->currentOutput();
+      }
+    }
+    Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
+    const bool launchRuleOverride = m_launchPlacementPending
+        && (rule.defaultOutput.has_value() || rule.defaultWorkspace.has_value() || rule.defaultScratchpad.has_value());
+    Workspace* target = nullptr;
+    if (!launchRuleOverride) {
+      if (m_workspace != nullptr) {
+        target = m_workspace;
+      } else if (m_launchWorkspace != nullptr && m_launchWorkspace->workspace != nullptr) {
+        target = m_launchWorkspace->workspace;
+      }
+    }
+    if (target == nullptr) {
+      WorkspaceGroup* preferredGroup = preferred != nullptr ? preferred->workspaceGroup() : nullptr;
+      WorkspaceGroup* group = windowRuleWorkspaceGroup(*m_server, rule, preferredGroup);
+      target = windowRuleWorkspace(group, rule);
+    }
+    Output* output = target != nullptr && target->group() != nullptr ? target->group()->output() : preferred;
+    ScratchpadManager* scratchpadManager = m_server->scratchpadManager();
+    const std::string_view scratchpad = rule.defaultScratchpad
+        ? std::string_view(*rule.defaultScratchpad)
+        : (m_launchPlacementPending && !launchRuleOverride && !rule.defaultPinned.value_or(false)
+               ? std::string_view(m_launchScratchpad)
+               : std::string_view{});
+    if (!scratchpad.empty() && scratchpadManager != nullptr && scratchpadManager->hasScratchpad(scratchpad)) {
+      output = scratchpadManager->presentationOutput(scratchpad, output);
+    }
+    return output;
+  }
+
+  ResolvedWindowRule View::resolveRulesForOpening(WindowRuleState state) const {
+    const auto resolveForOutput = [&](const Output* output) {
+      std::optional<OutputIdentity> identity;
+      if (output != nullptr) {
+        identity = output->identity();
+      }
+      return resolveWindowRules(
+          config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, state, m_server->uptimeMs(),
+          identity ? &*identity : nullptr
+      );
+    };
+
+    // The first pass runs without an output: the placement rules alone pick where the window opens, which is the
+    // output `match.output` then tests. Follow the placement each resolution predicts until it settles. Configs whose
+    // output rules move the window in a circle have no fixed point, so remember the first move and fall back to the
+    // rules on its destination with that move's placement fields preserved.
+    Output* openingOutput = predictedRuleOutput(resolveForOutput(nullptr));
+    Output* current = openingOutput;
+    std::set<Output*> visited;
+    ResolvedWindowRule openingRule;
+    Output* openingDestination = nullptr;
+    while (true) {
+      if (!visited.insert(current).second) {
+        break;
+      }
+      ResolvedWindowRule candidate = resolveForOutput(current);
+      Output* next = predictedRuleOutput(candidate);
+      if (current == openingOutput) {
+        openingRule = candidate;
+        openingDestination = next;
+      }
+      if (next == current) {
+        return candidate;
+      }
+      if (visited.contains(next)) {
+        break;
+      }
+      current = next;
+    }
+
+    ResolvedWindowRule fallback = resolveForOutput(openingDestination);
+    fallback.defaultOutput = openingRule.defaultOutput;
+    fallback.defaultWorkspace = openingRule.defaultWorkspace;
+    fallback.defaultScratchpad = openingRule.defaultScratchpad;
+    fallback.defaultPinned = openingRule.defaultPinned;
+    return fallback;
+  }
+
   void View::handleMap() {
     m_hasEverMapped = true;
     // The XDG map signal is emitted before the root surface commit signal.
@@ -229,7 +319,6 @@ namespace umbriel {
     }
     m_effects.resetSlots();
     m_tiledOpeningDeferred = false;
-    m_openingFloatingSize.reset();
     m_presentedTiledBox = {};
     m_acceptClientMaximizeRequests = config().general.honorRestoredMaximize;
     // Firefox often re-assert session maximize after map. With honor off, consume that one request so
@@ -258,10 +347,11 @@ namespace umbriel {
     m_initialRuleState = ruleState();
     m_initialRuleState.focused = false;
     m_initialRuleState.alone = false;
-    const ResolvedWindowRule rule = resolveWindowRules(
-        config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, m_initialRuleState,
-        m_server->uptimeMs()
-    );
+    ResolvedWindowRule rule = resolveRulesForOpening(m_initialRuleState);
+    // spawn-floating acts as a default_floating rule; an explicit default_floating rule decides instead.
+    if (m_launchFloating && !rule.defaultFloating) {
+      rule.defaultFloating = true;
+    }
     m_initialRules = rule;
     m_initialRuleHistory.clear();
     m_initialRuleHistory.push_back(rule);
@@ -380,14 +470,7 @@ namespace umbriel {
         requestFloatingSize((*mapFloatingSize)[0], (*mapFloatingSize)[1]);
       }
     }
-    if (assignedScratchpad) {
-      // Scratchpad admission has detached the view from its workspace, so its
-      // assigned scratchpad output now supplies the correct usable area.
-      placeInUsableArea(rule.defaultPosition, mapFloatingSize);
-      if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
-        scratchpad->syncViewPresentation(this);
-      }
-    } else if (!assignedScratchpad && !m_tiled) {
+    if (!m_tiled) {
       placeInUsableArea(rule.defaultPosition, mapFloatingSize);
       // Enable + clip the float against its home output now that per-output
       // visibility is resolved data-side (no per-render-pass pass to do it).
@@ -452,13 +535,13 @@ namespace umbriel {
 
     // Opening state is compositor-owned. Clients may restore a saved maximized
     // flag during this transition; only an explicit window rule or an honored
-    // restore overrides the layout's initial size. A tiled restore under the
-    // workspace's client_maximize = "edges" lands in the edges, above any rule column.
+    // restore overrides the layout's initial size. Tiled and stacking restores
+    // follow client_maximize; a tile's rule-owned full-width column stays below the edges.
     const bool ruleMaximized = !openingParented() && rule.defaultMaximize && *rule.defaultMaximize;
     const bool restoredMaximized = config().general.honorRestoredMaximize && requestedMaximized();
     const bool restoreToEdges = restoredMaximized
-        && m_tiled
         && m_workspace != nullptr
+        && (m_tiled || m_workspace->layoutMode() == LayoutMode::Stacking)
         && m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges;
     if (placed && !assignedScratchpad && (ruleMaximized || (restoredMaximized && !restoreToEdges))) {
       setMaximized(true);
@@ -506,55 +589,23 @@ namespace umbriel {
         // windows_move reflow that makes room for it. An overview card follows that same reveal.
         deferTiledOpening();
       } else {
-        if (!m_tiled && !layoutFullscreen() && m_presentation.width() > 0 && m_presentation.height() > 0) {
-          m_openingFloatingSize = std::array{m_presentation.width(), m_presentation.height()};
-        }
         setFadeAlpha(0.0F);
         m_fade.snap(0.0);
         m_fade.retarget(1.0, open.durationMs, open.curve);
 
-        // Floating and fullscreen windows tween themselves.
+        // Fullscreen and floating windows apply the inset to the box they rest in on every fade tick: the output box
+        // the arrange after this map assigns, or the float's position at the size its client draws by then.
         if (!m_customFade && (open.style == "popin" || open.style == "zoom")) {
-          const double scale = std::clamp(open.style == "zoom" ? 0.5 : open.scale, 0.0, 1.0);
-          if (layoutFullscreen()) {
-            // The output box this window rests in is assigned by the arrange that follows this map, so the inset is
-            // applied against that box on every fade tick instead of tweening a node it has not been placed in yet.
-            m_openingScale = scale;
-            const wlr_box area = fullscreenLayoutBox();
-            setLayoutTarget(area.x, area.y);
-            presentBox(area);
-          } else if (m_presentation.width() > 0 && m_presentation.height() > 0) {
-            const int targetW = m_presentation.width();
-            const int targetH = m_presentation.height();
-            const int startW = std::max(1, static_cast<int>(targetW * scale));
-            const int startH = std::max(1, static_cast<int>(targetH * scale));
-            const int targetX = layoutX();
-            const int targetY = layoutY();
-            const int startX = targetX + (targetW - startW) / 2;
-            const int startY = targetY + (targetH - startH) / 2;
-
-            m_presentation.setSize(startW, startH);
-            m_presentation.animateTo(targetW, targetH, open.durationMs, open.curve);
-            setScenePosition(startX, startY);
-            m_posX.snap(startX);
-            m_posY.snap(startY);
-            m_posX.retarget(targetX, open.durationMs, open.curve);
-            m_posY.retarget(targetY, open.durationMs, open.curve);
-          }
+          m_openingScale = std::clamp(open.style == "zoom" ? 0.5 : open.scale, 0.0, 1.0);
         } else if (!m_customFade && open.style == "slide") {
-          if (layoutFullscreen()) {
-            m_openingSlide = kOpenSlidePx;
-            const wlr_box area = fullscreenLayoutBox();
-            setLayoutTarget(area.x, area.y);
-            presentBox(area);
-          } else {
-            const int targetX = layoutX();
-            const int targetY = layoutY();
-            setScenePosition(targetX, targetY + kOpenSlidePx);
-            m_posX.snap(targetX);
-            m_posY.snap(targetY + kOpenSlidePx);
-            m_posY.retarget(targetY, open.durationMs, open.curve);
-          }
+          m_openingSlide = kOpenSlidePx;
+        }
+        if (openingInsetPending() && layoutFullscreen()) {
+          const wlr_box area = fullscreenLayoutBox();
+          setLayoutTarget(area.x, area.y);
+          presentBox(area);
+        } else if (openingInsetPending() && !m_tiled) {
+          presentBox(floatingOpeningBox());
         }
         scheduleFrame();
       }
@@ -797,6 +848,7 @@ namespace umbriel {
     m_ruleBlur.snap(0.0);
     m_outerBorderColorAnim.snap(m_outerBorderColorAnim.target());
     m_appliedRuleState = {};
+    m_appliedRuleOutput = nullptr;
     // An unmapped window keeps no layout state. The detach released its alone effect when the column survives it.
     m_aloneEffectsActive = false;
     m_aloneAction = AloneAction::None;
@@ -869,20 +921,23 @@ namespace umbriel {
     }
   }
 
+  void View::syncCaptureClip() {
+    if (m_captureScene == nullptr) {
+      return;
+    }
+    // Same bounds as on-screen presentation, so a stale window geometry does not crop the capture. Client subsurfaces
+    // stay visible and buffer content outside the window is excluded; window-owned popups are separate children.
+    const wlr_box captureClip = committedContentBox();
+    wlr_scene_subsurface_tree_set_clip(&m_captureScene->tree.node, &captureClip);
+  }
+
   void View::handleCommit(bool reconfigureOpeningState) {
     UMBRIEL_ZONE("View::handleCommit");
     // Client transparency can change on any commit. An unmap commit reaches here after handleUnmap hid the backdrop.
     if (m_mapped) {
       m_presentation.setFullscreenOpaque(fullscreenOpaque());
     }
-    if (m_captureScene != nullptr) {
-      // Restrict the capture to the window geometry. Client subsurfaces
-      // remain visible, while buffer content outside the declared window is
-      // excluded. Window-owned popups are separate children and remain part
-      // of the isolated scene.
-      const wlr_box captureClip = geometryBox();
-      wlr_scene_subsurface_tree_set_clip(&m_captureScene->tree.node, &captureClip);
-    }
+    syncCaptureClip();
     syncXwaylandShape();
     if (openingConfigurePending() || reconfigureOpeningState) {
       m_openingFloatingRuleSize = {};
@@ -891,9 +946,10 @@ namespace umbriel {
       openingState.focused = false;
       openingState.floating = !looksTiled();
       openingState.alone = false;
-      ResolvedWindowRule rule = resolveWindowRules(
-          config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, openingState, m_server->uptimeMs()
-      );
+      ResolvedWindowRule rule = resolveRulesForOpening(openingState);
+      if (m_launchFloating && !rule.defaultFloating) {
+        rule.defaultFloating = true;
+      }
       ScratchpadManager* scratchpadManager = m_server->scratchpadManager();
       const bool launchRuleOverride = m_launchPlacementPending
           && (rule.defaultOutput.has_value()
@@ -907,10 +963,14 @@ namespace umbriel {
       const bool openingInScratchpad = !openingScratchpad.empty()
           && scratchpadManager != nullptr
           && scratchpadManager->hasScratchpad(openingScratchpad);
+      // A pad that has never had an output has no workspace yet, so its window opens floating until the pad arranges
+      // it.
+      Workspace* openingPadWorkspace =
+          openingInScratchpad ? scratchpadManager->workspaceOf(openingScratchpad) : nullptr;
       const bool passiveUtility = passiveXwaylandUtility();
       bool wantTiled = !m_server->seat()->toplevelDrags().attached(m_toplevel)
           && !passiveUtility
-          && !openingInScratchpad
+          && (!openingInScratchpad || openingPadWorkspace != nullptr)
           && !rule.defaultPinned.value_or(false)
           && (rule.defaultFloating ? !*rule.defaultFloating : looksTiled());
       if (passiveUtility) {
@@ -922,7 +982,9 @@ namespace umbriel {
       // Resolve the workspace this view will attach to, so the output and layout that will actually arrange it are the
       // ones that size the first configure.
       Workspace* launchWorkspace = m_launchWorkspace != nullptr ? m_launchWorkspace->workspace : nullptr;
-      Workspace* target = launchRuleOverride ? nullptr : (m_workspace != nullptr ? m_workspace : launchWorkspace);
+      Workspace* target = openingPadWorkspace != nullptr
+          ? openingPadWorkspace
+          : (launchRuleOverride ? nullptr : (m_workspace != nullptr ? m_workspace : launchWorkspace));
       Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
       WorkspaceGroup* targetGroup = target != nullptr
           ? target->group()
@@ -941,7 +1003,7 @@ namespace umbriel {
       // maximize-to-edges still need this window to be the only tile in that column. A state that neither the client
       // nor the not-alone rules asked for is recorded as the alone rules' own, for map to hand to that effect.
       const bool openingSoleTiled = target == nullptr || target->isOnlyTiledView(this);
-      ResolvedWindowRule alone = resolveRulesWithAlone(true);
+      ResolvedWindowRule alone = resolveRulesWithAlone(true, predictedRuleOutput(rule));
       const bool openingAlone = wantTiled
           && (target == nullptr
               || target->wouldBeAloneInLayout(
@@ -1074,14 +1136,19 @@ namespace umbriel {
         m_pendingFloatingHeight = rule.defaultFloatingHeight;
         m_pendingFloatingPosition = rule.defaultPosition;
       } else {
-        const SizeHints hints = sizeHints();
         if (wantMaximized) {
-          const wlr_box usable = openingUsableArea(targetOutput);
-          requestFloatingSize(usable.width, usable.height);
+          const int barHeight = wantsTitleBar(rule.titleBar.value_or(config().appearance.titleBar.mode))
+              ? config().appearance.titleBar.height
+              : 0;
+          const wlr_box box = floatingMaximizedBox(
+              openingUsableArea(targetOutput), wantMaximizeToEdges, barHeight,
+              target != nullptr ? &target->layoutConfig() : nullptr
+          );
+          requestFloatingSize(box.width, box.height);
           setMaximizedState(true);
         } else {
           const wlr_box usable = openingUsableArea(targetOutput);
-          m_openingFloatingRuleSize = floatingRuleSize(rule, hints, usable);
+          m_openingFloatingRuleSize = floatingRuleSize(rule, sizeHints(), usable);
           requestFloatingSize(m_openingFloatingRuleSize[0], m_openingFloatingRuleSize[1]);
         }
 
@@ -1092,6 +1159,9 @@ namespace umbriel {
     }
     commitFloatingSize();
     (void)settleTiledSizeRequest();
+    if (m_mapped && m_workspace != nullptr) {
+      m_workspace->releaseAnsweredLayoutHold();
+    }
     applyCornerRadius();
     // Re-apply the owner's frame and clip after each client commit. A tiled commit is not a resize request: Chromium
     // can change its geometry without changing configure, but the layout still owns its box.

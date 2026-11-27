@@ -68,16 +68,7 @@ namespace umbriel {
   }
 
   void Section::report(ConfigDiagnostic::Severity severity, const toml::node& node, std::string message) {
-    ConfigDiagnostic diag;
-    diag.severity = severity;
-    diag.message = std::move(message);
-    const auto& src = node.source();
-    diag.line = src.begin.line;
-    diag.column = src.begin.column;
-    if (src.path != nullptr) {
-      diag.file = *src.path;
-    }
-    m_diagnostics.push_back(std::move(diag));
+    m_diagnostics.push_back(makeDiagnostic(severity, node.source(), std::move(message)));
   }
 
   Section& Section::freeform() {

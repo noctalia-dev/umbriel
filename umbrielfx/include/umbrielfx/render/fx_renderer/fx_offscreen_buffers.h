@@ -35,6 +35,10 @@ struct fx_offscreen_buffers {
   unsigned audio_texture;
   uint8_t audio_bands[FX_AUDIO_BANDS];
 
+  // Encoded SDR composition shared by blur frames.
+  struct fx_framebuffer* sdr_composition_buffer;
+  bool sdr_composition_valid;
+
   // Linear-light composition target shared by the output swapchain
   struct fx_framebuffer* blend_buffer;
   bool blend_valid;

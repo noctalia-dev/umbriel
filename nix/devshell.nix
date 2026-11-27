@@ -20,6 +20,7 @@ pkgs.mkShell {
     pkg-config
     wayland-scanner
     dbus
+    dinit
     llvmPackages_22.clang-tools
     llvmPackages_22.libclang
     gnugrep
@@ -30,6 +31,7 @@ pkgs.mkShell {
     jq
     foot
     python3
+	nodejs
     imagemagick
     procps
     xwayland

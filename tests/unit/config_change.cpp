@@ -37,10 +37,22 @@ UMBRIEL_TEST(aFirstLoadReportsEverything) {
   CHECK(change.input);
   CHECK(change.outputs);
   CHECK(change.scratchpads);
+  CHECK(change.globalShortcuts);
 }
 
 UMBRIEL_TEST(eachSectionIsReportedOnItsOwn) {
   const Config before;
+
+  {
+    Config after;
+    after.globalShortcuts["org.test.App"]["talk"] = "Mod+M";
+    const ConfigChange change = ConfigChange::between(before, after);
+    CHECK(change.any());
+    CHECK(change.globalShortcuts);
+    CHECK(!change.keybinds);
+    CHECK(!ConfigEffects::between(before, after).any());
+    CHECK_EQ(change.summary(), std::string("global shortcuts"));
+  }
 
   {
     Config after;
@@ -877,6 +889,10 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   changedFloatingMatcher.windowRules[0].matchFloating = true;
   CHECK(ConfigEffects::between(forcedByRule, changedFloatingMatcher).tearingPolicy);
 
+  Config changedMaximizedMatcher = forcedByRule;
+  changedMaximizedMatcher.windowRules[0].matchMaximized = true;
+  CHECK(ConfigEffects::between(forcedByRule, changedMaximizedMatcher).tearingPolicy);
+
   Config changedEdgesMatcher = forcedByRule;
   changedEdgesMatcher.windowRules[0].matchMaximizedToEdges = true;
   CHECK(ConfigEffects::between(forcedByRule, changedEdgesMatcher).tearingPolicy);
@@ -909,6 +925,10 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   Config changedTagMatcher = forcedByRule;
   changedTagMatcher.windowRules[0].xdgTagPatterns = RegexPatterns{}.add("^game-launcher$");
   CHECK(ConfigEffects::between(forcedByRule, changedTagMatcher).tearingPolicy);
+
+  Config changedOutputMatcher = forcedByRule;
+  changedOutputMatcher.windowRules[0].outputPatterns = RegexPatterns{}.add("^HDMI-A-1$");
+  CHECK(ConfigEffects::between(forcedByRule, changedOutputMatcher).tearingPolicy);
 
   Config unrelatedRule = before;
   WindowRule translucent;
@@ -954,6 +974,21 @@ UMBRIEL_TEST(windowRulesRaiseEffectsOnlyWhenARuleSelectsAnEffect) {
   Config rematched = selecting;
   rematched.windowRules[0].appIdPatterns = RegexPatterns{}.add("^kitty$");
   CHECK(ConfigEffects::between(selecting, rematched).effects);
+}
+
+UMBRIEL_TEST(borderUnfocusedRuleChangesRefreshWindowChromeAndOverview) {
+  Config before;
+  before.windowRules.emplace_back().borderUnfocused = true;
+  Config after = before;
+  after.windowRules[0].borderUnfocused = false;
+  CHECK(ConfigChange::between(before, after).windowRules);
+  const ConfigEffects effects = ConfigEffects::between(before, after);
+  CHECK(effects.viewChrome);
+  CHECK(effects.invalidatesOverview());
+  CHECK(!effects.effects);
+
+  after.windowRules[0].borderUnfocused.reset();
+  CHECK(ConfigChange::between(before, after).windowRules);
 }
 
 UMBRIEL_TEST(directScanoutPolicyForcesOnlyItsRuntimeEffect) {

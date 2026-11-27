@@ -55,7 +55,7 @@ namespace umbriel {
 
     void handleModifiers();
     bool handleConfirmationPress(
-        std::span<const uint32_t> keysyms, uint32_t rawKeysym, uint32_t modifiers, bool modifierOnly
+        std::span<const uint32_t> keysyms, uint32_t rawKeysym, uint32_t modifiers, bool modifierOnly, bool freshPress
     );
     void handleKey(void* data);
     void handleDestroy();
@@ -88,6 +88,7 @@ namespace umbriel {
     bool m_repeatArmed = false;
     // Keycodes whose press a keybind consumed, so the release is withheld from the focused client too.
     std::unordered_set<uint32_t> m_consumedKeycodes;
+    std::unordered_set<uint32_t> m_pressedKeycodes;
   };
 
 } // namespace umbriel

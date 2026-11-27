@@ -7,6 +7,7 @@
 #include "output/frame_schedule.h"
 #include "output/hdr_metadata.h"
 #include "output/hdr_transition.h"
+#include "output/page_flip_retry.h"
 #include "output/vrr_transition.h"
 #include "scene/effect_audio.h"
 #include "scene/effect_selection.h"
@@ -326,6 +327,7 @@ namespace umbriel {
     bool m_fullscreenHdrRequested = false;
     HdrTransition m_hdrTransition;
     VrrTransition m_vrrTransition;
+    PageFlipRetry m_pageFlipRetry; // deferred apply while a page-flip is pending
     // Retain an activation rejection until an explicit output reconfiguration
     // probes support again. Ordinary SDR frames must not re-advertise it.
     bool m_hdrAvailable = false;
@@ -337,6 +339,7 @@ namespace umbriel {
     uint64_t m_refreshNs = 0;
     bool m_appliedConfiguredScale = false;
     wl_event_source* m_frameRetryTimer = nullptr;
+    unsigned m_failedFrameCommits = 0; // frame commits failed in a row; paces armFrameRetry()
     wl_event_source* m_effectFrameTimer = nullptr;
     wl_event_source* m_directScanoutTimer = nullptr;
     DirectScanoutTracker m_directScanout;

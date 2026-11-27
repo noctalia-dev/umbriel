@@ -54,7 +54,7 @@ namespace umbriel {
     All = Tiled | Floating | Pinned,
   };
 
-  // Which maximize state a tiled window's own maximize request enters (client_maximize).
+  // Which maximize state a tiled or stacking window's own maximize request enters (client_maximize).
   enum class ClientMaximize : uint8_t {
     Column,
     Edges,
@@ -145,6 +145,12 @@ namespace umbriel {
     std::string spawnWhenEmpty;
     bool hideWhenEmpty = false;
     bool proportionalSize = false;
+    // A shown pad holds its output's pointer and keyboard, and leaves when a window behind it would get them.
+    bool modal = true;
+    // A shown pad stays up when its output switches workspace.
+    bool sticky = false;
+    // Layout overrides as in [[workspace]]. Without `mode` the pad uses stacking, not the global [layout] mode.
+    WorkspaceLayoutOverrides layout{};
     bool operator==(const ScratchpadConfig&) const = default;
   };
 
@@ -412,6 +418,7 @@ namespace umbriel {
   struct WindowRuleState {
     bool focused = false;
     bool floating = false;
+    bool maximized = false;
     bool maximizedToEdges = false;
     bool pinned = false;
     bool scratchpad = false;
@@ -450,10 +457,13 @@ namespace umbriel {
     RegexPatterns appIdPatterns;
     RegexPatterns titlePatterns;
     RegexPatterns xdgTagPatterns;
+    // The output the window is on or about to open on: connector name or "<make> <model> <serial>" descriptor.
+    RegexPatterns outputPatterns;
     std::optional<ContentType> matchContentType;
     std::vector<LayoutMode> matchLayouts;
     std::optional<bool> matchFocused;
     std::optional<bool> matchFloating;
+    std::optional<bool> matchMaximized;
     std::optional<bool> matchMaximizedToEdges;
     std::optional<bool> matchPinned;
     std::optional<bool> matchScratchpad;
@@ -519,6 +529,7 @@ namespace umbriel {
     std::optional<bool> shadow;
     // Override [effects] border and window for windows this rule matches; "off" disables the default.
     std::optional<std::string> borderEffect;
+    std::optional<bool> borderUnfocused;
     std::optional<std::string> windowEffect;
 
     // See RegexPatterns: the regexes are derived from the patterns, so equality compares the patterns alone.
@@ -526,10 +537,12 @@ namespace umbriel {
       return appIdPatterns == other.appIdPatterns
           && titlePatterns == other.titlePatterns
           && xdgTagPatterns == other.xdgTagPatterns
+          && outputPatterns == other.outputPatterns
           && matchContentType == other.matchContentType
           && matchLayouts == other.matchLayouts
           && matchFocused == other.matchFocused
           && matchFloating == other.matchFloating
+          && matchMaximized == other.matchMaximized
           && matchMaximizedToEdges == other.matchMaximizedToEdges
           && matchPinned == other.matchPinned
           && matchScratchpad == other.matchScratchpad
@@ -583,6 +596,7 @@ namespace umbriel {
           && cornerRadius == other.cornerRadius
           && shadow == other.shadow
           && borderEffect == other.borderEffect
+          && borderUnfocused == other.borderUnfocused
           && windowEffect == other.windowEffect;
     }
   };
@@ -634,6 +648,7 @@ namespace umbriel {
     std::optional<int> cornerRadius;
     std::optional<bool> shadow;
     std::optional<std::string> borderEffect;
+    std::optional<bool> borderUnfocused;
     std::optional<std::string> windowEffect;
     bool operator==(const ResolvedWindowRule&) const = default;
   };
@@ -854,9 +869,9 @@ namespace umbriel {
       AnimationCurve curve{.easing = Easing::EaseOutCubic};
       std::map<std::string, BezierCurve> beziers;
       std::map<std::string, SpringConfig> springs;
-      // While windows_resize.wait_for_redraw holds the tiles that fill a closed tile's space, an instant close keeps
-      // the closed tile's last frame there until they have redrawn and landed.
-      bool holdsClosedTile() const { return windowsResize.waitsForClient(enabled) && !(enabled && windowsOut.enabled); }
+      // While the tiles that fill a closed tile's space wait for their clients, an instant close keeps the closed
+      // tile's last frame there until they have redrawn.
+      bool holdsClosedTile() const { return !(enabled && windowsOut.enabled); }
 
       struct WindowsIn {
         std::string effect;
@@ -892,10 +907,6 @@ namespace umbriel {
         bool enabled = true;
         int durationMs = 250;
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 900.0}};
-        // While the size does not animate, a reflow that resizes tiles keeps showing their frames, and hides openers,
-        // until every resized client has redrawn (or kRedrawWaitMs passes), then lands in one frame.
-        bool waitForRedraw = false;
-        bool waitsForClient(bool animationEnabled) const { return waitForRedraw && !(animationEnabled && enabled); }
         bool operator==(const WindowsResize&) const = default;
       } windowsResize;
 
@@ -1251,6 +1262,8 @@ namespace umbriel {
         bool hideWhenTyping = false;
         // Milliseconds without pointer activity before hiding the cursor. Zero disables it.
         int hideTimeoutMs = 0;
+        // Hide the cursor while the touchscreen is used; pointer activity restores it.
+        bool hideOnTouch = true;
         bool operator==(const Cursor&) const = default;
       } cursor;
 
@@ -1323,6 +1336,7 @@ namespace umbriel {
     } input;
 
     std::vector<Keybind> keybinds;
+    std::map<std::string, std::map<std::string, std::string>> globalShortcuts;
     std::vector<OutputRule> outputs;
     std::vector<WindowRule> windowRules;
     std::vector<LayerRule> layerRules;
@@ -1353,6 +1367,9 @@ namespace umbriel {
   }
 
   const Config& config();
+  // Write each load's diagnostics to the log. The compositor switches this on before loading; the CLI leaves it off
+  // and prints from `configDiagnostics()`, and a refused override logs nothing because its load is rolled back.
+  void setConfigDiagnosticLogging(bool enabled);
   void loadConfig(const char* explicitPath);
   ConfigReloadResult replaceConfig(const std::filesystem::path& explicitPath, std::string& errors);
   ConfigReloadResult reloadConfig();

@@ -342,6 +342,25 @@ UMBRIEL_TEST(rejectsRemovedWidthPresetKey) {
   CHECK(containsDiagnostic(store, "unknown key layout.width_presets"));
 }
 
+UMBRIEL_TEST(misspelledRuleMatchKeyDropsRule) {
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match = { app_id = "foot", titel = "x" }
+default_floating = true
+
+[[layer_rule]]
+match = { namespace = "bar", layerr = "top" }
+blur = true
+)");
+
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(store.config().layerRules.empty());
+}
+
 UMBRIEL_TEST(backgroundDefaultsOpaque) {
   const umbriel::Config config;
   CHECK_EQ(config.colors.background[3], 1.0F);
@@ -1363,41 +1382,6 @@ UMBRIEL_TEST(durationBesideASpringCurveIsReportedAsInert) {
   CHECK(store.reload().success);
   CHECK(!containsDiagnostic(store, "animation.duration_ms has no effect"));
   CHECK_EQ(store.config().animation.workspaces.durationMs, 200);
-}
-
-UMBRIEL_TEST(resizeWaitAppliesOnlyWhileTheSizeDoesNotAnimate) {
-  const TempConfig file;
-  ConfigStore& store = umbriel::configStore();
-  store.setRootPath(file.path(), true);
-
-  file.write(
-      "[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n\n[animation.windows_out]\nenabled = "
-      "false\n"
-  );
-  CHECK(store.reload().success);
-  const auto& animation = store.config().animation;
-  CHECK(animation.windowsResize.waitsForClient(animation.enabled));
-  CHECK(animation.holdsClosedTile());
-  CHECK(!containsDiagnostic(store, "has no effect"));
-
-  // An animated close fills the closed tile's space itself, so it holds no frame.
-  file.write("[animation.windows_resize]\nenabled = false\nwait_for_redraw = true\n");
-  CHECK(store.reload().success);
-  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
-  CHECK(!store.config().animation.holdsClosedTile());
-
-  // An animated size has nothing to wait for, so the key is reported as inert.
-  file.write("[animation.windows_resize]\nenabled = true\nwait_for_redraw = true\n");
-  CHECK(store.reload().success);
-  CHECK(containsDiagnostic(store, "animation.windows_resize.wait_for_redraw has no effect"));
-  CHECK(!store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
-
-  // With every animation off, nothing animates the size or the close, so the wait applies and holds closed tiles.
-  file.write("[animation]\nenabled = false\n\n[animation.windows_resize]\nwait_for_redraw = true\n");
-  CHECK(store.reload().success);
-  CHECK(store.config().animation.windowsResize.waitsForClient(store.config().animation.enabled));
-  CHECK(store.config().animation.holdsClosedTile());
-  CHECK(!containsDiagnostic(store, "has no effect"));
 }
 
 UMBRIEL_TEST(workspaceRevealRequiresAnAnimationShader) {
@@ -2425,6 +2409,24 @@ UMBRIEL_TEST(windowStateMatchersLoadBooleans) {
   CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_floating"));
   CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_pinned"));
   CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_scratchpad"));
+}
+
+UMBRIEL_TEST(maximizedMatcherLoadsStrictBoolean) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[[window_rule]]\nmatch.is_maximized = true\nborder_width = 0\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchMaximized == true);
+  file.write("[[window_rule]]\nmatch.is_maximized = false\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].matchMaximized == false);
+  file.write("[[window_rule]]\nmatch.is_maximized = \"yes\"\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  CHECK(!containsDiagnostic(store, "unknown key window_rule.match.is_maximized"));
 }
 
 UMBRIEL_TEST(maximizedToEdgesMatcherLoadsStrictBoolean) {
@@ -3890,6 +3892,7 @@ _PRIVATE = "kept"
 NOT_A_STRING = 1
 WAYLAND_DISPLAY = "wrong"
 LIBEI_SOCKET = "/nonexistent/umbriel-test-eis"
+UMBRIEL_DINIT_READY_FD = "4"
 WLR_DRM_DEVICES = "/dev/dri/card0"
 WLR_RENDER_DRM_DEVICE = "/dev/dri/renderD128"
 )");
@@ -4335,6 +4338,30 @@ UMBRIEL_TEST(effectSelectorsLoadAtEveryLevel) {
   CHECK(!containsDiagnostic(store, "unknown key"));
   const umbriel::EffectPreset* ring = umbriel::findEffectPreset(config.effects, "ring");
   CHECK(ring != nullptr && ring->overlay == "lines");
+}
+
+UMBRIEL_TEST(windowRuleBorderEffectUnfocusedAcceptsOnlyBooleans) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write(
+      "[[window_rule]]\nborder_effect_unfocused = true\n"
+      "[[window_rule]]\nborder_effect_unfocused = false\n"
+      "[[window_rule]]\nopacity = 0.9\n"
+      "[[window_rule]]\nborder_effect_unfocused = \"audio\"\n"
+  );
+  CHECK(store.reload().success);
+  const auto& rules = store.config().windowRules;
+  CHECK_EQ(rules.size(), size_t{4});
+  if (rules.size() != 4) {
+    return;
+  }
+  CHECK(rules[0].borderUnfocused == true);
+  CHECK(rules[1].borderUnfocused == false);
+  CHECK(!rules[2].borderUnfocused.has_value());
+  CHECK(!rules[3].borderUnfocused.has_value());
+  CHECK(containsDiagnostic(store, "border_effect_unfocused"));
+  CHECK(!containsDiagnostic(store, "unknown key"));
 }
 
 UMBRIEL_TEST(windowsDragTuningDefaultsAndBounds) {
@@ -5880,6 +5907,115 @@ UMBRIEL_TEST(activeDocumentReportsDefaultsAndOverrides) {
   CHECK(*overrides::find(document(), enabled) == false);
   CHECK(overrides::contains(store.overrides(), enabled));
   CHECK(store.applyOverrides({}, false, errors).success);
+}
+
+UMBRIEL_TEST(globalShortcutOverridesMergeByApplicationAndShortcutWithoutChangingChordText) {
+  const TempConfig file;
+  file.writeInclude(R"(
+[global_shortcuts."org.test.App"]
+talk = "Ctrl+M"
+keep = "F18"
+[global_shortcuts."org.test.Other"]
+talk = "Ctrl+K"
+)");
+  file.write("[include]\nfiles = [\"" + file.includeName() + "\"]\n" + R"(
+[global_shortcuts."org.test.App"]
+talk = "Mod+Shift+M"
+disabled = ""
+plain = "a"
+shifted = "Shift+A"
+"action.with.dots" = "XF86AudioMute"
+)");
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  const auto& entries = store.config().globalShortcuts;
+  CHECK_EQ(entries.size(), size_t{2});
+  CHECK_EQ(entries.at("org.test.App").at("talk"), "Mod+Shift+M");
+  CHECK_EQ(entries.at("org.test.App").at("keep"), "F18");
+  CHECK_EQ(entries.at("org.test.App").at("disabled"), "");
+  CHECK_EQ(entries.at("org.test.App").at("plain"), "a");
+  CHECK_EQ(entries.at("org.test.App").at("shifted"), "Shift+A");
+  CHECK_EQ(entries.at("org.test.App").at("action.with.dots"), "XF86AudioMute");
+  CHECK_EQ(entries.at("org.test.Other").at("talk"), "Ctrl+K");
+}
+
+UMBRIEL_TEST(invalidGlobalShortcutOverridesRejectReloadWithoutLosingTheActiveConfig) {
+  std::vector<std::string> invalid{
+      "global_shortcuts = 1\n",
+      "global_shortcuts = []\n",
+      "[[global_shortcuts]]\napp = {}\n",
+      "[global_shortcuts]\napp = \"F16\"\n",
+      "[global_shortcuts]\napp = []\n",
+      "[global_shortcuts.\"\"]\ntalk = \"F16\"\n",
+      "[global_shortcuts.app]\n\"\" = \"F16\"\n",
+      "[global_shortcuts.\"" + std::string(257, 'a') + "\"]\ntalk = \"F16\"\n",
+      "[global_shortcuts.app]\n\"" + std::string(257, 'a') + "\" = \"F16\"\n",
+  };
+  for (const std::string_view value : {"1", "true", "[]", "{}", "[\"F16\"]", "{ chord = \"F16\" }"}) {
+    invalid.push_back("[global_shortcuts.app]\ntalk = " + std::string(value) + "\n");
+  }
+  for (const std::string_view chord :
+       {"Mod", "Ctrl+MouseLeft", "Mod+WheelUp", "submap[test],Mod+h", "unknown_key", "Caps+F16", "Ctrl+\\u0000"}) {
+    invalid.push_back("[global_shortcuts.app]\ntalk = \"" + std::string(chord) + "\"\n");
+  }
+  invalid.push_back("[global_shortcuts.app]\ntalk = \"" + std::string(257, 'a') + "\"\n");
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[global_shortcuts.\"org.test.App\"]\ntalk = \"Ctrl+M\"\n");
+  CHECK(store.reload().success);
+  const auto active = store.config();
+  const auto generation = store.generation();
+  for (const auto& document : invalid) {
+    file.write(document + "[layout]\ngap = 99\n");
+    CHECK(!store.reload().success);
+    CHECK_EQ(store.generation(), generation);
+    CHECK(store.config() == active);
+    CHECK(std::ranges::any_of(store.diagnostics(), [&](const ConfigDiagnostic& diagnostic) {
+      return diagnostic.severity == ConfigDiagnostic::Severity::Error
+          && diagnostic.message.contains("global_shortcuts")
+          && diagnostic.file == file.path().string()
+          && diagnostic.line > 0;
+    }));
+  }
+}
+
+UMBRIEL_TEST(globalShortcutOnlyReloadTracksChangesAndRemoval) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  file.write("[global_shortcuts.\"org.test.App\"]\ntalk = \"F16\"\n");
+  CHECK(store.reload().success);
+  file.write("[global_shortcuts.\"org.test.App\"]\ntalk = \"\"\n");
+  const auto disabled = store.reload();
+  CHECK(disabled.success);
+  CHECK(disabled.change.globalShortcuts);
+  CHECK(!disabled.change.keybinds);
+  CHECK(!disabled.effects.any());
+  CHECK_EQ(store.config().globalShortcuts.at("org.test.App").at("talk"), "");
+  file.write("");
+  const auto removed = store.reload();
+  CHECK(removed.success);
+  CHECK(removed.change.globalShortcuts);
+  CHECK(store.config().globalShortcuts.empty());
+}
+
+UMBRIEL_TEST(globalShortcutRuntimeOverridesUseTheDeclaredSchemaAndValidation) {
+  const TempConfig file;
+  file.write("[global_shortcuts.\"org.test.App\"]\n\"action.with.dots\" = \"F16\"\n");
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  const std::string key = R"(global_shortcuts."org.test.App"."action.with.dots")";
+  std::string errors;
+  CHECK(store.applyOverrides(overrideOf(key, "\"\""), true, errors).success);
+  CHECK_EQ(store.config().globalShortcuts.at("org.test.App").at("action.with.dots"), "");
+  CHECK(!store.applyOverrides(overrideOf(key, "\"Mod+MouseLeft\""), true, errors).success);
+  CHECK_EQ(store.config().globalShortcuts.at("org.test.App").at("action.with.dots"), "");
+  CHECK(store.applyOverrides({}, false, errors).success);
+  CHECK_EQ(store.config().globalShortcuts.at("org.test.App").at("action.with.dots"), "F16");
 }
 
 int main() { return RUN_TESTS(); }

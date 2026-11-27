@@ -5,6 +5,7 @@
 #include "server/action_request.h"
 #include "server/color_description.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <limits>
 #include <nlohmann/json.hpp>
@@ -92,6 +93,34 @@ namespace {
   }
 
 } // namespace
+
+UMBRIEL_TEST(globalShortcutHumanOutputShowsConflictsAndEscapesRequesterText) {
+  const auto* spec = umbriel::findIpcCommand("global-shortcuts");
+  CHECK(spec != nullptr && spec->printHuman != nullptr);
+  if (spec == nullptr || spec->printHuman == nullptr) {
+    return;
+  }
+  const auto applications = nlohmann::json::array(
+      {{{"application", "unverified\n\x1B[31m"},
+        {"live", true},
+        {"shortcuts",
+         nlohmann::json::array(
+             {{{"id", "talk\t"},
+               {"description", "Description\n\x1B[0m"},
+               {"session", 42},
+               {"pending", true},
+               {"trigger", nullptr},
+               {"candidate", "Ctrl+M"},
+               {"source", "stored"},
+               {"conflict", "in_use"}}}
+         )}}}
+  );
+  const auto text = captureHumanOutput(*spec, applications);
+  CHECK(text.contains("Ctrl+M") && text.contains("stored") && text.contains("in_use") && text.contains("42"));
+  CHECK(text.contains("\\n") && text.contains("\\t"));
+  CHECK(!text.contains('\x1B'));
+  CHECK_EQ(std::ranges::count(text, '\n'), std::ptrdiff_t{3});
+}
 
 UMBRIEL_TEST(keyboardLayoutsHumanOutputListsAndMarksCurrentLayout) {
   const umbriel::IpcCommandSpec* spec = umbriel::findIpcCommand("keyboard-layouts");

@@ -138,6 +138,7 @@ namespace umbriel {
       wlr_xwayland_surface_set_maximized(m_xsurface, maximized, maximized);
     }
     syncSsdFrame();
+    refreshStateRuleEffects();
   }
 
   void View::requestClose() {
@@ -264,6 +265,14 @@ namespace umbriel {
     }
     const wlr_xdg_surface* surface = m_toplevel->base;
     return surface->configure_idle != nullptr || surface->current.configure_serial != surface->scheduled_serial;
+  }
+
+  bool View::configureAcknowledged() const {
+    if (m_toplevel == nullptr) {
+      return true;
+    }
+    const wlr_xdg_surface* surface = m_toplevel->base;
+    return surface->configure_idle == nullptr && surface->pending.configure_serial == surface->scheduled_serial;
   }
 
   bool View::configureSettled(uint32_t serial) const {

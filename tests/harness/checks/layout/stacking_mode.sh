@@ -46,6 +46,32 @@ title_bar_wait_field a focused true
 "$UMBRIEL" msg window-focus-down >/dev/null
 title_bar_wait_field b focused true
 spawn explicit
+# Raising a cycle target must keep the stacking layout's navigation order stable.
+title_bar_wait_field explicit active true
+for title in b a explicit; do
+  "$UMBRIEL" msg window-focus-previous >/dev/null
+  title_bar_wait_field "$title" active true
+done
+for title in a b explicit; do
+  "$UMBRIEL" msg window-focus-next >/dev/null
+  title_bar_wait_field "$title" active true
+done
+# Focus history remains independent of the layout cycle.
+"$UMBRIEL" msg window-focus-last >/dev/null
+title_bar_wait_field b active true
+"$UMBRIEL" msg window-focus-last >/dev/null
+title_bar_wait_field explicit active true
+# Minimized windows are skipped without changing the surviving windows' order.
+"$UMBRIEL" msg window-minimize "$(title_bar_window b | jq -r .id)" >/dev/null
+title_bar_wait_field b minimized true
+for title in a explicit; do
+  "$UMBRIEL" msg window-focus-previous >/dev/null
+  title_bar_wait_field "$title" active true
+done
+focus b
+title_bar_wait_field b minimized false
+"$UMBRIEL" msg window-focus-previous >/dev/null
+title_bar_wait_field a active true
 layout scrolling
 title_bar_wait_field a floating false
 title_bar_wait_field b floating false

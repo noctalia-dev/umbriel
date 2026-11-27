@@ -1,7 +1,6 @@
 #include "config/config_merge.h"
 
 #include "config/config_diag.h"
-#include "core/log.h"
 
 #include <algorithm>
 #include <cctype>
@@ -18,27 +17,9 @@ namespace umbriel::configmerge {
 
   namespace {
 
-    constexpr Logger kLog("config");
-
     void
     report(MergeResult& result, ConfigDiagnostic::Severity severity, const toml::source_region* src, std::string msg) {
-      ConfigDiagnostic diag;
-      diag.severity = severity;
-      diag.message = msg;
-      if (src != nullptr) {
-        diag.line = src->begin.line;
-        diag.column = src->begin.column;
-        if (src->path != nullptr) {
-          diag.file = *src->path;
-        }
-      }
-      const std::string loc = diag.location();
-      if (severity == ConfigDiagnostic::Severity::Error) {
-        kLog.error("{}{}", loc.empty() ? "" : loc + ": ", msg);
-      } else {
-        kLog.warn("{}{}", loc.empty() ? "" : loc + ": ", msg);
-      }
-      result.diagnostics.push_back(std::move(diag));
+      result.diagnostics.push_back(makeDiagnostic(severity, src, std::move(msg)));
     }
 
     // Like report, but an Error also sets hadError, which fails the load even at startup.
