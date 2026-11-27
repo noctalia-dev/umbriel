@@ -150,4 +150,38 @@ if grep -q '^configured-state=1280x720 fullscreen$' "$client_log"; then
   exit 1
 fi
 
+# Ordinary fullscreen keeps the floating restore size when requested between configure and first map.
+cat >> "$UMBRIEL_CONFIG" <<'CONFIG'
+
+[[window_rule]]
+match.title = "^rule-late-float-"
+default_floating = true
+default_floating_size_px = { width = 400, height = 300 }
+
+[[window_rule]]
+match.app_id = "^floating-rule-player$"
+windowed_fullscreen = true
+
+[[window_rule]]
+match.title = "^rule-late-float-false$"
+windowed_fullscreen = false
+CONFIG
+"$UMBRIEL" msg config-reload > /dev/null
+"$UMBRIEL" settle
+for title in rule-late-float-unmatched rule-late-float-false; do
+  app=other-player
+  [[ $title == rule-late-float-false ]] && app=floating-rule-player
+  spawn "$title" "$app" REQUEST_FULLSCREEN_AFTER_CONFIGURE
+  expect '.floating and .fullscreen and (.windowed_fullscreen | not)'
+  configured '1280x720 fullscreen'
+  first=$(grep '^configured-state=' "$client_log" | head -1)
+  if [[ $first != 'configured-state=400x300 windowed' ]]; then
+    echo "$title did not receive the floating restore size before fullscreen: $first"
+    exit 1
+  fi
+  request u
+  expect '.floating and (.fullscreen | not) and (.windowed_fullscreen | not) and .w == 400 and .h == 300'
+  configured '400x300 windowed'
+done
+
 echo 'windowed fullscreen rules govern initial and later Wayland requests, explicit fullscreen, overrides and reloads'

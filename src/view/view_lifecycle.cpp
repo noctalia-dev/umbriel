@@ -998,9 +998,13 @@ namespace umbriel {
       }
 
       if (wantFullscreen) {
-        // An X11 client can request fullscreen before its first buffer. The request event is too early to configure,
-        // but the role preserves it in requested state for us to honor now.
-        setFullscreenState(true);
+        if (reconfigureOpeningState && m_toplevel != nullptr) {
+          // A late XDG request must save the pending floating size before replacing it with the output size.
+          setFullscreen(true);
+        } else {
+          // An X11 request before the first buffer is too early to configure; the role preserves it until map.
+          setFullscreenState(true);
+        }
         wlr_box fullArea{};
         wlr_output* initialOutput = targetOutput != nullptr ? targetOutput->wlr() : m_server->preferredOutput();
         if (initialOutput != nullptr) {
