@@ -58,7 +58,7 @@ GLSL
 spawn() {
   local fill=0x80800000
   [[ $1 == *-a ]] && fill=0x60600000
-  FILL_COLOR=$fill "$CLIENT" "$1" 1200 700 > "$SHOTS/$1.log" 2>&1 &
+  FOLLOW_CONFIGURES=1 FILL_COLOR=$fill "$CLIENT" "$1" 1200 700 > "$SHOTS/$1.log" 2>&1 &
 }
 
 wait_for_windows() {
@@ -75,6 +75,21 @@ wait_for_windows() {
 
 window_id() {
   "$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .id'
+}
+
+window_width() {
+  "$UMBRIEL" windows --json | jq -r --arg title "$1" '.[] | select(.title == $title) | .w'
+}
+
+# A reflow that resizes a window holds until its client redraws; the motion then starts on that frozen instant.
+wait_for_redraw() {
+  local title=$1 before=$2
+  for _ in $(seq 100); do
+    [[ $(window_width "$title") != "$before" ]] && return 0
+    sleep 0.02
+  done
+  echo "$title never redrew from width $before"
+  return 1
 }
 
 # Runs every animation to its end. Settling waits for clients to commit their resized buffers, which happens in real
@@ -100,14 +115,15 @@ move_marker_pixels() {
   "$UMBRIEL_PIXEL_PROBE" "$1" count 'b > 0.44 && r > 0.2'
 }
 
-# Fourteen frames 100 ms of animation time apart, from the trigger on, so the samples span the whole 1500 ms motion.
+# Fourteen frames 100 ms of animation time apart once the motion has started, so the samples span the whole 1500 ms
+# motion. The start instant itself is still the held frame, where a resized window's frozen copy covers its live one.
 sample() {
   local phase=$1
   local i
   local saw_marker=0
   for i in $(seq 14); do
-    grim "$SHOTS/$phase-$i.png"
     "$UMBRIEL" clock-advance 100 > /dev/null
+    grim "$SHOTS/$phase-$i.png"
   done
   for i in $(seq 14); do
     local overlap
@@ -153,10 +169,16 @@ run_mode() {
   wait_for_windows 3
   finish
 
-  "$UMBRIEL" msg window-focus "$(window_id "motion-$tag-a")" > /dev/null
+  local first="motion-$tag-a"
+  local width
+  width=$(window_width "$first")
+  "$UMBRIEL" msg window-focus "$(window_id "$first")" > /dev/null
   "$UMBRIEL" msg window-toggle-maximize > /dev/null
+  wait_for_redraw "$first" "$width"
   "$UMBRIEL" clock-advance 300 > /dev/null
+  width=$(window_width "$first")
   "$UMBRIEL" msg window-toggle-maximize > /dev/null
+  wait_for_redraw "$first" "$width"
   sample "$tag-maximize-interrupt"
   finish
 

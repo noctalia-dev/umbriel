@@ -212,7 +212,7 @@ namespace umbriel {
       }
     }
 
-    std::string sessionEnvironmentCommand(bool managedReadiness) {
+    std::string sessionEnvironmentCommand(bool managedReadiness, const std::string& dinitControl) {
       std::string configuredAssignments;
       for (const auto& [name, value] : config().environment.variables) {
         configuredAssignments += ' ';
@@ -221,23 +221,49 @@ namespace umbriel {
 
       const std::string publishConfigured =
           configuredAssignments.empty() ? "" : " && systemctl --user set-environment" + configuredAssignments;
-      std::string command =
-          "variables='WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE "
-          "XCURSOR_THEME XCURSOR_SIZE UMBRIEL_SOCKET'; systemd_ready=false; "
-          "if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then "
-          "if systemctl --user import-environment $variables";
-      command += publishConfigured;
-      command += "; then systemd_ready=true; else "
-                 "echo 'umbriel: failed to publish the session environment' >&2; exit 1; fi; fi; "
-                 // The compositor waits on this script with its event loop stopped. Without a bus address, libdbus
-                 // autolaunches over X11, and DISPLAY names an Xwayland that only that loop can start. Use the
-                 // user bus socket when the address is unset, and skip the update when there is no bus at all.
-                 "if [ -z \"${DBUS_SESSION_BUS_ADDRESS:-}\" ] && [ -S \"${XDG_RUNTIME_DIR:-}/bus\" ]; then "
-                 "export DBUS_SESSION_BUS_ADDRESS=\"unix:path=$XDG_RUNTIME_DIR/bus\"; fi; "
-                 "if [ -n \"${DBUS_SESSION_BUS_ADDRESS:-}\" ] "
-                 "&& command -v dbus-update-activation-environment >/dev/null 2>&1; then "
-                 "dbus-update-activation-environment $variables || { "
-                 "echo 'umbriel: failed to update the D-Bus activation environment' >&2; exit 1; }; fi; ";
+      const std::string variables = "WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE "
+                                    "XCURSOR_THEME XCURSOR_SIZE UMBRIEL_SOCKET";
+      std::string command;
+      if (!dinitControl.empty()) {
+        std::string assignments;
+        std::istringstream names(variables);
+        for (std::string name; names >> name;) {
+          if (const char* value = std::getenv(name.c_str()); value != nullptr) {
+            assignments += ' ' + shellQuote(name + '=' + value);
+          }
+        }
+        command = "variables='"
+            + variables
+            + "'; "
+            + dinitControl
+            + " unsetenv $variables && "
+            + dinitControl
+            + " setenv"
+            + assignments
+            + configuredAssignments
+            + " || { echo 'umbriel: failed to publish the session environment' >&2; exit 1; }; ";
+      } else {
+        command = "variables='WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE "
+                  "XCURSOR_THEME XCURSOR_SIZE UMBRIEL_SOCKET'; systemd_ready=false; "
+                  "if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then "
+                  "if systemctl --user import-environment $variables";
+        command += publishConfigured;
+        command += "; then systemd_ready=true; else "
+                   "echo 'umbriel: failed to publish the session environment' >&2; exit 1; fi; fi; ";
+      }
+      command +=
+          // The compositor waits on this script with its event loop stopped. Without a bus address, libdbus
+          // autolaunches over X11, and DISPLAY names an Xwayland that only that loop can start. Use the
+          // user bus socket when the address is unset, and skip the update when there is no bus at all.
+          "if [ -z \"${DBUS_SESSION_BUS_ADDRESS:-}\" ] && [ -S \"${XDG_RUNTIME_DIR:-}/bus\" ]; then "
+          "export DBUS_SESSION_BUS_ADDRESS=\"unix:path=$XDG_RUNTIME_DIR/bus\"; fi; "
+          "if [ -n \"${DBUS_SESSION_BUS_ADDRESS:-}\" ] "
+          "&& command -v dbus-update-activation-environment >/dev/null 2>&1; then "
+          "dbus-update-activation-environment $variables || { "
+          "echo 'umbriel: failed to update the D-Bus activation environment' >&2; exit 1; }; fi; ";
+      if (!dinitControl.empty()) {
+        return command;
+      }
       if (managedReadiness) {
         command += "$systemd_ready";
       } else {
@@ -1257,6 +1283,27 @@ namespace umbriel {
   }
 
   bool Server::start(const char* startupCmd) {
+    ServiceReadyPipe dinitReady("UMBRIEL_DINIT_READY_FD");
+    if (!m_nested && dinitReady.present()) {
+      if (!dinitReady.valid()) {
+        kLog.error("invalid session readiness pipe: {}", std::strerror(errno));
+        return false;
+      }
+      const std::string executable = resolveExecutable("dinitctl");
+      const char* socketPath = std::getenv("DINIT_SOCKET_PATH");
+      const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+      const char* home = std::getenv("HOME");
+      const std::string controlSocket = socketPath != nullptr && socketPath[0] != '\0' ? socketPath
+          : runtime != nullptr && runtime[0] != '\0' ? std::string(runtime) + "/dinitctl"
+          : home != nullptr                          ? std::string(home) + "/.dinitctl"
+                                                     : "";
+      if (executable.empty() || controlSocket.empty()) {
+        kLog.error("cannot locate the dinit session controller");
+        return false;
+      }
+      m_dinitControlCommand = shellQuote(executable) + " --user --socket-path " + shellQuote(controlSocket);
+      m_sessionShutdownAvailable = true;
+    }
     const char* socket = wl_display_add_socket_auto(m_display);
     if (socket == nullptr) {
       wlr_log(WLR_ERROR, "failed to add Wayland socket");
@@ -1292,7 +1339,8 @@ namespace umbriel {
     wl_event_loop* loop = wl_display_get_event_loop(m_display);
     m_signalSources[0] = wl_event_loop_add_signal(loop, SIGINT, onTerminateSignal, this);
     m_signalSources[1] = wl_event_loop_add_signal(loop, SIGTERM, onTerminateSignal, this);
-    m_applicationScopesRequired = !m_nested && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
+    m_applicationScopesRequired =
+        !m_nested && m_dinitControlCommand.empty() && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
     const char* inheritedNotifySocket = std::getenv("NOTIFY_SOCKET");
     const std::string notifySocket =
         m_applicationScopesRequired && inheritedNotifySocket != nullptr ? inheritedNotifySocket : "";
@@ -1401,10 +1449,10 @@ namespace umbriel {
     // the inherited PATH and bus addresses. Readiness and autostart must not
     // release session services until these imports have completed.
     if (!m_nested) {
-      const std::string command = sessionEnvironmentCommand(!notifySocket.empty());
+      const std::string command = sessionEnvironmentCommand(!notifySocket.empty(), m_dinitControlCommand);
       if (!runShellCommand(command)) {
         kLog.error("session environment synchronization failed: {}", std::strerror(errno));
-        if (!notifySocket.empty()) {
+        if (!notifySocket.empty() || !m_dinitControlCommand.empty()) {
           return false;
         }
       }
@@ -1444,7 +1492,7 @@ namespace umbriel {
       m_cheatsheet->showOnStartup();
     }
     m_quitConfirm = std::make_unique<QuitConfirm>(*this, m_quitConfirmTree);
-    if (!notifyServiceReady(notifySocket)) {
+    if (!notifyServiceReady(notifySocket) || (!m_nested && !dinitReady.notify())) {
       kLog.error("failed to report session readiness: {}", std::strerror(errno));
       return false;
     }
@@ -1566,8 +1614,10 @@ namespace umbriel {
       return;
     }
     m_sessionExitResultFd = resultPipe[0];
-    const std::string command = shellQuote(m_systemctlExecutable)
-        + " --user start --job-mode=replace-irreversibly --no-block umbriel-shutdown.target 1>&2 && printf x";
+    const std::string command = m_dinitControlCommand.empty()
+        ? shellQuote(m_systemctlExecutable)
+            + " --user start --job-mode=replace-irreversibly --no-block umbriel-shutdown.target 1>&2 && printf x"
+        : m_dinitControlCommand + " stop --force --no-wait umbriel 1>&2 && printf x";
     const pid_t pid = fork();
     if (pid == 0) {
       resetChildSignalState();
@@ -1576,7 +1626,7 @@ namespace umbriel {
       if (dup2(resultPipe[1], STDOUT_FILENO) < 0
           || fcntl(STDOUT_FILENO, F_SETFD, 0) < 0
           || !closeChildFileDescriptors()
-          || !restoreSystemdControlEnvironment(m_systemdControlEnvironment)) {
+          || (m_dinitControlCommand.empty() && !restoreSystemdControlEnvironment(m_systemdControlEnvironment))) {
         _exit(1);
       }
       execl("/bin/sh", "/bin/sh", "-c", command.c_str(), nullptr);

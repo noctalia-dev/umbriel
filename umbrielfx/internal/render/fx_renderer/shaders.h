@@ -173,6 +173,7 @@ struct output_shader {
   GLint proj;
   GLint tex_proj;
   GLint tex;
+  GLint copy_encoded_sdr;
   GLint matrix;
   GLint inverse_eotf;
   GLint lut;

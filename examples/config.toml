@@ -392,7 +392,7 @@ default_pinned = true
 # background_render = true
 
 # Keep matching windows visible locally but absent from screenshots and recordings.
-# See docs/user/window-rules.md#capture-protection.
+# https://docs.noctalia.dev/umbriel/window-rules-behavior/#hide-a-window-from-screenshots
 # [[window_rule]]
 # match.app_id = "^private-app$"
 # block_capture = true
@@ -487,13 +487,6 @@ action = "overview-open"
 # curve = "spring:1,900"
 # duration_ms = 250 # For non-spring curves; a spring sets its own length.
 
-# Without a size animation, a resized window shows its stretched old frame until
-# it redraws. Wait for the redraws instead (at most 150 ms), then switch to the
-# new layout in one frame.
-# [animation.windows_resize]
-# enabled = false
-# wait_for_redraw = true
-
 # Optional live workspace reveal (see docs/user/animation.md).
 # Add the bundled effects/animation/workspace_wipe/effect.toml to your includes.
 # [animation.workspaces]
@@ -510,4 +503,4 @@ action = "overview-open"
 # [[layer_rule]]
 # match.namespace = "^vicinae$"
 # dim_behind = 0.5
-# Window rules accept dim_behind too; see docs/user/window-rules.md.
+# Window rules accept dim_behind too: https://docs.noctalia.dev/umbriel/window-rules-appearance/#dim-behind

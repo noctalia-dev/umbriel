@@ -180,9 +180,9 @@ if [[ $(active_workspace) != 2 ]]; then
 fi
 
 # Horizontal workspaces scroll vertically, so a tiled window sits at the strip's left gap, centred on the scrolling
-# axis. Its rendered pixels are exactly the box the IPC reports.
+# axis. Its client fills its tile, so its rendered pixels are exactly the box the IPC reports.
 "$UMBRIEL" msg workspace-switch 3 > /dev/null
-spawn_sized axis-tiled 600 300
+FOLLOW_CONFIGURES=1 spawn_sized axis-tiled 600 300
 wait_for_count 3
 "$UMBRIEL" settle
 read -r tiled_x tiled_y tiled_w tiled_h <<< "$(box_of axis-tiled)"

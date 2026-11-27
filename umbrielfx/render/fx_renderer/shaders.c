@@ -336,6 +336,7 @@ bool link_output_program(struct output_shader* shader) {
   shader->proj = glGetUniformLocation(prog, "proj");
   shader->tex_proj = glGetUniformLocation(prog, "tex_proj");
   shader->tex = glGetUniformLocation(prog, "tex");
+  shader->copy_encoded_sdr = glGetUniformLocation(prog, "copy_encoded_sdr");
   shader->matrix = glGetUniformLocation(prog, "color_matrix");
   shader->inverse_eotf = glGetUniformLocation(prog, "inverse_eotf");
   shader->lut = glGetUniformLocation(prog, "lut");

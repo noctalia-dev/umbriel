@@ -1,0 +1,11 @@
+type = process
+command = "@UMBRIEL_EXECUTABLE@"
+working-dir = $HOME
+restart = false
+options = start-interruptible
+failure-conditions = process-fails
+ready-notification = pipevar:UMBRIEL_DINIT_READY_FD
+start-timeout = 30
+stop-timeout = 5
+log-type = buffer
+depends-on: dbus

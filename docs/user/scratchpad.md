@@ -230,7 +230,7 @@ Showing a scratchpad never moves a floating window it holds: the window stays wh
 
 Each member remembers its source output, workspace, and tiled or floating state. If that output or workspace no longer exists, Umbriel restores the window to the scratchpad's current output and active workspace.
 
-Fullscreen, pinned, and maximize-to-edges state are cleared when a window enters a scratchpad. In a floating scratchpad the window floats at its current size. A window that opens into a scratchpad through `default_scratchpad` takes its size, position, fullscreen, and maximize-to-edges state from its [window rules](window-rules.md#scratchpad-placement).
+Fullscreen, pinned, and maximize-to-edges state are cleared when a window enters a scratchpad. In a floating scratchpad the window floats at its current size. A window that opens into a scratchpad through `default_scratchpad` takes its size, position, fullscreen, and maximize-to-edges state from its [window rules](window-rules-placement.md#open-in-a-scratchpad).
 
 ## Moving scratchpad windows
 
@@ -242,7 +242,7 @@ If its output disconnects, the scratchpad temporarily moves to another enabled o
 
 ## Appearance and window actions
 
-Scratchpad windows use the regular border colors unless a [window rule](window-rules.md#border-colors) matches them:
+Scratchpad windows use the regular border colors unless a [window rule](window-rules-appearance.md#borders-that-show-window-state) matches them:
 
 ```toml
 [[window_rule]]
