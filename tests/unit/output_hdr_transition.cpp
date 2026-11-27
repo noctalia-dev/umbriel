@@ -1,7 +1,10 @@
 #include "check.h"
 #include "output/hdr_transition.h"
+#include "output/page_flip_retry.h"
 #include "output/rendered_state_commit.h"
 
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 extern "C" {
@@ -10,6 +13,7 @@ extern "C" {
 
 using umbriel::commitRenderedState;
 using umbriel::HdrTransition;
+using umbriel::PageFlipRetry;
 using umbriel::RenderedStateCommitResult;
 
 namespace {
@@ -69,6 +73,38 @@ UMBRIEL_TEST(disabledCommitDoesNotAdvanceTransition) {
 
   CHECK(transition.pending(true, true));
   CHECK(!transition.committedRequest());
+}
+
+UMBRIEL_TEST(pageFlipRetryDefersOnlyNonBlockingCommitsWhileFlipPending) {
+  const PageFlipRetry retry;
+
+  CHECK(retry.shouldDefer(true, false));
+  CHECK(!retry.shouldDefer(false, false));
+  CHECK(!retry.shouldDefer(true, true));
+}
+
+UMBRIEL_TEST(pageFlipRetryKeepsGeometryAcrossMergedDeferrals) {
+  PageFlipRetry retry;
+
+  CHECK(!retry.take().has_value());
+  retry.defer(true);
+  retry.defer(false);
+  CHECK(retry.take() == std::optional(true));
+  CHECK(!retry.take().has_value());
+}
+
+UMBRIEL_TEST(pageFlipRetryStopsDeferringAfterMaxAttemptsUntilReset) {
+  PageFlipRetry retry;
+
+  for (uint8_t attempt = 0; attempt < PageFlipRetry::kMaxFrameAttempts; ++attempt) {
+    CHECK(retry.shouldDefer(true, false));
+    retry.defer(false);
+    CHECK(retry.take().has_value());
+  }
+  CHECK(!retry.shouldDefer(true, false));
+
+  retry.reset();
+  CHECK(retry.shouldDefer(true, false));
 }
 
 UMBRIEL_TEST(renderedStateBuildsBeforeCommitAndCarriesBuffer) {
