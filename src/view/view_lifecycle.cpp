@@ -870,11 +870,8 @@ namespace umbriel {
     if (m_captureScene == nullptr) {
       return;
     }
-    // Restrict the capture to the committed content box so tiled clients that
-    // leave xdg_surface.set_window_geometry stale after a resize (such as
-    // Electron) are not cropped in toplevel captures. Client subsurfaces remain
-    // visible, while buffer content outside the window is excluded. Window-owned
-    // popups are separate children and remain part of the isolated scene.
+    // Same bounds as on-screen presentation, so a stale window geometry does not crop the capture. Client subsurfaces
+    // stay visible and buffer content outside the window is excluded; window-owned popups are separate children.
     const wlr_box captureClip = committedContentBox();
     wlr_scene_subsurface_tree_set_clip(&m_captureScene->tree.node, &captureClip);
   }
