@@ -145,6 +145,7 @@ namespace umbriel {
   class Gestures;
   class ColorManager;
   struct ColorDescription;
+  class DmabufImplicitBarrier;
   class SyncobjAcquireBarrier;
   class SyncobjSupersededRelease;
   class SyncobjUnmapRelease;
@@ -772,6 +773,7 @@ namespace umbriel {
     wlr_content_type_manager_v1* m_contentTypeManager = nullptr;
     wlr_security_context_manager_v1* m_securityContextManager = nullptr;
     std::unique_ptr<ColorManager> m_colorManager;
+    std::unique_ptr<DmabufImplicitBarrier> m_dmabufImplicitBarrier;
     std::unique_ptr<SyncobjAcquireBarrier> m_syncobjAcquireBarrier;
     std::unique_ptr<SyncobjUnmapRelease> m_syncobjUnmapRelease;
     std::unique_ptr<SyncobjSupersededRelease> m_syncobjSupersededRelease;
