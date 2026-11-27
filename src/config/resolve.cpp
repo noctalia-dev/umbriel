@@ -422,6 +422,9 @@ namespace umbriel {
       if (rule.borderUnfocused) {
         resolved.borderUnfocused = rule.borderUnfocused;
       }
+      if (rule.backdropEffect) {
+        resolved.backdropEffect = rule.backdropEffect;
+      }
       if (rule.windowEffect) {
         resolved.windowEffect = rule.windowEffect;
       }

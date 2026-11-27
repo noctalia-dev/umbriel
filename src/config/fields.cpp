@@ -132,7 +132,8 @@ namespace umbriel {
     }
     addEffectReference(
         context.effectReferences, keys.qualified(key), {*node->value<std::string>(), node->source()}, kind, true,
-        std::move(clear), EffectReferenceConstraint::PresetOrPool
+        std::move(clear),
+        kind == EffectKind::Backdrop ? EffectReferenceConstraint::PresetOnly : EffectReferenceConstraint::PresetOrPool
     );
   }
 

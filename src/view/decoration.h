@@ -55,6 +55,7 @@ namespace umbriel {
 
     // Blur
     SurfaceBlurOptions blurOptions() const { return m_blurOptions; }
+    wlr_scene_blur* blurNode() const { return m_blur.node(); }
     SurfaceBlurOptions popupBlurOptions() const { return m_popupBlurOptions; }
     void updateBlur(
         wlr_scene_tree* tree, wlr_surface* surface, const wlr_box& nodeBox, const wlr_box& geometry,

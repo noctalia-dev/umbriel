@@ -361,6 +361,7 @@ namespace umbriel {
         .ignoreAlpha = static_cast<float>(m_rule.ignoreAlpha.value_or(0.0)),
         .enabled = m_rule.blur.value_or(false),
         .optimized = m_rule.optimized,
+        .backdropEffect = {},
     };
   }
 
@@ -370,6 +371,7 @@ namespace umbriel {
         .enabled = m_rule.blurPopups.value_or(false),
         // Menus and tooltips open over windows, which the cached wallpaper blur never contains.
         .optimized = false,
+        .backdropEffect = {},
     };
   }
 

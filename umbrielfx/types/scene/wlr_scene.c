@@ -226,6 +226,7 @@ struct scene_effects {
   struct wl_list animations; // scene_animation.link
   unsigned transient;
   unsigned persistent;
+  unsigned backdrop;
   unsigned bounded;
   struct wlr_scene_tree* light_layer;
   struct wl_listener light_layer_destroy;
@@ -304,11 +305,14 @@ static void scene_animation_classify(struct scene_animation* animation) {
 static void scene_effects_recount(struct scene_effects* effects) {
   effects->transient = 0;
   effects->persistent = 0;
+  effects->backdrop = 0;
   effects->bounded = 0;
   struct scene_animation* animation;
   wl_list_for_each(animation, &effects->animations, link) {
     effects->transient += animation->transient;
     effects->persistent += animation->persistent;
+    effects->backdrop +=
+        animation->shaders[FX_SLOT_WINDOW] != NULL && animation->shaders[FX_SLOT_WINDOW]->kind == FX_EFFECT_BACKDROP;
     effects->bounded += animation->bounded;
   }
 }
@@ -1274,6 +1278,14 @@ static bool scene_node_update_iterator(
     // region contains rendering, damage, output membership, frame callbacks
     // and dmabuf feedback in one place.
     pixman_region32_intersect(&node->visible, &node->visible, acc_clip);
+  }
+
+  if (animation != NULL
+      && animation->node == node
+      && animation->shaders[FX_SLOT_WINDOW] != NULL
+      && animation->shaders[FX_SLOT_WINDOW]->kind == FX_EFFECT_BACKDROP) {
+    pixman_region32_union(data->visible, data->visible, &node->visible);
+    pixman_region32_intersect(data->visible, data->visible, data->update_region);
   }
 
   if (data->calculate_visibility) {
@@ -3934,6 +3946,36 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     break;
   case WLR_SCENE_NODE_BLUR:;
     struct wlr_scene_blur* blur = wlr_scene_blur_from_node(node);
+    struct scene_animation* backdrop =
+        data->effects != NULL && data->effects->backdrop > 0 ? scene_animation_get(node) : NULL;
+    if (backdrop != NULL
+        && (backdrop->shaders[FX_SLOT_WINDOW] == NULL
+            || backdrop->shaders[FX_SLOT_WINDOW]->kind != FX_EFFECT_BACKDROP
+            || backdrop->shaders[FX_SLOT_WINDOW]->renderer != fx_pass->buffer->renderer
+            || (data->effect_capture && !data->include_capture_effects))) {
+      backdrop = NULL;
+    }
+    if (backdrop == NULL && (blur->strength == 0.0F || !is_scene_blur_enabled(&scene->blur_data))) {
+      break;
+    }
+    struct fx_effect_composite backdrop_effect;
+    if (backdrop != NULL) {
+      backdrop_effect = (struct fx_effect_composite){
+          .shader = backdrop->shaders[FX_SLOT_WINDOW],
+          .parameters = &backdrop->parameters[FX_SLOT_WINDOW],
+          .audio = data->audio,
+          .box = dst_box,
+          .logical_box = {.x = x, .y = y, .width = blur->width, .height = blur->height},
+          .transform = data->transform,
+          .capture_clip = &render_region,
+          .output_clip = &render_region,
+          .history = &backdrop->histories[FX_SLOT_WINDOW],
+          .output = data->output->output,
+          .update_history = data->backdrop_group == NULL && !workspace_repeated(node, data),
+          .replace = true,
+          .role = data->effect_capture ? 1 : 0,
+      };
+    }
 
     struct wlr_texture* tex = NULL;
     struct wlr_scene_buffer* mask = wlr_scene_blur_get_transparency_mask_source(blur);
@@ -3958,6 +4000,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     fx_corner_radii_transform(node_transform, &blur_clip_corners);
 
     struct fx_render_blur_pass_options blur_options = {
+        .backdrop = backdrop != NULL ? &backdrop_effect : NULL,
         .tex_options =
             {
                 .base =
@@ -4204,7 +4247,10 @@ static void render_in_place_slots(
   bool shape_known = false;
   for (unsigned slot = 0; slot < FX_ANIMATION_SLOTS; slot++) {
     struct fx_effect_shader* shader = animation->shaders[slot];
-    if (!fx_slot_in_place(slot) || shader == NULL || shader->renderer != pass->buffer->renderer) {
+    if (!fx_slot_in_place(slot)
+        || shader == NULL
+        || shader->kind == FX_EFFECT_BACKDROP
+        || shader->renderer != pass->buffer->renderer) {
       continue;
     }
     if (!shape_known) {
@@ -6119,11 +6165,18 @@ bool wlr_scene_output_needs_frame(struct wlr_scene_output* scene_output) {
 }
 
 static bool should_blur_node_extend_damage(
-    struct wlr_scene_node* node, struct fx_gles_render_pass* fx_pass, struct blur_data* blur_data
+    struct wlr_scene_node* node, struct fx_gles_render_pass* fx_pass, struct blur_data* blur_data, bool backdrop_effects
 ) {
   switch (node->type) {
   case WLR_SCENE_NODE_BLUR:;
     struct wlr_scene_blur* blur_node = wlr_scene_blur_from_node(node);
+    const struct scene_animation* backdrop = backdrop_effects ? scene_animation_get(node) : NULL;
+    if (backdrop != NULL
+        && backdrop->shaders[FX_SLOT_WINDOW] != NULL
+        && backdrop->shaders[FX_SLOT_WINDOW]->kind == FX_EFFECT_BACKDROP) {
+      fx_pass->has_blur = true;
+      return false;
+    }
     // No artifact prevention needed when the whole blur is already
     // rendered
     if (blur_node->should_only_blur_bottom_layer && blur_node->strength == 1.0) {
@@ -6617,6 +6670,7 @@ static bool scene_output_build_state(
       // in the draw list so it covers the blurred backdrop again afterwards.
       .cull_background = scene_output->scene->calculate_visibility
           && !transient_effects
+          && (effects == NULL || effects->backdrop == 0)
           && !is_scene_blur_enabled(&scene_output->scene->blur_data),
       .highlight_transparent_region = scene_output->scene->highlight_transparent_region,
       .fractional_scale = floor(render_data.scale) != render_data.scale,
@@ -6877,7 +6931,7 @@ static bool scene_output_build_state(
   };
 
   const bool blur_composition = wlr_renderer_is_fx(output->renderer)
-      && is_scene_blur_enabled(&scene_output->scene->blur_data)
+      && (is_scene_blur_enabled(&scene_output->scene->blur_data) || (effects != NULL && effects->backdrop > 0))
       && (blur_samples_composition(
               scene_output, buffer, list_data, list_len, pass_options.color_transform != NULL,
               unfiltered_pass || render_data.transient_effects || render_data.persistent_visible
@@ -6955,7 +7009,7 @@ static bool scene_output_build_state(
       struct render_list_entry* entry = &list_data[i];
       struct wlr_scene_node* node = entry->node;
       struct blur_data blur_data = scene_output->scene->blur_data;
-      if (!should_blur_node_extend_damage(node, fx_pass, &blur_data)) {
+      if (!should_blur_node_extend_damage(node, fx_pass, &blur_data, effects != NULL && effects->backdrop > 0)) {
         continue;
       }
 

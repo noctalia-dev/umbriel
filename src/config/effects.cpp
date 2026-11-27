@@ -109,6 +109,9 @@ namespace umbriel {
     if (text == "window") {
       return EffectKind::Window;
     }
+    if (text == "backdrop") {
+      return EffectKind::Backdrop;
+    }
     if (text == "screen") {
       return EffectKind::Screen;
     }
@@ -126,6 +129,8 @@ namespace umbriel {
       return "border";
     case EffectKind::Window:
       return "window";
+    case EffectKind::Backdrop:
+      return "backdrop";
     case EffectKind::Screen:
       return "screen";
     case EffectKind::Cursor:

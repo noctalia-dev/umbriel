@@ -11,6 +11,7 @@
 #include "scene/surface_blur.h"
 #include "server/color_manager.h"
 #include "server/server.h"
+#include "view/popup.h"
 #include "view/view.h"
 extern "C" {
 #include <umbrielfx/render/effect.h>
@@ -806,11 +807,13 @@ namespace umbriel {
 
   void View::syncAnimationEffects(
       wlr_scene_tree* target, wlr_scene_node* border, wlr_scene_node* surface, const BorderEffectGate* gate,
-      Output* cardOutput, float scale
+      Output* cardOutput, float scale, wlr_scene_blur* backdrop, wlr_scene_blur* titlebarBackdrop
   ) {
     const bool ownTrees = target == nullptr;
     if (ownTrees) {
       target = m_contentTree;
+      backdrop = m_decoration.blurNode();
+      titlebarBackdrop = m_ssdFrame != nullptr ? m_ssdFrame->blurNode() : nullptr;
       if (m_decoration.borderTree() != nullptr) {
         border = &m_decoration.borderTree()->node;
       }
@@ -886,9 +889,36 @@ namespace umbriel {
           .fullscreen = scheduledFullscreen(),
       };
       Output* output = cardOutput != nullptr ? cardOutput : currentOutput();
+      const std::array backdrops{
+          backdrop != nullptr ? &backdrop->node : nullptr,
+          titlebarBackdrop != nullptr ? &titlebarBackdrop->node : nullptr,
+      };
+      std::vector<wlr_scene_node*> popupBackdrops;
+      if (ownTrees
+          && !m_effects.backdropName().empty()
+          && m_toplevel != nullptr
+          && !wl_list_empty(&m_toplevel->base->popups)) {
+        popupBackdrops.assign(backdrops.begin(), backdrops.end());
+        forEachPopupSurface(
+            [](wlr_surface* surface, int, int, void* data) {
+              wl_listener* listener = wl_signal_get(&surface->events.commit, Popup::onCommit);
+              if (listener == nullptr) {
+                return;
+              }
+              Popup* popup;
+              popup = wl_container_of(listener, popup, m_commit);
+              if (popup->m_blur.node() != nullptr) {
+                static_cast<std::vector<wlr_scene_node*>*>(data)->push_back(&popup->m_blur.node()->node);
+              }
+            },
+            &popupBackdrops
+        );
+      }
       m_effects.apply({
           .surface = surface,
           .border = border,
+          .backdrops = popupBackdrops.empty() ? std::span<wlr_scene_node* const>(backdrops)
+                                              : std::span<wlr_scene_node* const>(popupBackdrops),
           .captureSurface = captureSurface,
           .gate = gate != nullptr ? *gate : ownGate,
           .scale = scale,

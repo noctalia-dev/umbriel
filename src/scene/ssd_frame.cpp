@@ -2,6 +2,11 @@
 
 #include "config/config.h"
 #include "scene/color.h"
+#include "scene/effect_registry.h"
+
+extern "C" {
+#include <umbrielfx/render/effect.h>
+}
 #include "scene/tab_label_cache.h"
 #include "scene/title_bar_icon.h"
 #include "view/border_ring.h"
@@ -39,6 +44,9 @@ namespace umbriel {
   }
 
   SsdFrame::~SsdFrame() {
+    if (m_backdrop != nullptr) {
+      effectRegistry().removeInstance(m_blur);
+    }
     if (m_blur != nullptr) {
       wlr_scene_node_destroy(&m_blur->node);
     }
@@ -145,12 +153,19 @@ namespace umbriel {
     const auto& cfg = config().appearance.blur;
     const auto& colors = config().colors.titleBar;
     const float backgroundAlpha = (m_focused ? colors.background : colors.backgroundUnfocused)[3];
+    fx_effect_shader* backdrop = m_blurOptions.backdropEffect.empty()
+        ? nullptr
+        : effectRegistry().preset(m_blurOptions.backdropEffect, EffectKind::Backdrop);
     // The title bar has its own transparency, independent of the client's opaque region or alpha mask.
     const bool enabled = m_tree->node.enabled
-        && cfg.enabled
-        && m_blurOptions.enabled.value_or(false)
+        && (backdrop != nullptr || (cfg.enabled && m_blurOptions.enabled.value_or(false)))
         && backgroundAlpha * m_alpha < 1.0F
         && backgroundAlpha >= m_blurOptions.ignoreAlpha;
+    if (m_backdrop != nullptr && (!enabled || backdrop == nullptr)) {
+      wlr_scene_node_set_animation(&m_blur->node, FX_SLOT_WINDOW, nullptr, nullptr);
+      effectRegistry().removeInstance(m_blur);
+      m_backdrop = nullptr;
+    }
     if (!enabled) {
       if (m_blur != nullptr) {
         wlr_scene_node_set_enabled(&m_blur->node, false);
@@ -165,6 +180,12 @@ namespace umbriel {
       }
       wlr_scene_node_lower_to_bottom(&m_blur->node);
     }
+    if (backdrop != nullptr && backdrop != m_backdrop) {
+      const fx_animation_parameters parameters{};
+      wlr_scene_node_set_animation(&m_blur->node, FX_SLOT_WINDOW, backdrop, &parameters);
+      m_backdrop = backdrop;
+    }
+    wlr_scene_blur_set_strength(m_blur, cfg.enabled && m_blurOptions.enabled.value_or(false) ? 1.0F : 0.0F);
     wlr_scene_node_set_enabled(&m_blur->node, true);
     wlr_scene_node_set_position(
         &m_blur->node, m_tree->node.x + m_background->node.x, m_tree->node.y + m_background->node.y
@@ -173,7 +194,7 @@ namespace umbriel {
     wlr_scene_blur_set_corner_radii(m_blur, m_background->corners);
     wlr_scene_blur_set_clipped_region(m_blur, m_background->clipped_region);
     wlr_scene_blur_set_should_only_blur_bottom_layer(
-        m_blur, m_blurOptions.optimized.value_or(cfg.optimized) && !m_blurLive
+        m_blur, backdrop == nullptr && m_blurOptions.optimized.value_or(cfg.optimized) && !m_blurLive
     );
     wlr_scene_blur_set_alpha(m_blur, m_blurAlpha);
   }
@@ -442,7 +463,7 @@ namespace umbriel {
     auto* tree = parent;
     auto* backgroundTree = wlr_scene_tree_create(parent);
     wlr_scene_node_lower_to_bottom(&backgroundTree->node);
-    if (m_blur != nullptr && m_blur->node.enabled) {
+    if (m_blur != nullptr && m_blur->node.enabled && m_backdrop == nullptr) {
       auto* copy = wlr_scene_blur_create(backgroundTree, m_blur->width, m_blur->height);
       if (copy != nullptr) {
         wlr_scene_node_lower_to_bottom(&copy->node);

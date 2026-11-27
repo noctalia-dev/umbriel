@@ -1,6 +1,6 @@
 # Effects
 
-Effects are GLSL programs Umbriel runs on animation events, on window borders, on windows, on whole outputs, and around the pointer. Every effect is off until you select one. Umbriel ships a small set; each is a preset you include and then name where it should apply.
+Effects are GLSL programs Umbriel runs on animation events, on window borders, behind and over windows, on whole outputs, and around the pointer. Every effect is off until you select one. Umbriel ships a small set; each is a preset you include and then name where it should apply.
 
 ## Use a bundled effect
 
@@ -58,7 +58,7 @@ window_effect = "scanlines"
 screen_effect = "off"
 ```
 
-`border_effect` and `window_effect` follow the usual window-rule merging: the last matching rule that sets a key wins. The cursor effect has no per-window or per-output override.
+`border_effect`, `window_effect`, and `backdrop_effect` follow the usual window-rule merging: the last matching rule that sets a key wins. The cursor effect has no per-window or per-output override.
 
 To keep the audio border on the focused window and an unfocused audio player, include the `audio` border preset and use:
 
@@ -84,8 +84,9 @@ A window rule's `border_effect_unfocused` accepts `true` or `false` and override
 | `screen`           | `""`    | Screen preset or pool applied to every output.                                                                                                                                                            |
 | `screen_cast`      | `""`    | Screen preset or pool that replaces `screen` on an output while a client captures that output whole, as a portal screen share does. Other outputs keep theirs. It reaches viewers only with `in_capture`. |
 | `cursor`           | `""`    | Cursor preset or pool, shared across outputs.                                                                                                                                                             |
+| `backdrop_enabled` | `true`  | Allow window-rule backdrop shaders. `false` disables their compilation and rendering while keeping preset definitions and rules.                                                                          |
 | `max_fps`          | `0`     | Cap, 0 to 240, for frames drawn only because an effect animates. `0` follows each output's refresh rate.                                                                                                  |
-| `in_capture`       | `false` | Include window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear. Raw export-DMA-BUF is not advertised; use screencopy or image-copy clients.               |
+| `in_capture`       | `false` | Include backdrop, window, screen, and cursor effects in screencopy and image-copy captures. Border effects always appear. Raw export-DMA-BUF is not advertised; use screencopy or image-copy clients.     |
 | `border_unfocused` | `false` | Draw the border effect on decorated, non-urgent, non-fullscreen windows without focus. Window rules can override this with the boolean `border_effect_unfocused`.                                         |
 
 Where each kind draws:
@@ -93,6 +94,7 @@ Where each kind draws:
 - **animation** binds to an animation event through `[animation.<event>] effect = "<name>"`. The event's `enabled`, `duration_ms`, and `curve` still own its timeline; see [Animation](animation.md#custom-effects).
 - **border** draws on the focused window's border ring while the window is decorated, not fullscreen, and not urgent; with `[effects].border_unfocused = true` or `border_effect_unfocused = true` in a matching window rule, it also draws on eligible unfocused windows. A rule's explicit `false` keeps that window's effect focused-only. `padding` reserves transparent space around the ring for the effect to paint into.
 - **window** draws over each window in place, regardless of focus, including undecorated and fullscreen windows. It follows the window through opening, closing, moving, workspace switches, and the overview. A floating window with client-side decorations and `corner_radius = 0` has no rounding to mask against, so the effect also shades the transparent margin the client draws around such a window.
+- **backdrop** replaces the built-in blur behind a window with a custom shader selected by `backdrop_effect` in a window rule. It works with built-in blur disabled and leaves the client contents above it. See [Backdrop shaders](#backdrop-shaders).
 - **screen** draws over the whole output after everything else, except the cursor effect and the software cursor.
 - **cursor** draws in a square of `radius` logical pixels around the pointer (`0` covers the whole output), after the screen effect, only on the output currently holding the pointer, clipped at that output's edges. It runs before the software cursor is drawn and never shades the cursor image, and never affects a hardware cursor. It hides when the compositor hides the pointer; a client that hides its own cursor image does not by itself turn the effect off. Motion-history shaders expand the rectangle to cover the retained path, with `radius` padding.
 
@@ -106,7 +108,7 @@ Presets and pools share a namespace. Names must be non-empty, cannot be `off`, a
 
 | Key               | Kinds  | Default  | Description                                                                                                          |
 | ----------------- | ------ | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| `kind`            | all    | required | `animation`, `border`, `window`, `screen`, or `cursor`.                                                              |
+| `kind`            | all    | required | `animation`, `border`, `window`, `backdrop`, `screen`, or `cursor`.                                                  |
 | `shader`          | all    | none     | Path to the GLSL source, at most 256 KiB. Without it the preset is inert.                                            |
 | `palette`         | all    | `false`  | Supply `[colors]` accent and status colors to the program.                                                           |
 | `padding`         | border | `0`      | Transparent space around the ring the effect may paint, 0 to 1024.                                                   |
@@ -154,9 +156,9 @@ Define or include the `pulse` and `quiet` border presets separately.
 | `choose`    | Required array   | Ordered names of presets of that kind.      |
 | `selection` | `unused_first`   | `unused_first`, `round_robin`, or `random`. |
 
-`unused_first` chooses the least-held member, breaking ties in list order. `round_robin` hands out members in order and wraps. `random` makes a uniform random choice. Invalid or duplicate members are dropped individually, keeping the first valid occurrence. A missing/non-array `choose`, invalid policy, or animation kind rejects the pool. An empty pool is inert and can be selected, but cannot be cycled. Pools cannot contain pools.
+`unused_first` chooses the least-held member, breaking ties in list order. `round_robin` hands out members in order and wraps. `random` makes a uniform random choice. Invalid or duplicate members are dropped individually, keeping the first valid occurrence. A missing/non-array `choose`, invalid policy, or an animation or backdrop kind rejects the pool. An empty pool is inert and can be selected, but cannot be cycled. Pools cannot contain pools.
 
-Pools are accepted by the four `[effects]` selectors, window rules' `border_effect`/`window_effect`, output `screen_effect`, and matching runtime actions. Animation bindings and border `overlay` remain preset-only. Definitions and references may be in different included files. Inspection keeps declaration order: included files before their including file, and source order within each file. Members keep `choose` order.
+Pools are accepted by the four `[effects]` selectors, window rules' `border_effect`/`window_effect`, output `screen_effect`, and matching runtime actions. Animation bindings, border `overlay`, and window-rule `backdrop_effect` remain preset-only. Definitions and references may be in different included files. Inspection keeps declaration order: included files before their including file, and source order within each file. Members keep `choose` order.
 
 Each mapped window owns independent border and window slots; each present output owns a screen slot; the session owns one cursor slot. Holdings count only unsuppressed owners assigned from that same pool. Hidden/scratchpad windows, unfocused borders, disabled outputs, and failed/inert programs still hold members. Plain presets, other pools, overlays, and closing snapshots do not count.
 
@@ -200,6 +202,7 @@ Sources are GLSL ES 1.00 fragment code without `#version`, `main`, or precision 
 | animation | `vec4 animation(vec2 uv)` |
 | border    | `vec4 border(vec2 uv)`    |
 | window    | `vec4 window(vec2 uv)`    |
+| backdrop  | `vec4 backdrop(vec2 uv)`  |
 | screen    | `vec4 screen(vec2 uv)`    |
 | cursor    | `vec4 cursor(vec2 uv)`    |
 
@@ -207,7 +210,7 @@ Every kind sees:
 
 | Name                               | Meaning                                                                                                                                                                                                                                                                          |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `umbriel_sample(vec2 uv)`          | The input under the drawn rectangle: the captured window for animations, the native ring for borders, the pixels already on screen for window, screen, and cursor effects.                                                                                                       |
+| `umbriel_sample(vec2 uv)`          | The input under the drawn rectangle: the captured window for animations, the native ring for borders, the unblurred pixels behind the window for backdrops, the pixels already on screen for window, screen, and cursor effects.                                                 |
 | `umbriel_sample_previous(vec2 uv)` | This effect's previous result. Using it allocates two extra buffers for each window or output it runs on.                                                                                                                                                                        |
 | `umbriel_size`                     | Drawn width and height in effect logical pixels, before overview zoom.                                                                                                                                                                                                           |
 | `umbriel_scale`                    | Buffer pixels per effect logical pixel, including overview zoom.                                                                                                                                                                                                                 |
@@ -233,6 +236,35 @@ Shaders can sample a band or aggregate the spectrum according to the effect's ne
 Audio works without `umbriel_time`; `animated` and `speed` only affect time. Changed input redraws visible consumers at `max_fps`. Identical input does not request frames. Each output holds its snapshot between eligible frames, and all passes of a composition, including closing copies, use that value. Existing `in_capture` behavior applies.
 
 Include `border/audio/effect.toml` from the installed effect directory and select `border = "audio"` for a simple example. It remains dim without a feed.
+
+### Backdrop shaders
+
+Select a backdrop preset with a window rule:
+
+```toml
+[effects.preset.glass]
+kind = "backdrop"
+shader = "glass.glsl"
+
+[[window_rule]]
+match.app_id = "^foot$"
+backdrop_effect = "glass"
+```
+
+For example, `glass.glsl` can tint the raw backdrop:
+
+```glsl
+vec4 backdrop(vec2 uv) {
+  vec4 color = umbriel_sample(uv);
+  return vec4(mix(color.rgb, vec3(0.15, 0.3, 0.5), 0.25), 1.0);
+}
+```
+
+`umbriel_sample()` reads the scene behind the window before built-in blur, noise, brightness, contrast, or saturation. The shader replaces that blur; it can implement its own blur by sampling neighboring coordinates. Window contents are composited afterwards. The effect follows the window's existing backdrop clipping, corners, and transparency mask. It uses the live scene, including overlapping windows, regardless of `blur_optimized`. The selected preset also applies behind translucent Umbriel title bars and descendant XDG popups, including nested popups. This inheritance works with `blur` and `blur_popups` disabled. Layer-surface popups do not inherit a window preset. Fully opaque windows need no backdrop draw unless compositor opacity makes them translucent. `effects.in_capture` controls whether captures include the custom shader. It follows live windows and overview cards. Client and title-bar closing snapshots omit custom backdrops.
+
+The last matching rule that sets `backdrop_effect` wins. Set it to `"off"` or `""`, or remove the selection, to disable the custom shader. Native blur then follows the usual blur settings. Missing or invalid shaders also fall back to those settings. To disable every backdrop shader while keeping presets and rules, set `[effects] backdrop_enabled = false`. This releases backdrop shader bindings and stops their compilation, rendering, and animation work. An unselected preset adds no backdrop rendering or animation work.
+
+Backdrop selection is preset-only, with no global selector or runtime selection action. Each client area, title bar, and popup uses its own normalized coordinates, size, and previous-result history. Sampling is limited to that surface's rectangle; padding and desktop-coordinate uniforms are not exposed.
 
 ### What a window effect sees
 

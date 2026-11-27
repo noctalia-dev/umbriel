@@ -91,7 +91,7 @@ namespace umbriel {
 
     bool selectsEffect(const std::vector<WindowRule>& rules) {
       return std::ranges::any_of(rules, [](const WindowRule& rule) {
-        return rule.borderEffect.has_value() || rule.windowEffect.has_value();
+        return rule.borderEffect.has_value() || rule.windowEffect.has_value() || rule.backdropEffect.has_value();
       });
     }
 

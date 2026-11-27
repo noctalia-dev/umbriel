@@ -77,6 +77,8 @@ vec4 animation(vec2 uv) {
         return FX_EFFECT_ANIMATION;
       case EffectKind::Border:
         return FX_EFFECT_BORDER;
+      case EffectKind::Backdrop:
+        return FX_EFFECT_BACKDROP;
       case EffectKind::Window:
         return FX_EFFECT_WINDOW;
       case EffectKind::Screen:
@@ -174,6 +176,9 @@ vec4 animation(vec2 uv) {
     for (const WindowRule& rule : settings.windowRules) {
       add(rule.borderEffect.value_or(""));
       add(rule.windowEffect.value_or(""));
+      if (settings.effects.backdropEnabled) {
+        add(rule.backdropEffect.value_or(""));
+      }
     }
     for (const OutputRule& rule : settings.outputs) {
       add(rule.screenEffect.value_or(""));
@@ -253,7 +258,10 @@ vec4 animation(vec2 uv) {
     });
     m_inPlaceReferenced = std::ranges::any_of(m_programs, [](const auto& item) {
       const EffectKind kind = item.second.kind;
-      return (kind == EffectKind::Window || kind == EffectKind::Screen || kind == EffectKind::Cursor)
+      return (kind == EffectKind::Window
+              || kind == EffectKind::Backdrop
+              || kind == EffectKind::Screen
+              || kind == EffectKind::Cursor)
           && item.second.shader != nullptr;
     });
     updateCursorActive();

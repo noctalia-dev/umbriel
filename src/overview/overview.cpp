@@ -487,6 +487,10 @@ namespace umbriel {
     };
     const auto update = [&](const ViewChromeAttachment* live, std::unique_ptr<ViewChromeAttachment>& preview) {
       if (live == nullptr) {
+        if (const auto* frame = dynamic_cast<const SsdFrame*>(preview.get());
+            frame != nullptr && frame->blurNode() != nullptr) {
+          card.view->effects().detachNodes(nullptr, nullptr, &frame->blurNode()->node);
+        }
         preview.reset();
         return;
       }
@@ -691,9 +695,10 @@ namespace umbriel {
         .urgent = view->urgent(),
         .fullscreen = view->scheduledFullscreen(),
     };
+    const auto* frame = dynamic_cast<const SsdFrame*>(card.frame.get());
     view->syncAnimationEffects(
         card.tree, card.border != nullptr ? &card.border->node : nullptr, &card.surfaceTree->node, &cardGate,
-        card.owner->output, static_cast<float>(zoom())
+        card.owner->output, static_cast<float>(zoom()), card.blur.node(), frame != nullptr ? frame->blurNode() : nullptr
     );
   }
 
@@ -1334,9 +1339,12 @@ namespace umbriel {
   }
 
   void Overview::destroyCard(Card* card) {
+    const auto* frame = dynamic_cast<const SsdFrame*>(card->frame.get());
     card->view->effects().detachNodes(
         card->surfaceTree != nullptr ? &card->surfaceTree->node : nullptr,
-        card->border != nullptr ? &card->border->node : nullptr
+        card->border != nullptr ? &card->border->node : nullptr,
+        card->blur.node() != nullptr ? &card->blur.node()->node : nullptr,
+        frame != nullptr && frame->blurNode() != nullptr ? &frame->blurNode()->node : nullptr
     );
     for (const auto& entry : card->surfaces) {
       wl_list_remove(&entry->commit.link);

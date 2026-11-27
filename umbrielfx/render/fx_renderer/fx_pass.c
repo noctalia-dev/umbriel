@@ -3042,11 +3042,33 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   // The final upsample draws straight into the pass target unless the
   // optimized buffer already holds the finished blur or the composite would do
   // more than copy it.
-  const bool fuse = (!use_optimized || has_strength) && blur_composite_is_copy(pass, tex_options);
+  const bool fuse =
+      fx_options->backdrop == NULL && (!use_optimized || has_strength) && blur_composite_is_copy(pass, tex_options);
   struct blur_data final_upsample = {0};
   TRACY_ZONE_TEXT_f("Use Optimized Blur: %d", fx_options->use_optimized_blur);
   TRACY_ZONE_TEXT_f("Fused Composite: %d", fuse);
-  if (!use_optimized || has_strength) {
+  if (fx_options->backdrop != NULL) {
+    struct fx_framebuffer* source = animation_backdrop(pass);
+    struct wlr_texture* texture = fx_texture_from_buffer(&renderer->wlr_renderer, source->buffer);
+    buffer = ensure_offscreen_buffer(pass, &target_buffers(pass)->in_place_source, true);
+    if (texture == NULL || buffer == NULL) {
+      if (texture != NULL) {
+        wlr_texture_destroy(texture);
+      }
+      pass->animation_failed = true;
+      goto finish;
+    }
+    struct fx_framebuffer* saved = pass->buffer;
+    const bool suppress_updated = pass->suppress_updated;
+    pass->buffer = buffer;
+    pass->suppress_updated = true;
+    fx_framebuffer_bind(buffer);
+    effect_composite(pass, fx_options->backdrop, texture, &fx_options->backdrop->box);
+    pass->buffer = saved;
+    pass->suppress_updated = suppress_updated;
+    fx_framebuffer_bind(saved);
+    wlr_texture_destroy(texture);
+  } else if (!use_optimized || has_strength) {
     // Render the blur into its own buffer
     struct fx_render_blur_pass_options blur_options = *fx_options;
     if (use_optimized) {

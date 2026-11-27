@@ -676,6 +676,7 @@ namespace umbriel {
     m_tiledSizeRequest.reset();
     m_layoutPresentationHeld = false;
     cancelPositionAnimation();
+    m_effects.detach();
     m_ssdFrame.reset();
     m_decoration.setBordersEnabled(false);
     m_decoration.hideEffects();
@@ -691,7 +692,6 @@ namespace umbriel {
     if (m_workspace != nullptr) {
       m_workspace->syncFloatingStack(this);
     }
-    m_effects.detach();
     m_effects.resetSlots();
     if (hadRuntimeEffects) {
       m_server->effects().prepare(m_server->renderer());

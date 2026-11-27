@@ -11,6 +11,7 @@
 #include "scene/effect_registry.h"
 #include "scene/surface_blur.h"
 #include "server/server.h"
+#include "view/popup.h"
 #include "view/size_hints.h"
 #include "view/view.h"
 #include "view/view_internal.h"
@@ -757,7 +758,8 @@ namespace umbriel {
     };
     resolve(EffectKind::Border, config().effects.border, rule.borderEffect);
     resolve(EffectKind::Window, config().effects.window, rule.windowEffect);
-    m_effects.syncNames(config().effects);
+    const bool hadBackdrop = !m_effects.backdropName().empty();
+    m_effects.syncNames(config().effects, rule.backdropEffect.value_or(""));
     const bool paddingChanged = m_decoration.setBorderPadding(m_effects.borderPadding());
     if (ringChanged || paddingChanged) {
       updateBorderGeometry();
@@ -797,6 +799,19 @@ namespace umbriel {
     m_presentation.setFullscreenOpaque(fullscreenOpaque());
     updateDimBehind();
     updateBlur();
+    if (hadBackdrop || !m_effects.backdropName().empty()) {
+      forEachPopupSurface(
+          [](wlr_surface* surface, int, int, void*) {
+            wl_listener* listener = wl_signal_get(&surface->events.commit, Popup::onCommit);
+            if (listener != nullptr) {
+              Popup* popup;
+              popup = wl_container_of(listener, popup, m_commit);
+              popup->handleCommit(false);
+            }
+          },
+          nullptr
+      );
+    }
     // updateBlur creates the full node box. Re-apply the owning output's clip immediately, because focus, title, and
     // app-id rule refreshes do not necessarily produce a later surface commit or layout pass.
     if (m_workspace != nullptr) {

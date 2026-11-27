@@ -4,7 +4,7 @@
 // instead creates an ungrabbed popup when a line arrives on stdin, so a check
 // can open one while the toplevel is not shown. With --unmap-on-close it unmaps
 // the toplevel on a close request and keeps its popup, so a check can unmap a
-// window while its popup holds the keyboard grab.
+// window while its popup holds the keyboard grab. POPUP_COLOR sets the popup's premultiplied ARGB fill.
 
 #include "xdg-shell-client-protocol.h"
 
@@ -298,7 +298,11 @@ int main(int argc, char** argv) {
   }
 
   state.windowBuffer = createBuffer(state, kWindowWidth, kWindowHeight, 0xFF5577AA);
-  state.popupBuffer = createBuffer(state, kPopupWidth, kPopupHeight, 0xFFEEAA33);
+  const char* popupColor = std::getenv("POPUP_COLOR");
+  state.popupBuffer = createBuffer(
+      state, kPopupWidth, kPopupHeight,
+      popupColor != nullptr ? static_cast<uint32_t>(std::strtoul(popupColor, nullptr, 0)) : 0xFFEEAA33
+  );
   if (state.windowBuffer.resource == nullptr || state.popupBuffer.resource == nullptr) {
     std::println(stderr, "popup-client: failed to allocate shared-memory buffers");
     return EXIT_FAILURE;

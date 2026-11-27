@@ -14,7 +14,7 @@ namespace umbriel {
 
   class Section;
 
-  enum class EffectKind : std::uint8_t { Animation, Border, Window, Screen, Cursor };
+  enum class EffectKind : std::uint8_t { Animation, Border, Window, Backdrop, Screen, Cursor };
   enum class EffectSelectionPolicy : std::uint8_t { UnusedFirst, RoundRobin, Random };
   enum class EffectReferenceConstraint : std::uint8_t { PresetOnly, PresetOrPool, PoolRequired };
 
@@ -107,6 +107,7 @@ namespace umbriel {
     std::string cursor;
     int maxFps = 0; // 0-240, 0 follows the refresh rate
     bool inCapture = false;
+    bool backdropEnabled = true;
     bool borderUnfocused = false;
     bool operator==(const Effects&) const = default;
   };

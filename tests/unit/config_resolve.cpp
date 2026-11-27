@@ -716,24 +716,30 @@ UMBRIEL_TEST(windowRuleEffectOverridesUseLastWriterWins) {
   first.borderEffect = "pulse";
   first.borderUnfocused = true;
   first.windowEffect = "lines";
+  first.backdropEffect = "glass";
   umbriel::WindowRule second = first;
   second.borderEffect = "off";
   second.borderUnfocused = false;
   second.windowEffect.reset();
+  second.backdropEffect = "off";
   config.windowRules = {first, second};
   const auto resolved =
       umbriel::resolveWindowRules(config, "foot", std::nullopt, std::nullopt, ContentType::None, {}, 0);
   CHECK(resolved.borderEffect == "off");
   CHECK(resolved.borderUnfocused == false);
   CHECK(resolved.windowEffect == "lines");
+  CHECK(resolved.backdropEffect == "off");
 
   config.windowRules[1].borderUnfocused.reset();
+  config.windowRules[1].backdropEffect.reset();
   const auto inherited =
       umbriel::resolveWindowRules(config, "foot", std::nullopt, std::nullopt, ContentType::None, {}, 0);
   CHECK(inherited.borderUnfocused == true);
+  CHECK(inherited.backdropEffect == "glass");
   const auto unmatched =
       umbriel::resolveWindowRules(config, "other", std::nullopt, std::nullopt, ContentType::None, {}, 0);
   CHECK(!unmatched.borderUnfocused.has_value());
+  CHECK(!unmatched.backdropEffect.has_value());
 }
 
 UMBRIEL_TEST(windowRulesMergeWorkspaceTargetsAcrossSelectorKinds) {

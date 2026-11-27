@@ -68,6 +68,9 @@ namespace umbriel {
 
   void Popup::onUnmap(wl_listener* listener, void* /*data*/) {
     Popup* self = wl_container_of(listener, self, m_unmap); // NOLINT(modernize-use-auto)
+    if (View* view = View::fromSurface(self->m_popup->parent); view != nullptr && self->m_blur.node() != nullptr) {
+      view->effects().detachNodes(nullptr, nullptr, &self->m_blur.node()->node);
+    }
     self->m_blur.hide();
     self->m_repositions.clear();
   }
@@ -77,7 +80,7 @@ namespace umbriel {
     self->handleDestroy();
   }
 
-  void Popup::handleCommit() {
+  void Popup::handleCommit(bool configure) {
     const wlr_box& geometry = m_popup->base->geometry;
     SurfaceBlurOptions blurOptions;
     if (LayerSurface* layer = LayerSurface::fromSurface(m_popup->parent)) {
@@ -89,6 +92,12 @@ namespace umbriel {
         static_cast<wlr_scene_tree*>(m_popup->base->data), m_popup->base->surface,
         wlr_box{0, 0, geometry.width, geometry.height}, geometry, corner_radii_none(), nullptr, blurOptions
     );
+    if (!configure) {
+      return;
+    }
+    if (View* view = View::fromSurface(m_popup->parent); view != nullptr && !view->effects().backdropName().empty()) {
+      view->syncAnimationEffects();
+    }
     if (!m_popup->base->initial_commit) {
       return;
     }
@@ -150,6 +159,9 @@ namespace umbriel {
   }
 
   void Popup::handleDestroy() {
+    if (View* view = View::fromSurface(m_popup->parent); view != nullptr && m_blur.node() != nullptr) {
+      view->effects().detachNodes(nullptr, nullptr, &m_blur.node()->node);
+    }
     wl_list_remove(&m_commit.link);
     wl_list_remove(&m_reposition.link);
     wl_list_remove(&m_configure.link);

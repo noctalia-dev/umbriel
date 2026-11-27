@@ -73,7 +73,7 @@ namespace umbriel {
         if (!kind) {
           warnAt(
               kindNode != nullptr ? kindNode->source() : declaration.source,
-              "ignoring {} (kind must be animation|border|window|screen|cursor)", path
+              "ignoring {} (kind must be animation|border|window|backdrop|screen|cursor)", path
           );
           keys.freeform();
           continue;
@@ -122,6 +122,7 @@ namespace umbriel {
           break;
         case EffectKind::Animation:
         case EffectKind::Window:
+        case EffectKind::Backdrop:
         case EffectKind::Screen:
           break;
         }
@@ -157,7 +158,7 @@ namespace umbriel {
         const auto kind = kindNode != nullptr && kindNode->is_string()
             ? parseEffectKind(kindNode->value<std::string>().value_or(""))
             : std::nullopt;
-        if (!kind || *kind == EffectKind::Animation) {
+        if (!kind || *kind == EffectKind::Animation || *kind == EffectKind::Backdrop) {
           warnAt(
               kindNode != nullptr ? kindNode->source() : declaration.source,
               "ignoring {} (kind must be border|window|screen|cursor)", path
@@ -221,6 +222,7 @@ namespace umbriel {
       static const registry::Fields<Effects> fields{
           registry::integer("max_fps", 0, 240, &Effects::maxFps),
           registry::boolean("in_capture", &Effects::inCapture),
+          registry::boolean("backdrop_enabled", &Effects::backdropEnabled),
           registry::boolean("border_unfocused", &Effects::borderUnfocused),
           effectField("border", &Effects::border, EffectKind::Border),
           effectField("window", &Effects::window, EffectKind::Window),
@@ -235,7 +237,10 @@ namespace umbriel {
                   description.path = key;
                   keys.push_back(std::move(description));
                 };
-                add("kind", KeyDescription("enum").withValues({"animation", "border", "window", "screen", "cursor"}));
+                add(
+                    "kind",
+                    KeyDescription("enum").withValues({"animation", "border", "window", "backdrop", "screen", "cursor"})
+                );
                 add("shader", KeyDescription("string").withFormat("path"));
                 add("palette", KeyDescription("bool"));
                 add("padding", KeyDescription("int").withRange(0, 1024));

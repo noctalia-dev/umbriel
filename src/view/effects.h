@@ -3,6 +3,7 @@
 #include "config/effects.h"
 #include "scene/effect_selection.h"
 
+#include <span>
 #include <string>
 #include <vector>
 
@@ -31,17 +32,19 @@ namespace umbriel {
   // window and its overview card track visibility and output separately.
   class ViewEffects {
   public:
-    void syncNames(const Effects& effects);
+    void syncNames(const Effects& effects, std::string_view backdrop);
     void resetSlots();
     EffectSlot& slot(EffectKind kind) { return kind == EffectKind::Border ? m_borderSlot : m_windowSlot; }
     const EffectSlot& slot(EffectKind kind) const { return kind == EffectKind::Border ? m_borderSlot : m_windowSlot; }
     const std::string& borderName() const { return m_border; }
     const std::string& windowName() const { return m_window; }
+    const std::string& backdropName() const { return m_backdrop; }
     // Preset padding, 0 when no border preset with a compiled program is selected.
     int borderPadding() const;
     struct ApplyInput {
       wlr_scene_node* surface = nullptr;
       wlr_scene_node* border = nullptr;
+      std::span<wlr_scene_node* const> backdrops;
       wlr_scene_node* captureSurface = nullptr; // the isolated capture scene's surface tree node
       BorderEffectGate gate;
       float scale = 1.0F;
@@ -50,8 +53,8 @@ namespace umbriel {
       const void* output = nullptr; // the output driving this instance's frames
       wlr_box outputBox{};          // that output's layout box: an instance is visible only inside it
     };
-    // True when a border or window preset is selected for this view: the caller reads the clock only then.
-    bool configured() const { return !m_border.empty() || !m_window.empty(); }
+    // True when a border, window, or backdrop preset is selected for this view: the caller reads the clock only then.
+    bool configured() const { return !m_border.empty() || !m_window.empty() || !m_backdrop.empty(); }
     // True when apply() reads `surface`: a window preset or a border preset with an overlay is selected, or a node of
     // this view is in the ledger.
     bool needsSurface() const { return !m_window.empty() || m_overlay || !m_owners.empty(); }
@@ -59,7 +62,9 @@ namespace umbriel {
     // Ledger removal for every node this object registered; slots are cleared by the caller.
     void detach();
     // Ledger removal for one set of nodes (an overview card being destroyed).
-    void detachNodes(wlr_scene_node* surface, wlr_scene_node* border);
+    void detachNodes(
+        wlr_scene_node* surface, wlr_scene_node* border, wlr_scene_node* backdrop, wlr_scene_node* titlebar = nullptr
+    );
 
   private:
     void track(const void* owner);   // remember a ledger owner so detach() can drop it
@@ -70,6 +75,7 @@ namespace umbriel {
     EffectSlot m_windowSlot;
     std::string m_border;
     std::string m_window;
+    std::string m_backdrop;
     bool m_overlay = false;            // the border preset names an overlay
     std::vector<const void*> m_owners; // nodes registered in the ledger
   };

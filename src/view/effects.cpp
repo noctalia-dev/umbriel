@@ -27,10 +27,18 @@ namespace umbriel {
     m_windowSlot = {};
     m_border.clear();
     m_window.clear();
+    m_backdrop.clear();
     m_overlay = false;
   }
 
-  void ViewEffects::syncNames(const Effects& effects) {
+  void ViewEffects::syncNames(const Effects& effects, std::string_view backdrop) {
+    if (backdrop == kEffectOff || !effects.backdropEnabled) {
+      backdrop = {};
+    }
+    if (m_backdrop != backdrop && !m_backdrop.empty()) {
+      detach();
+    }
+    m_backdrop = backdrop;
     m_border = m_borderSlot.effectiveName();
     m_window = m_windowSlot.effectiveName();
     const EffectPreset* border = m_border.empty() ? nullptr : findEffectPreset(effects, m_border);
@@ -95,6 +103,33 @@ namespace umbriel {
               .advancing = advancing && input.clockAdvancing,
           }
       );
+    }
+    if (!m_backdrop.empty()) {
+      fx_effect_shader* backdrop = registry.preset(m_backdrop, EffectKind::Backdrop);
+      for (wlr_scene_node* node : input.backdrops) {
+        if (node == nullptr) {
+          continue;
+        }
+        if (backdrop != nullptr && node->enabled) {
+          fx_animation_parameters parameters{};
+          parameters.scale = input.scale;
+          registry.fillTimeUniforms(parameters, input.seconds, *registry.presetConfig(m_backdrop), backdrop);
+          wlr_scene_node_set_animation(node, FX_SLOT_WINDOW, backdrop, &parameters);
+          track(node);
+          registry.updateInstance(
+              node,
+              {
+                  .output = input.output,
+                  .visible = wlr_scene_node_visible_in_box(node, &input.outputBox),
+                  .readsTime = fx_effect_shader_reads(backdrop, "umbriel_time"),
+                  .advancing = input.clockAdvancing,
+              }
+          );
+        } else {
+          wlr_scene_node_set_animation(node, FX_SLOT_WINDOW, nullptr, nullptr);
+          untrack(node);
+        }
+      }
     }
     applyWindowSlots(input, preset, seconds, advancing);
   }
@@ -170,7 +205,11 @@ namespace umbriel {
     m_owners.clear();
   }
 
-  void ViewEffects::detachNodes(wlr_scene_node* surface, wlr_scene_node* border) {
+  void ViewEffects::detachNodes(
+      wlr_scene_node* surface, wlr_scene_node* border, wlr_scene_node* backdrop, wlr_scene_node* titlebar
+  ) {
+    untrack(titlebar);
+    untrack(backdrop);
     untrack(surface);
     if (surface != nullptr) {
       untrack(&surface->addons);

@@ -118,12 +118,16 @@ namespace umbriel {
         .ignoreAlpha = static_cast<float>(rule.blurIgnoreAlpha.value_or(0.0)),
         .enabled = rule.blur.value_or(false),
         .optimized = rule.blurOptimized,
+        .backdropEffect = !config().effects.backdropEnabled || rule.backdropEffect.value_or("") == kEffectOff
+            ? ""
+            : rule.backdropEffect.value_or(""),
     };
     m_popupBlurOptions = SurfaceBlurOptions{
         .ignoreAlpha = static_cast<float>(rule.blurIgnoreAlpha.value_or(0.0)),
         .enabled = rule.blurPopups.value_or(false),
         // A popup covers its own window, which the cached wallpaper blur never contains.
         .optimized = false,
+        .backdropEffect = m_blurOptions.backdropEffect,
     };
     const auto& appearance = config().appearance;
     const int borderWidth = rule.borderWidth.value_or(appearance.borderWidth);

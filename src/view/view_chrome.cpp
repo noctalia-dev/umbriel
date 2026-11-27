@@ -357,7 +357,11 @@ namespace umbriel {
   }
 
   float View::blurAlpha() const {
-    return m_fadeAlpha * m_overviewOpacity * static_cast<float>(std::clamp(m_ruleBlur.current(), 0.0, 1.0));
+    const bool backdrop = !m_effects.backdropName().empty()
+        && effectRegistry().preset(m_effects.backdropName(), EffectKind::Backdrop) != nullptr;
+    return m_fadeAlpha
+        * m_overviewOpacity
+        * (backdrop ? 1.0F : static_cast<float>(std::clamp(m_ruleBlur.current(), 0.0, 1.0)));
   }
 
   void View::updateBlur(int contentWidth, int contentHeight) {

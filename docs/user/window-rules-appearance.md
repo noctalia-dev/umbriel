@@ -37,11 +37,12 @@ blur = true
 
 ### Effects
 
-| Key                       | Default | Description                                                        |
-| ------------------------- | ------- | ------------------------------------------------------------------ |
-| `border_effect`           | global  | Replace `effects.border` with a border preset or pool, or `"off"`. |
-| `border_effect_unfocused` | global  | Override `effects.border_unfocused` with `true` or `false`.        |
-| `window_effect`           | global  | Replace `effects.window` with a window preset or pool, or `"off"`. |
+| Key                       | Default | Description                                                                                                                                                                                            |
+| ------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `border_effect`           | global  | Replace `effects.border` with a border preset or pool, or `"off"`.                                                                                                                                     |
+| `border_effect_unfocused` | global  | Override `effects.border_unfocused` with `true` or `false`.                                                                                                                                            |
+| `window_effect`           | global  | Replace `effects.window` with a window preset or pool, or `"off"`.                                                                                                                                     |
+| `backdrop_effect`         | off     | Select a `backdrop` preset behind the client area, translucent Umbriel title bar, and descendant XDG popups, or `"off"` to restore native blur settings. Works with `blur` and `blur_popups` disabled. |
 
 > [!NOTE]
 > Fullscreen windows ignore rule `opacity` unless `appearance.opaque_fullscreen = false`. See [Windows](appearance.md#windows).
@@ -175,6 +176,8 @@ window_effect = "scanlines"
 ```
 
 Names refer to `[effects.preset.<name>]` or `[effects.pool.<name>]` tables of the matching kind; see [Effects](effects.md#turn-a-default-off-for-one-window-or-output). A window keeps its pick from a pool across rule changes, and runtime overrides take precedence over rules ([Pools](effects.md#pools)).
+
+The `backdrop_effect` key accepts a `backdrop` preset or `"off"`; see [Backdrop shaders](effects.md#backdrop-shaders).
 
 ## Dim behind
 
