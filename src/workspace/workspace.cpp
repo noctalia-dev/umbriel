@@ -300,7 +300,8 @@ namespace umbriel {
       view->notifyOutputScale();
       if (view->mapped()) {
         view->enterForeignOutput(group.output());
-        view->syncMinimizeEligibility();
+        // Also re-resolves `match.output` rules against the new output.
+        view->refreshStateRuleEffects();
       }
     }
     group.server()->scheduleIpcWindowsEvent();

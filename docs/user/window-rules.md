@@ -36,7 +36,7 @@ The keys are grouped by what they change: [Placement rules](window-rules-placeme
 
 ## Match windows
 
-Patterns are regular expressions that match any part of the value; use `^` and `$` for an exact match. `match.app_id`, `match.title`, `match.xdg_tag`, and `match.layout` also take an array: any entry matching is enough, and an empty array places no constraint.
+Patterns are regular expressions that match any part of the value; use `^` and `$` for an exact match. `match.app_id`, `match.title`, `match.xdg_tag`, `match.output`, and `match.layout` also take an array: any entry matching is enough, and an empty array places no constraint.
 
 ```toml
 # Scanlines on two video players
@@ -67,6 +67,7 @@ These update while the window is open.
 
 | Selector                      | Matches                                                                                                                                                    |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `match.output`                | The output the window is on, or for an opening window, the output its placement rules select. See [Per-monitor rules](#per-monitor-rules).                 |
 | `match.layout`                | The workspace layout: `"scrolling"`, `"dwindle"`, `"master"`, or `"stacking"`.                                                                             |
 | `match.is_focused`            | Focus.                                                                                                                                                     |
 | `match.is_floating`           | Floating.                                                                                                                                                  |
@@ -79,3 +80,16 @@ These update while the window is open.
 
 > [!NOTE]
 > `match.layout` follows the workspace layout, floating windows included. A window without a workspace does not match it, so use it for live settings, not for where a window opens.
+
+### Per-monitor rules
+
+`match.output` searches both the output's connector name (`HDMI-A-1`) and its monitor descriptor (`<make> <model> <serial>`, as `umbriel outputs` prints it), so either form matches. A display that reports no EDID fields only answers to its connector.
+
+```toml
+[[window_rule]]
+match.app_id = "^obsidian$"
+match.output = "AU Optronics"
+default_scrolling_extent = 1
+```
+
+Placement keys resolve against the output the window opens on, so a rule that also moves the window (`default_output`, `default_workspace`, `default_scratchpad`) is matched against where the window lands, not where it started. All other keys follow the window's current output, so moving a window to another monitor re-resolves them.
