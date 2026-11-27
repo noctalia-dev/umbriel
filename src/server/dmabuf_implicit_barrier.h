@@ -1,10 +1,8 @@
 #pragma once
 
-#include <memory>
 #include <wayland-server-core.h>
 
 struct wlr_compositor;
-struct wlr_surface;
 
 namespace umbriel {
 
@@ -19,13 +17,9 @@ namespace umbriel {
     DmabufImplicitBarrier(const DmabufImplicitBarrier&) = delete;
     DmabufImplicitBarrier& operator=(const DmabufImplicitBarrier&) = delete;
 
-    struct Stats;
-
   private:
     static void onNewSurface(wl_listener* listener, void* data);
-    void handleNewSurface(wlr_surface* surface);
 
-    std::unique_ptr<Stats> m_stats;
     wl_listener m_newSurface{};
   };
 
