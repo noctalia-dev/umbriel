@@ -94,6 +94,17 @@ UMBRIEL_TEST(rejectsMalformedOutputModes) {
   CHECK(!umbriel::parseOutputMode("1920 x 1080", mode));
 }
 
+UMBRIEL_TEST(parsesOutputModeKeywordsOnlyWhenAllowed) {
+  umbriel::OutputMode mode{};
+  CHECK(umbriel::parseOutputMode("highest_refresh", mode));
+  CHECK(mode.target == umbriel::OutputModeTarget::HighRefreshRate);
+  CHECK(umbriel::parseOutputMode("highest_resolution", mode));
+  CHECK(mode.target == umbriel::OutputModeTarget::HighResolution);
+
+  umbriel::OutputMode concrete{};
+  CHECK(!umbriel::parseOutputMode("highest_refresh", concrete, false));
+}
+
 UMBRIEL_TEST(validatesEnvironmentVariableNames) {
   CHECK(umbriel::isEnvironmentVariableName("DXVK_HDR"));
   CHECK(umbriel::isEnvironmentVariableName("_PRIVATE"));

@@ -3,6 +3,8 @@
 #include "wlr_color.h"
 
 #include <cmath>
+#include <cstdint>
+#include <utility>
 
 extern "C" {
 #include <wlr/types/wlr_output.h>
@@ -24,10 +26,26 @@ namespace umbriel {
     return populated(output->make) || populated(output->model) || populated(output->serial);
   }
 
+  // Keyword targets rank by the target metric, then the other metric; the preferred mark plays no part.
+  static std::pair<int64_t, int64_t> targetRank(OutputModeTarget target, const wlr_output_mode& mode) {
+    const int64_t pixels = int64_t{mode.width} * mode.height;
+    if (target == OutputModeTarget::HighRefreshRate) {
+      return {mode.refresh, pixels};
+    }
+    return {pixels, mode.refresh};
+  }
+
   wlr_output_mode* selectOutputMode(wlr_output* output, const OutputMode& configured) {
     wlr_output_mode* selected = nullptr;
     wlr_output_mode* mode = nullptr;
     wl_list_for_each(mode, &output->modes, link) {
+      if (configured.target != OutputModeTarget::None) {
+        if (selected == nullptr || targetRank(configured.target, *mode) > targetRank(configured.target, *selected)) {
+          selected = mode;
+        }
+        continue;
+      }
+
       if (mode->width != configured.width || mode->height != configured.height) {
         continue;
       }
