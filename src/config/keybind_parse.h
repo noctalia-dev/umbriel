@@ -147,6 +147,7 @@ namespace umbriel {
     WorkspaceSwapActiveOutputDown,
     WorkspaceSwapActiveOutputNext,
     WorkspaceSwapActiveOutputPrevious,
+    WorkspaceSwapAllOutput,
     WindowModifyPrimaryExtent,
     WindowCenter,
     WindowMoveTo,
@@ -262,6 +263,11 @@ namespace umbriel {
     std::optional<WorkspaceArg> workspace; // absent = the active workspace
     bool operator==(const WorkspaceMoveToOutputArg&) const = default;
   };
+  struct WorkspaceSwapAllOutputArg {
+    std::string destination; // empty = the pointer-preferred destination output
+    std::string output;      // source; empty = the previously active output
+    bool operator==(const WorkspaceSwapAllOutputArg&) const = default;
+  };
   struct ScratchpadArg {
     std::string name; // empty = the implicit default scratchpad
     bool operator==(const ScratchpadArg&) const = default;
@@ -328,7 +334,8 @@ namespace umbriel {
   using KeybindPayload = std::variant<
       std::monostate, SpawnArg, SubmapArg, FractionArg, WorkspaceArg, OutputArg, ScratchpadArg, WindowIdArg,
       LayoutModeArg, ColumnDisplayArg, TabIndexArg, QuitArg, EffectWindowArg, EffectScreenArg, EffectCursorArg,
-      SdrWhiteArg, WindowMoveToArg, WindowMoveByArg, WindowRegionArg, WorkspaceMoveToOutputArg>;
+      SdrWhiteArg, WindowMoveToArg, WindowMoveByArg, WindowRegionArg, WorkspaceMoveToOutputArg,
+      WorkspaceSwapAllOutputArg>;
 
   struct Keybind {
     // What triggers the bind.
@@ -381,6 +388,7 @@ namespace umbriel {
     Fraction,
     Workspace,
     WorkspaceMoveToOutput,
+    WorkspaceSwapAllOutput,
     Output,
     OptionalOutput,
     OptionalScratchpad,

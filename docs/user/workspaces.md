@@ -120,6 +120,21 @@ Moves also work for empty workspaces and fixed inventories. They change the runt
 
 The transferred workspace retains its layout settings until a relevant configuration reload applies layout rules again. Changing workspace inventory configuration reapplies the configured inventories, including named workspace declarations. Output qualifiers in selectors refer to the workspace's current output. Its ID remains stable, so scripts should read the `output` field rather than infer the current output from the ID.
 
+## Swapping all workspaces between outputs
+
+`workspace-swap-all-output` swaps all workspaces between two outputs. It takes optional source and destination arguments:
+
+- With no arguments (`workspace-swap-all-output`), it swaps all workspaces of the previously active output with the currently active output.
+- With only a source (`workspace-swap-all-output DP-1`), it swaps all workspaces of DP-1 with the currently active output.
+- With both arguments (`workspace-swap-all-output DP-1 --output DP-2`), it swaps all workspaces of source DP-1 with destination DP-2.
+
+The currently active output is the pointer-preferred output. The previously active output is the most recently visited different output. Visits include pointer crossings and cursor warps. The no-argument form fails if that output is unknown or unavailable. Output selectors accept a connector, monitor identity, or `current`. Pinned windows stay on their output.
+
+```toml
+"Mod+Ctrl+S" = "workspace-swap-all-output"
+"Mod+Ctrl+1" = "workspace-swap-all-output DP-1"
+```
+
 ## Inspect workspace state
 
 Run `umbriel workspaces` to list workspaces and their effective layout:

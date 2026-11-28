@@ -276,6 +276,19 @@ namespace umbriel {
         arg.workspace = workspacePayload(fields);
         return arg.workspace ? std::make_optional<KeybindPayload>(std::move(arg)) : std::nullopt;
       }
+      case ActionArgKind::WorkspaceSwapAllOutput: {
+        WorkspaceSwapAllOutputArg arg;
+        if (!fields.only({"destination", "output"})
+            || !fields.string("destination", false, arg.destination)
+            || !fields.string("output", false, arg.output)) {
+          return std::nullopt;
+        }
+        if (fields.has("destination") && !fields.has("output")) {
+          fields.fail(R"("destination" requires "output")");
+          return std::nullopt;
+        }
+        return arg;
+      }
       case ActionArgKind::WindowEffectSet:
       case ActionArgKind::WindowEffectCycle:
       case ActionArgKind::ScreenEffectSet:
@@ -461,6 +474,9 @@ namespace umbriel {
             if (arg.workspace) {
               putWorkspace(request, *arg.workspace);
             }
+          } else if constexpr (std::is_same_v<Arg, WorkspaceSwapAllOutputArg>) {
+            putIfSet(request, "destination", arg.destination);
+            putIfSet(request, "output", arg.output);
           } else if constexpr (std::is_same_v<Arg, OutputArg>) {
             putIfSet(request, "output", arg.output);
           } else if constexpr (std::is_same_v<Arg, ScratchpadArg>) {
