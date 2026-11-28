@@ -87,6 +87,18 @@ namespace umbriel {
     bool summon(std::string_view name, Output* invokingOutput, View* member = nullptr);
     bool toggle(std::string_view name, Output* invokingOutput);
     void hideAll();
+    // Remember the pads the overview is about to hide, so a gesture that never opens it can bring them back.
+    void beginOverviewDismissal();
+    // The overview settled open: the pads stay hidden and the record is dropped.
+    void commitOverviewDismissal();
+    // The overview never opened: show the pads it hid again, without their show fade.
+    void restoreOverviewDismissal();
+    // Whether a pad is on screen on `output`.
+    bool hasVisiblePad(const Output* output) const;
+    // The backdrop fade of the pad on `output`, 0 when none has drawn one yet.
+    float backdropFadeOn(const Output* output) const;
+    // Members of a visible pad on `output` that are on screen, in pad order.
+    std::vector<View*> visibleMembersOn(const Output* output) const;
     bool restoreFocused(std::string_view name);
     bool restoreToWorkspace(View* view, Workspace* workspace);
     bool focusNext(std::string_view name);
@@ -229,6 +241,15 @@ namespace umbriel {
     std::vector<Entry> m_entries;
     // Views mid fade-out on hide, still enabled until tickAnimations disables the node once the fade completes.
     std::vector<View*> m_hidingViews;
+    // A pad the overview hid for the opening in flight, with the state that hiding clears.
+    struct OverviewHidden {
+      std::string name;
+      View* solo = nullptr;
+      bool active = false;
+      View* lastFocused = nullptr;
+    };
+    // Empty once the opening settles or is cancelled.
+    std::vector<OverviewHidden> m_overviewHidden;
     std::unordered_map<Output*, wlr_scene_rect*> m_dimRects;
     std::unordered_map<Output*, wlr_scene_blur*> m_blurNodes;
     View* m_focusedView = nullptr;

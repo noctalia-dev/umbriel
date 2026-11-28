@@ -262,6 +262,8 @@ namespace umbriel {
     // activation chrome the focus manager drives from outside.
     // While the workspace defers focus chrome, a layout member records `focused` instead of drawing it.
     void setBorderFocused(bool focused);
+    // The focus the ring is currently drawn with, which a hidden window keeps until the next focus change.
+    bool borderFocused() const { return m_borderFocusedState; }
     // Draw the focus a deferred setBorderFocused recorded, if any.
     void applyDeferredBorderFocus();
     // Jump focus appearance and unfocused dim to their targets. For views revealed after focus changed while

@@ -31,7 +31,7 @@ Background blur uses `[appearance.blur]`. Preview backgrounds use `colors.overvi
 
 ### Open and navigate
 
-Press `Mod+O` by default, or use an [overview action](actions.md#overview). Opening the overview temporarily hides scratchpads and pinned windows.
+Press `Mod+O` by default, or use an [overview action](actions.md#overview). Opening the overview fades scratchpads out inside their workspace previews and hides pinned windows temporarily.
 
 - Click a window to focus it and close the overview.
 - Middle-click a window to close it.

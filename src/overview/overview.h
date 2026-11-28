@@ -228,6 +228,23 @@ namespace umbriel {
       std::array<float, 4> badgeBackground{};
       std::string shortcut;
       size_t shortcutMatched = 0;
+      // A pad member the overview is fading out inside its workspace preview. It exists only while the opening runs:
+      // never hit-tested, never badged, never dragged, and dropped once the opening settles or the overview tears down.
+      bool transient = false;
+      // The pad member's own presentation opacity when the overview opened, before the pad was hidden. A pad card
+      // starts from what was on screen, so opening the overview during a pad's show fade does not pop it to full.
+      float fadeFrom = 1.0F;
+      // The shadow colour the pad member had when its card was built: hiding the pad clears the live one, but the
+      // image the pad showed carried it.
+      std::array<float, 4> shadowColor{};
+      // The alpha the last layout gave the card, chrome and shadow included. A pad card's fade is the only clock it
+      // has, so hit testing reads it here.
+      float opacity = 1.0F;
+      // Everything the card draws: the content box plus its border ring and title bar. A pad card owns this frame.
+      wlr_box frameBox{};
+      // The focus the pad member's ring had when its card was built. A pad member has no workspace, so the card keeps
+      // the ring it was showing instead of deriving focus from one.
+      bool focused = false;
     };
 
     struct ShortcutAssignment {
@@ -284,6 +301,25 @@ namespace umbriel {
       // touchpad releases all animate this one value; a gesture in flight snaps it to follow the fingers.
       AnimatedValue rowScroll;
       size_t activeWorkspaceIndex = 0;
+      // The pad backdrop this output folds into a workspace preview, capturing the pad it replaced.
+      struct PadBackdrop {
+        bool faded = false;
+        // The workspace the pad covered, with the row it sits in and the pad's configured dim, captured at buildState
+        // before the pad is hidden. The workspace outlives row renumbering, which the pad follows.
+        Workspace* workspace = nullptr;
+        size_t row = 0;
+        float dim = 0.0F;
+        // The pad backdrop's own fade when the overview opened, so a pad mid show-fade keeps the strength it had.
+        float fade = 0.0F;
+        // The pad's blur inside that preview, over the workspace cards, then its dim, then the pad's own cards: the
+        // order in which the real scene draws the pad's backdrop and its windows.
+        wlr_scene_blur* blur = nullptr;
+        wlr_scene_rect* dimRect = nullptr;
+
+        // Creates the blur when `blurEnabled` and the dim rect in `parent`, both disabled.
+        void create(wlr_scene_tree* parent, bool blurEnabled);
+        void destroy();
+      } pad;
     };
 
     // Workspace preview placement for one output at the current progress. Previews
@@ -339,7 +375,12 @@ namespace umbriel {
     bool beginPresentation();
     void buildState();
     void populateCards(OutputState& state);
-    Card* createCard(OutputState& state, View* view, size_t workspaceIndex);
+    // Add the fading cards of a visible pad's members, in the row of the workspace that pad covered.
+    void populatePadCards(OutputState& state);
+    // Drops one output's pad cards and backdrop.
+    void dropPadCards(OutputState& state);
+    void dropTransientCards();
+    Card* createCard(OutputState& state, View* view, size_t workspaceIndex, bool transient = false);
     void snapshotCardForClose(Card& card);
     void destroyCard(Card* card);
     void layoutCardShadow(Card& card, double zoom, float alpha) const;
@@ -351,6 +392,9 @@ namespace umbriel {
     void rebuildCard(View* view);
     OutputState* stateFor(const Output* output);
     OutputState* stateForWorkspace(const Workspace* workspace);
+    // A pad's own workspace arranges its members, but it is no strip row: a view living in one is drawn by the pad's
+    // cards, not by a card of its own.
+    static bool padRow(const Workspace* workspace);
     Card* findCard(const View* view);
     WorkspaceBackground createWorkspaceBackground(OutputState& state) const;
     // Mapped background- and bottom-layer surfaces of `output`, in render order.
@@ -398,6 +442,9 @@ namespace umbriel {
     void scheduleFrames() const;
 
     Card* cardAt(double lx, double ly);
+    // Whether a still-visible pad card covers the point. It owns that area for input even though it is not a card
+    // the overview can act on.
+    bool transientAt(double lx, double ly) const;
     // The tab under a point on a preview's tab bar.
     View* tabAt(double lx, double ly);
     // Hit-test a workspace preview. `extendScrollingAxis` widens the boxes over the whole output along the

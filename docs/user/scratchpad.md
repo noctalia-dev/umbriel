@@ -201,7 +201,7 @@ Fullscreen and maximized windows continue to fit their monitor, and their saved 
 
 ## Visibility and focus
 
-Showing a populated scratchpad focuses its most recently focused member. Hiding it returns focus to a workspace window. Opening the workspace overview hides every visible scratchpad without removing its stored windows. While the overview is open, including its closing animation, scratchpad actions and window rules do not show a scratchpad.
+Showing a populated scratchpad focuses its most recently focused member. Hiding it returns focus to a workspace window. Opening the workspace overview fades every visible scratchpad out inside the workspace preview it covered, over the opening animation, and then hides it without removing its stored windows. A gesture that never opens the overview leaves the pad as it was. While the overview is open, including its closing animation, scratchpad actions and window rules do not show a scratchpad.
 
 A visible scratchpad owns its output's input. The pointer reaches only its windows, pinned windows, and layer surfaces such as panels; the workspace windows behind it get neither clicks, hover, nor Mod-drags. Clicking the backdrop hides the scratchpad and focuses the workspace. Any other focus change to a workspace window there also hides it, such as `window-focus` or an application activating, and so does switching or swiping to another workspace on that output unless the scratchpad is sticky. With focus following the mouse, moving the pointer onto the scratchpad's output focuses the scratchpad.
 
