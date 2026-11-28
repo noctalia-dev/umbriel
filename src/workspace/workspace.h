@@ -122,6 +122,8 @@ namespace umbriel {
     wlr_scene_tree* viewLayer(bool tiled) const { return tiled ? m_tiledLayer : m_floatingLayer; }
     wlr_scene_tree* tileShadowLayer() const { return m_tileShadowLayer; }
     wlr_scene_tree* fullscreenTree() const { return m_fullscreenTree; }
+    // A scratchpad workspace's tree lives in the server's scratchpad tree, above its dim rect and blur.
+    wlr_scene_tree* tree() const { return m_tree; }
     bool floatingLayerRaised() const;
     // The focused tile is drawn above floating fullscreen windows and, in scrolling, fullscreen in its column.
     bool liftedAboveFullscreen(const View* view) const;
@@ -290,7 +292,8 @@ namespace umbriel {
     // overscrolls on purpose.
     void clampScrollToRange();
     // Own every view close snapshot so it follows workspace visibility and translation: the workspace translates the
-    // snapshot with its slides and hides it while the workspace is not showing.
+    // snapshot with its slides and hides it while the workspace is not showing. A scratchpad workspace is always
+    // active, so its snapshots instead follow the pad's own visibility fade.
     void trackCloseSnapshot(CloseSnapshotId id, const wlr_box& outputBox);
     // Drop `view` from the running motion without touching its presentation; the caller now owns its box.
     void releaseLayoutMotion(View* view);
@@ -350,6 +353,7 @@ namespace umbriel {
     bool heldOpenerAlive(const View* view) const;
     void resumeHeldOpeners();
     void endLayoutMotion();
+    // A scratchpad workspace reads its pad's visibility fade here, so every caller presents its snapshots the same way.
     void syncCloseSnapshots();
     void discardCloseSnapshots();
     WorkspaceGroup* m_group = nullptr;

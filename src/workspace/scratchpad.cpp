@@ -90,16 +90,27 @@ namespace umbriel {
 
   bool ScratchpadManager::tickAnimations(double nowMsec) {
     bool movedBackdrop = false;
-    for (auto& [output, fade] : m_backdropFades) {
-      if (fade.tick(nowMsec)) {
-        updateDimAndBlur(output);
-        if (const auto rect = m_dimRects.find(output); rect != m_dimRects.end()) {
-          bindAnimationEffect(&rect->second->node, AnimationEvent::Scratchpad, fade);
-        }
-        if (const auto blur = m_blurNodes.find(output); blur != m_blurNodes.end()) {
-          bindAnimationEffect(&blur->second->node, AnimationEvent::Scratchpad, fade);
+    for (auto& [name, scratchpad] : m_scratchpads) {
+      if (scratchpad.fade.tick(nowMsec)) {
+        if (scratchpad.output != nullptr) {
+          updateDimAndBlur(scratchpad.output);
+          // The dim and blur node carry one fade, so its shader follows the pad that owns the alpha, never the pad that
+          // happened to tick: a non-modal pad has no backdrop even while it animates.
+          if (const Scratchpad* owner = backdropOwner(scratchpad.output); owner != nullptr) {
+            if (const auto rect = m_dimRects.find(scratchpad.output); rect != m_dimRects.end()) {
+              bindAnimationEffect(&rect->second->node, AnimationEvent::Scratchpad, owner->fade);
+            }
+            if (const auto blur = m_blurNodes.find(scratchpad.output); blur != m_blurNodes.end()) {
+              bindAnimationEffect(&blur->second->node, AnimationEvent::Scratchpad, owner->fade);
+            }
+          }
         }
         movedBackdrop = true;
+      }
+      // A pad workspace's closing snapshots follow that pad's own visibility fade, so opening another pad on the same
+      // output cannot revive them. This also reaps snapshots the server dropped (an output release).
+      if (scratchpad.workspace != nullptr) {
+        scratchpad.workspace->syncCloseSnapshots();
       }
     }
 
@@ -118,16 +129,15 @@ namespace umbriel {
 
   bool ScratchpadManager::hasActiveAnimations() const {
     return !m_hidingViews.empty()
-        || std::ranges::any_of(m_backdropFades, [](const auto& entry) { return entry.second.animating(); });
+        || std::ranges::any_of(m_scratchpads, [](const auto& entry) { return entry.second.fade.animating(); });
   }
 
   bool ScratchpadManager::animatesOn(const Output* output) const {
-    const auto fade =
-        std::ranges::find_if(m_backdropFades, [output](const auto& entry) { return entry.first == output; });
-    if (fade != m_backdropFades.end() && fade->second.animating()) {
-      return true;
-    }
-    return std::ranges::any_of(m_hidingViews, [this, output](const View* view) { return outputFor(view) == output; });
+    const bool padFading = std::ranges::any_of(m_scratchpads, [output](const auto& entry) {
+      return entry.second.output == output && entry.second.fade.animating();
+    });
+    return padFading
+        || std::ranges::any_of(m_hidingViews, [this, output](const View* view) { return outputFor(view) == output; });
   }
 
   ScratchpadManager::Scratchpad* ScratchpadManager::findScratchpad(std::string_view name) {
@@ -168,6 +178,48 @@ namespace umbriel {
       const ScratchpadConfig* definition = definitionFor(entry.first);
       return entry.second.visible && entry.second.output == output && definition != nullptr && definition->sticky;
     });
+  }
+
+  float ScratchpadManager::fadeFor(const Workspace* workspace) const {
+    if (workspace == nullptr) {
+      return 0.0F;
+    }
+    for (const auto& [name, scratchpad] : m_scratchpads) {
+      if (scratchpad.workspace.get() == workspace) {
+        return static_cast<float>(std::clamp(scratchpad.fade.current(), 0.0, 1.0));
+      }
+    }
+    return 0.0F;
+  }
+
+  const ScratchpadManager::Scratchpad* ScratchpadManager::backdropOwner(const Output* output) const {
+    if (output == nullptr) {
+      return nullptr;
+    }
+    // Only a modal pad draws a backdrop, and each pad carries its own fade: a modal pad fading out keeps dimming behind
+    // whatever else is shown, instead of handing the output's backdrop to a pad that has none.
+    const Scratchpad* owner = nullptr;
+    double best = -1.0;
+    for (const auto& [name, scratchpad] : m_scratchpads) {
+      if (scratchpad.output != output) {
+        continue;
+      }
+      const ScratchpadConfig* definition = definitionFor(name);
+      if (definition != nullptr && !definition->modal) {
+        continue;
+      }
+      const double fade = std::clamp(scratchpad.fade.current(), 0.0, 1.0);
+      if (fade > best) {
+        owner = &scratchpad;
+        best = fade;
+      }
+    }
+    return owner;
+  }
+
+  float ScratchpadManager::backdropFade(Output* output) const {
+    const Scratchpad* owner = backdropOwner(output);
+    return owner != nullptr ? static_cast<float>(std::clamp(owner->fade.current(), 0.0, 1.0)) : 0.0F;
   }
 
   bool ScratchpadManager::presents(const Scratchpad& scratchpad, const View* view) {
@@ -261,13 +313,26 @@ namespace umbriel {
   }
 
   Output* ScratchpadManager::outputFor(const View* view) const {
-    const Entry* entry = view != nullptr ? findEntry(view->placementRoot()) : nullptr;
-    const Scratchpad* scratchpad = entry != nullptr ? findScratchpad(entry->scratchpad) : nullptr;
+    const Scratchpad* scratchpad = scratchpadFor(view);
     return scratchpad != nullptr ? scratchpad->output : nullptr;
   }
 
+  Workspace* ScratchpadManager::workspaceFor(const View* view) const {
+    const Scratchpad* scratchpad = scratchpadFor(view);
+    return scratchpad != nullptr ? scratchpad->workspace.get() : nullptr;
+  }
+
+  const ScratchpadManager::Entry* ScratchpadManager::entryFor(const View* view) const {
+    return view != nullptr ? findEntry(view->placementRoot()) : nullptr;
+  }
+
+  const ScratchpadManager::Scratchpad* ScratchpadManager::scratchpadFor(const View* view) const {
+    const Entry* entry = entryFor(view);
+    return entry != nullptr ? findScratchpad(entry->scratchpad) : nullptr;
+  }
+
   std::string_view ScratchpadManager::nameFor(const View* view) const {
-    const Entry* entry = view != nullptr ? findEntry(view->placementRoot()) : nullptr;
+    const Entry* entry = entryFor(view);
     return entry != nullptr ? std::string_view(entry->scratchpad) : std::string_view{};
   }
 
@@ -533,24 +598,24 @@ namespace umbriel {
     return true;
   }
 
-  void ScratchpadManager::retargetBackdrop(Output* output, bool visible, bool animateTransition) {
-    if (output == nullptr) {
+  void ScratchpadManager::retargetFade(std::string_view name, bool visible, bool animateTransition) {
+    Scratchpad* scratchpad = findScratchpad(name);
+    if (scratchpad == nullptr) {
       return;
     }
     const auto& animation = config().animation;
-    const auto& scratchpad = animation.scratchpad;
-    auto fadeIt = m_backdropFades.try_emplace(output, 0.0).first;
-    AnimatedValue& backdropFade = fadeIt->second;
-    const double fadeTarget = visible ? 1.0 : 0.0;
+    const auto& pad = animation.scratchpad;
+    // A pad with no output draws nowhere, so its fade holds no state worth animating.
+    const double fadeTarget = visible && scratchpad->output != nullptr ? 1.0 : 0.0;
     if (animateTransition
         && animation.enabled
-        && scratchpad.enabled
-        && (backdropFade.animating() || backdropFade.current() != fadeTarget)) {
-      backdropFade.retarget(fadeTarget, scratchpad.durationMs, scratchpad.curve);
+        && pad.enabled
+        && (scratchpad->fade.animating() || scratchpad->fade.current() != fadeTarget)) {
+      scratchpad->fade.retarget(fadeTarget, pad.durationMs, pad.curve);
     } else {
-      backdropFade.snap(fadeTarget);
+      scratchpad->fade.snap(fadeTarget);
     }
-    updateDimAndBlur(output);
+    updateDimAndBlur(scratchpad->output);
   }
 
   void ScratchpadManager::setVisible(std::string_view name, bool visible, bool animateTransition) {
@@ -569,7 +634,7 @@ namespace umbriel {
     const auto& animation = config().animation;
     const auto& scratchpad = animation.scratchpad;
     const bool animate = animateTransition && output != nullptr && animation.enabled && scratchpad.enabled;
-    retargetBackdrop(output, modalOn(output), animateTransition);
+    retargetFade(name, state->visible, animateTransition);
 
     for (const Entry& entry : m_entries) {
       if (entry.scratchpad != name || entry.view == nullptr) {
@@ -720,11 +785,10 @@ namespace umbriel {
     }
 
     if (previous != nullptr) {
-      retargetBackdrop(previous, modalOn(previous));
       updateDimAndBlur(previous);
     }
+    retargetFade(name, state->visible);
     if (output != nullptr) {
-      retargetBackdrop(output, modalOn(output));
       updateDimAndBlur(output);
     }
     if (previous != nullptr) {
@@ -888,8 +952,9 @@ namespace umbriel {
     }
     const double dim = config().animation.scratchpad.dim;
     const bool blurEnabled = config().animation.scratchpad.blur && config().appearance.blur.enabled;
-    const auto fade = m_backdropFades.find(output);
-    const float currentAlpha = fade != m_backdropFades.end() ? static_cast<float>(fade->second.current()) : 0.0F;
+    // The fade follows every shown pad so a non-modal pad can still animate its windows; only a modal pad dims, and it
+    // keeps dimming while its backdrop fades out.
+    const float currentAlpha = backdropFade(output);
 
     wlr_box box{};
     wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &box);
@@ -955,7 +1020,6 @@ namespace umbriel {
       moveScratchpad(name, nullptr, nullptr, false);
     }
 
-    m_backdropFades.erase(output);
     if (const auto it = m_dimRects.find(output); it != m_dimRects.end()) {
       wlr_scene_node_destroy(&it->second->node);
       m_dimRects.erase(it);
@@ -970,9 +1034,9 @@ namespace umbriel {
     const auto& animation = config().animation;
     const bool animate = animation.enabled && animation.scratchpad.enabled;
     if (!animate) {
-      for (auto& [output, fade] : m_backdropFades) {
-        fade.snap(modalOn(output) ? 1.0 : 0.0);
-        updateDimAndBlur(output);
+      for (auto& [name, scratchpad] : m_scratchpads) {
+        scratchpad.fade.snap(scratchpad.visible && scratchpad.output != nullptr ? 1.0 : 0.0);
+        updateDimAndBlur(scratchpad.output);
       }
       for (const Entry& entry : m_entries) {
         if (entry.view == nullptr) {
@@ -987,8 +1051,8 @@ namespace umbriel {
       m_hidingViews.clear();
       return;
     }
-    for (const auto& entry : m_backdropFades) {
-      updateDimAndBlur(entry.first);
+    for (const auto& entry : m_scratchpads) {
+      updateDimAndBlur(entry.second.output);
     }
   }
 
@@ -1561,12 +1625,16 @@ namespace umbriel {
       }
     }
     bool refocusNeeded = false;
+    std::vector<Output*> releasedOutputs;
     for (const std::string& name : removed) {
       Scratchpad* scratchpad = findScratchpad(name);
       Output* fallback = scratchpad != nullptr ? scratchpad->output : nullptr;
       if (scratchpad != nullptr && scratchpad->visible) {
         setVisible(name, false, false);
         refocusNeeded = true;
+      }
+      if (fallback != nullptr) {
+        releasedOutputs.push_back(fallback);
       }
       std::vector<View*> views;
       for (const Entry& entry : m_entries) {
@@ -1590,9 +1658,13 @@ namespace umbriel {
       m_scratchpads.try_emplace(name);
     }
     refreshLayouts();
-    // A shown pad keeps its backdrop only while it is still modal.
-    for (const auto& [output, fade] : m_backdropFades) {
-      retargetBackdrop(output, modalOn(output));
+    // The fade follows any shown pad; only a modal pad turns it into a backdrop.
+    for (auto& [name, scratchpad] : m_scratchpads) {
+      retargetFade(name, scratchpad.visible);
+    }
+    // A removed pad may have been the only one on its output, so its dim/blur needs settling without it.
+    for (Output* output : releasedOutputs) {
+      updateDimAndBlur(output);
     }
     // A pad that turned modal does not stay up over the window behind it that has focus.
     if (View* focused = View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface);
