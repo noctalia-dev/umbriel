@@ -8,6 +8,9 @@
 #include "layout/layout.h"
 #include "view/window_region.h"
 
+#include <algorithm>
+#include <array>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -235,6 +238,30 @@ namespace umbriel {
     return !name.empty() && name != "disable" && !name.contains(']');
   }
 
+  // A positional workspace word is a 1-based index when it is all digits, so a name made only of digits has to go
+  // through `--name`.
+  inline bool allDigits(std::string_view word) {
+    return std::ranges::all_of(word, [](char value) { return value >= '0' && value <= '9'; });
+  }
+
+  // The workspace index a positional word denotes, or nullopt when the word is not a usable one.
+  inline std::optional<size_t> workspaceSelectorIndex(std::string_view word) {
+    if (!allDigits(word)) {
+      return std::nullopt;
+    }
+    size_t index = 0;
+    const auto [end, error] = std::from_chars(word.data(), word.data() + word.size(), index);
+    if (error != std::errc{} || end != word.data() + word.size() || index < 1 || index > kMaxWorkspaces) {
+      return std::nullopt;
+    }
+    return index;
+  }
+
+  // Whether the word grammar accepts a word where it expects a workspace selector.
+  inline bool validWorkspaceSelector(std::string_view word) {
+    return !allDigits(word) || workspaceSelectorIndex(word).has_value();
+  }
+
   struct FractionArg {
     double fraction = 0.0;
     bool operator==(const FractionArg&) const = default;
@@ -357,9 +384,10 @@ namespace umbriel {
   // Null unless the bind carries that payload alternative.
   template <typename Arg> const Arg* payloadIf(const Keybind& bind) { return std::get_if<Arg>(&bind.payload); }
 
-  // "reset" pops the current submap instead of pushing a new one. Recognised in
-  // both the action and matcher so a default-context bind can be an emergency exit.
-  inline bool isSubmapReset(const SubmapArg& arg) { return arg.name == "reset"; }
+  // Pops the current submap instead of pushing a new one. Recognised in both the action and matcher so a
+  // default-context bind can be an emergency exit.
+  inline constexpr std::string_view kSubmapResetWord = "reset";
+  inline bool isSubmapReset(const SubmapArg& arg) { return arg.name == kSubmapResetWord; }
 
   inline bool isSubmapResetBind(const Keybind& bind) {
     const auto* arg = payloadIf<SubmapArg>(bind);
@@ -447,6 +475,34 @@ namespace umbriel {
   // Argument values every action encoding shares, so the word grammar and the IPC action request accept the same set.
   std::optional<LayoutMode> layoutModeNamed(std::string_view name);
   std::string_view layoutModeName(LayoutMode mode);
+  // Every layout mode name in enum order, and the `column-set-display` words in `ColumnDisplay` order: the parsers and
+  // shell completion read one table each.
+  std::span<const std::string_view> layoutModeNames();
+  // Every layout mode, in the order `workspace-set-layout` cycles them, which `layoutModeNames` spells.
+  inline constexpr std::array<LayoutMode, 4> kFullLayoutCycle{
+      LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master, LayoutMode::Stacking
+  };
+  std::span<const std::string_view> columnDisplayNames();
+  // The `column-set-display` value a word names, or nullopt for anything else.
+  std::optional<ColumnDisplay> columnDisplayNamed(std::string_view name);
+  // `session-quit`'s only word.
+  inline constexpr std::string_view kSkipConfirmationWord = "skip-confirmation";
+  // `workspace-set-layout`'s cycle keyword; the modes it cycles come from `layoutModeNames`.
+  inline constexpr std::string_view kLayoutModeToggleWord = "toggle";
+  // `workspace-move-to-output`'s destination word for the output under the pointer.
+  inline constexpr std::string_view kCurrentOutputWord = "current";
+  // An argument kind's allowed flags: the bits select, the words are what `--output`, `--window` and `--name` are
+  // spelled. `actionAllowedFlags` is the only table that maps a kind to a mask, so the parser rejects exactly the
+  // flags shell completion offers.
+  inline constexpr std::string_view kActionFlagOutputWord = "--output";
+  inline constexpr std::string_view kActionFlagWindowWord = "--window";
+  inline constexpr std::string_view kActionFlagNameWord = "--name";
+  inline constexpr unsigned kActionFlagOutput = 1U << 0;
+  inline constexpr unsigned kActionFlagWindow = 1U << 1;
+  inline constexpr unsigned kActionFlagName = 1U << 2;
+  unsigned actionAllowedFlags(ActionArgKind kind);
+  // The mask a flag word selects, or 0 when the word is no argument flag. The inverse of the words above.
+  unsigned actionFlagMask(std::string_view word);
   // A primary or secondary extent: 0.1 up to the widest scrolling column.
   bool validActionFraction(double fraction);
   // A signed, non-zero extent change of at most 0.9.
@@ -461,6 +517,14 @@ namespace umbriel {
     bool poolRequired;
   };
   std::optional<EffectActionReference> effectActionReference(const Keybind& bind);
+  // The slot an effect action selects into, or nullopt when the action is not an effect action. `Animation` is not a
+  // slot, so no action ever names it.
+  std::optional<EffectKind> effectSlotKind(KeybindAction action);
+  // The most positional words an argument kind's parser reads, or nullopt when it reads an unbounded tail (`spawn`).
+  // Reading one more word than this leaves the grammar with nothing, so a position beyond it offers no flags either.
+  std::optional<size_t> actionPositionalArity(ActionArgKind kind);
+  // Whether the action cycles pools, which needs a pool rather than accepting either.
+  bool effectSlotRequiresPool(KeybindAction action);
 
   std::span<const ActionSpec> actionSpecs();
   // The spec with exactly this name, or null.

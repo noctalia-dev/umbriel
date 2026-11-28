@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
 
 extern "C" {
@@ -14,6 +15,8 @@ namespace umbriel {
   constexpr int kDropZoneCornerSpan = 100;
   constexpr int kDropZoneDwellMs = 150;
 
+  // The one spelling of each region, indexed by `WindowRegion`; `window-set-region` and shell completion both read it.
+  std::span<const std::string_view> windowRegionNames();
   std::string_view windowRegionName(WindowRegion region);
   std::optional<WindowRegion> windowRegionNamed(std::string_view name);
   wlr_box windowRegionBox(const wlr_box& area, WindowRegion region, int spacing);

@@ -3,6 +3,7 @@
 #include "config/value_parse.h"
 #include "scene/effect_audio.h"
 
+#include <cstdint>
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <span>
@@ -73,6 +74,31 @@ namespace umbriel {
     Harness,
   };
 
+  // What shell completion offers for a command's argument words.
+  struct IpcArgCompletion {
+    enum class Kind : uint8_t {
+      None,
+      Path,   // the shell completes a filesystem path
+      Output, // an output name, live or configured
+      Choice, // one of `choices`
+    };
+
+    constexpr IpcArgCompletion() = default;
+    constexpr explicit IpcArgCompletion(
+        Kind kind, std::span<const std::string_view> choices = {}, std::string_view description = {}
+    )
+        : m_kind(kind), m_choices(choices), m_description(description) {}
+
+    Kind kind() const { return m_kind; }
+    std::span<const std::string_view> choices() const { return m_choices; }
+    std::string_view description() const { return m_description; }
+
+  private:
+    Kind m_kind = Kind::None;
+    std::span<const std::string_view> m_choices;
+    std::string_view m_description;
+  };
+
   struct IpcCommandSpec {
     std::string_view name;
     std::string_view argSpec;
@@ -83,10 +109,18 @@ namespace umbriel {
     void (*printHuman)(const nlohmann::json& ok);
     // How long the CLI waits for the reply.
     int replyTimeoutSec = 2;
+    // What shell completion offers for the command's argument words; `None` offers only the JSON flags.
+    IpcArgCompletion completion{IpcArgCompletion::Kind::None};
   };
 
   std::span<const IpcCommandSpec> ipcCommands();
   const IpcCommandSpec* findIpcCommand(std::string_view name);
+  // The Config-group command a `config <sub>` word names, or nullptr for anything else.
+  const IpcCommandSpec* findConfigCommand(std::string_view sub);
+  // The Config group's request names carry this prefix and the CLI spells them as two words; `cliName` splits on it.
+  inline constexpr std::string_view kConfigCommandPrefix = "config-";
+  // `config unset`'s argument that drops every override.
+  inline constexpr std::string_view kUnsetAllWord = "--all";
   // How the command line spells a command: `config set` for `config-set`, the request name otherwise.
   std::string cliName(const IpcCommandSpec& spec);
 

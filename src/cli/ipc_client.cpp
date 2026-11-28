@@ -5,9 +5,12 @@
 #include "server/ipc_commands.h"
 
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <fcntl.h>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <print>
 #include <string>
 #include <sys/socket.h>
@@ -32,43 +35,123 @@ namespace umbriel {
       return {};
     }
 
-    // Shared by the one-shot commands and the event stream. Returns a connected fd, or -1 after reporting why.
-    int connectToCompositor() {
+    // A reply is one JSON line from a compositor this CLI started talking to; the cap only keeps a peer from growing
+    // the buffer without bound while the deadline runs down.
+    constexpr size_t kMaxReplySize = 1U << 20;
+
+    // Milliseconds left until `deadline`, rounded up so a sub-millisecond remainder still waits, and 0 once spent.
+    int remainingMs(std::chrono::steady_clock::time_point deadline) {
+      const auto left = std::chrono::ceil<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+      return left.count() > 0 ? static_cast<int>(left.count()) : 0;
+    }
+
+    // Arms `option` with what `deadline` has left. False once it is spent, because a zero timeval means no timeout at
+    // all.
+    bool setTimeout(int fd, int option, std::chrono::steady_clock::time_point deadline) {
+      const int remaining = remainingMs(deadline);
+      if (remaining <= 0) {
+        return false;
+      }
+      // A sub-second budget needs the microsecond field; the second field alone would round it to nothing.
+      timeval tv{};
+      tv.tv_sec = remaining / 1000;
+      tv.tv_usec = (remaining % 1000) * 1000;
+      return setsockopt(fd, SOL_SOCKET, option, &tv, sizeof(tv)) == 0;
+    }
+
+    // Shared by the one-shot commands and the event stream. Returns a connected fd, or -1 with `error` set. A caller
+    // that owes a keystroke a budget passes `deadline` and gets a connect that cannot outlast it.
+    int
+    connectSocket(std::string& error, std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt) {
+      if (deadline && remainingMs(*deadline) <= 0) {
+        error = "completion budget spent before the query";
+        return -1;
+      }
       std::string socketPath = resolveSocketPath();
       if (socketPath.empty()) {
-        std::println(stderr, "error: cannot find umbriel socket (is the compositor running?)");
+        error = "cannot find umbriel socket (is the compositor running?)";
         return -1;
       }
 
-      int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+      const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | (deadline ? SOCK_NONBLOCK : 0), 0);
       if (fd < 0) {
-        std::println(stderr, "error: failed to create socket");
+        error = "failed to create socket";
         return -1;
       }
 
       sockaddr_un addr{};
       addr.sun_family = AF_UNIX;
       if (socketPath.size() >= sizeof(addr.sun_path)) {
-        std::println(stderr, "error: socket path too long");
+        error = "socket path too long";
         close(fd);
         return -1;
       }
       socketPath.copy(addr.sun_path, socketPath.size());
 
+      // AF_UNIX connects at once or refuses — a listener whose accept queue is full answers `EAGAIN` — so the
+      // non-blocking socket only keeps a refusal from waiting. The owner's budget covers the rest of the request.
       if (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        std::println(stderr, "error: cannot connect to umbriel socket (is the compositor running?)");
+        error = "cannot connect to umbriel socket (is the compositor running?)";
         close(fd);
         return -1;
+      }
+      if (deadline) {
+        // The query bounds its send and receive with socket timeouts, which a non-blocking fd ignores.
+        const int flags = fcntl(fd, F_GETFL);
+        if (flags < 0 || fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) < 0) {
+          error = "cannot connect to umbriel socket (is the compositor running?)";
+          close(fd);
+          return -1;
+        }
       }
       return fd;
     }
 
-    bool sendAll(int fd, std::string_view payload) {
+    int connectToCompositor() {
+      std::string error;
+      const int fd = connectSocket(error);
+      if (fd < 0) {
+        std::println(stderr, "error: {}", error);
+      }
+      return fd;
+    }
+
+    // One reply line without its terminator, or nullopt when the peer closed without one, the reply exceeded the cap,
+    // or the deadline passed. A timeout covers a single `recv`, so a peer that trickles the reply is re-armed against
+    // the same deadline instead of extending it. Reading stops at the first newline: a peer that answers and then holds
+    // the connection open must not cost the caller the rest of its budget. The caller owns `fd` and closes it.
+    std::optional<std::string>
+    receiveLine(int fd, std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt) {
+      std::string buf;
+      char chunk[4096];
+      while (true) {
+        if (deadline && !setTimeout(fd, SO_RCVTIMEO, *deadline)) {
+          return std::nullopt;
+        }
+        const ssize_t received = recv(fd, chunk, sizeof(chunk), 0);
+        if (received <= 0) {
+          return std::nullopt;
+        }
+        buf.append(chunk, static_cast<size_t>(received));
+        const size_t newline = buf.find('\n');
+        if (newline != std::string::npos) {
+          buf.resize(newline);
+          return buf;
+        }
+        if (buf.size() > kMaxReplySize) {
+          return std::nullopt;
+        }
+      }
+    }
+
+    bool sendAll(int fd, std::string_view payload, bool report = true) {
       size_t sent = 0;
       while (sent < payload.size()) {
         const ssize_t written = send(fd, payload.data() + sent, payload.size() - sent, MSG_NOSIGNAL);
         if (written <= 0) {
-          std::println(stderr, "error: failed to send request");
+          if (report) {
+            std::println(stderr, "error: failed to send request");
+          }
           return false;
         }
         sent += static_cast<size_t>(written);
@@ -101,29 +184,14 @@ namespace umbriel {
         return EXIT_FAILURE;
       }
 
-      // Receive.
-      std::string buf;
-      char chunk[4096];
-      while (true) {
-        ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
-        if (n <= 0) {
-          break;
-        }
-        buf.append(chunk, static_cast<size_t>(n));
-      }
+      const std::optional<std::string> line = receiveLine(fd);
       close(fd);
-
-      if (buf.empty()) {
+      if (!line) {
         std::println(stderr, "error: malformed response");
         return EXIT_FAILURE;
       }
 
-      // Strip trailing newline.
-      if (buf.back() == '\n') {
-        buf.pop_back();
-      }
-
-      auto resp = nlohmann::json::parse(buf, nullptr, false);
+      auto resp = nlohmann::json::parse(*line, nullptr, false);
       if (resp.is_discarded()) {
         std::println(stderr, "error: malformed response");
         return EXIT_FAILURE;
@@ -238,6 +306,30 @@ namespace umbriel {
       return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
+  }
+
+  std::optional<nlohmann::json> queryIpcJson(std::string_view command, std::chrono::steady_clock::time_point deadline) {
+    std::string error;
+    const int fd = connectSocket(error, deadline);
+    if (fd < 0) {
+      return std::nullopt;
+    }
+
+    nlohmann::json request;
+    request["cmd"] = command;
+    const bool sent = setTimeout(fd, SO_SNDTIMEO, deadline) && sendAll(fd, request.dump() + "\n", false);
+    const std::optional<std::string> line = sent ? receiveLine(fd, deadline) : std::nullopt;
+    close(fd);
+    if (!line) {
+      return std::nullopt;
+    }
+    const nlohmann::json resp = nlohmann::json::parse(*line, nullptr, false);
+    if (resp.is_discarded() || !resp.is_object() || !resp.contains("ok")) {
+      return std::nullopt;
+    }
+    // nlohmann 3.12 answers both optional<json>'s own converting constructor and json's template conversion
+    // operator, so the implicit conversion is ambiguous; in_place names the one constructor meant.
+    return std::optional<nlohmann::json>{std::in_place, resp["ok"]};
   }
 
 } // namespace umbriel

@@ -23,6 +23,7 @@
 #include "workspace/workspace.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <drm_fourcc.h>
@@ -1474,7 +1475,7 @@ namespace umbriel {
     }
     std::string error;
     toml::table overrides;
-    if (args.front() == "--all") {
+    if (args.front() == kUnsetAllWord) {
       if (configStore().overrides().empty()) {
         return nlohmann::json{{"ok", nullptr}};
       }
@@ -1665,6 +1666,15 @@ namespace umbriel {
     return true;
   }
 
+  namespace {
+    constexpr std::array kRevokeChoices{std::string_view{kRevokeAllWord}};
+    constexpr std::array kUnsetChoices{std::string_view{kUnsetAllWord}};
+    constexpr std::array kOnOffChoices{std::string_view{"on"}, std::string_view{"off"}};
+    constexpr std::array kSwipePhaseChoices{
+        std::string_view{"begin"}, std::string_view{"update"}, std::string_view{"end"}
+    };
+  } // namespace
+
   static constexpr IpcCommandSpec kIpcCommands[] = {
       {"global-shortcuts", "", "inspect live and remembered application shortcuts", IpcCommandGroup::Inspect, false,
        &IpcCommands::globalShortcuts, &printGlobalShortcuts},
@@ -1673,19 +1683,21 @@ namespace umbriel {
       {"input-capture-permissions", "", "list remembered input capture grants", IpcCommandGroup::Inspect, false,
        &IpcCommands::inputCapturePermissions, nullptr},
       {"input-capture-revoke", "<id|all>", "forget capture permission and stop sessions using it",
-       IpcCommandGroup::Control, true, &IpcCommands::inputCaptureRevoke, nullptr},
+       IpcCommandGroup::Control, true, &IpcCommands::inputCaptureRevoke, nullptr, 2,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kRevokeChoices, "every remembered grant")},
       {"output-create", "<name> [mode]", "create a virtual output (optional mode, as 1920x1080@60)",
        IpcCommandGroup::Control, true, &IpcCommands::outputCreate, &printOutputName},
       {"output-destroy", "<name>", "destroy a virtual output", IpcCommandGroup::Control, true,
-       &IpcCommands::outputDestroy, nullptr},
+       &IpcCommands::outputDestroy, nullptr, 2, IpcArgCompletion(IpcArgCompletion::Kind::Output)},
       {"config-replace", "<path>", "load and watch a different config file", IpcCommandGroup::Control, true,
-       &IpcCommands::configReplace, nullptr},
+       &IpcCommands::configReplace, nullptr, 2, IpcArgCompletion(IpcArgCompletion::Kind::Path)},
       {"config-set", "<key> <value>", "override a config value until the compositor exits", IpcCommandGroup::Config,
        true, &IpcCommands::configSet, nullptr},
       {"config-get", "<key>", "print the active value of a config key", IpcCommandGroup::Config, true,
        &IpcCommands::configGet, &printConfigValue},
       {"config-unset", "<key|--all>", "drop runtime overrides so the file or default applies again",
-       IpcCommandGroup::Config, true, &IpcCommands::configUnset, nullptr},
+       IpcCommandGroup::Config, true, &IpcCommands::configUnset, nullptr, 2,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kUnsetChoices, "drop every override")},
       {"effects", "", "inspect effect presets, pools, and owner selections", IpcCommandGroup::Inspect, false,
        &IpcCommands::effects, &printEffects},
       {"windows", "", "list windows (app id and title)", IpcCommandGroup::Inspect, false, &IpcCommands::windows,
@@ -1712,14 +1724,18 @@ namespace umbriel {
       {"clock-resume", "", "let animation time follow the monotonic clock again, from where it stopped",
        IpcCommandGroup::Harness, false, &IpcCommands::clockResume, nullptr},
       {"swipe-test", "<begin|update|end> <ms> [dx dy|cancelled]", "inject three-finger swipe events (harness only)",
-       IpcCommandGroup::Harness, true, &IpcCommands::swipeForTest, nullptr},
+       IpcCommandGroup::Harness, true, &IpcCommands::swipeForTest, nullptr, 2,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kSwipePhaseChoices, "swipe phase")},
       {"animation-capture-fail", "<on|off>", "inject animation capture failure (harness only)",
-       IpcCommandGroup::Harness, true, &IpcCommands::animationCaptureFail, nullptr},
+       IpcCommandGroup::Harness, true, &IpcCommands::animationCaptureFail, nullptr, 2,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kOnOffChoices, "state")},
       {"blur-composite-split", "<on|off>",
        "composite backdrop blur through an effect buffer and wait until every output has drawn it (harness only)",
-       IpcCommandGroup::Harness, true, &IpcCommands::blurCompositeSplit, nullptr, 35},
+       IpcCommandGroup::Harness, true, &IpcCommands::blurCompositeSplit, nullptr, 35,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kOnOffChoices, "state")},
       {"event-pacing-hold", "<on|off>", "hold paced IPC events back until off (harness only)", IpcCommandGroup::Harness,
-       true, &IpcCommands::eventPacingHold, nullptr},
+       true, &IpcCommands::eventPacingHold, nullptr, 2,
+       IpcArgCompletion(IpcArgCompletion::Kind::Choice, kOnOffChoices, "state")},
       {"renderer-recover", "", "emit renderer loss and exercise recovery", IpcCommandGroup::Harness, false,
        &IpcCommands::rendererRecover, nullptr},
       {"plane-cursor", "<output> <x> <y> <visible> <image> [width height hotspot_x hotspot_y]",
@@ -1734,6 +1750,11 @@ namespace umbriel {
 
   std::span<const IpcCommandSpec> ipcCommands() { return kIpcCommands; }
 
+  const IpcCommandSpec* findConfigCommand(std::string_view sub) {
+    const IpcCommandSpec* spec = findIpcCommand(std::format("{}{}", kConfigCommandPrefix, sub));
+    return spec != nullptr && spec->group == IpcCommandGroup::Config ? spec : nullptr;
+  }
+
   const IpcCommandSpec* findIpcCommand(std::string_view name) {
     for (const auto& spec : kIpcCommands) {
       if (name == spec.name) {
@@ -1744,9 +1765,8 @@ namespace umbriel {
   }
 
   std::string cliName(const IpcCommandSpec& spec) {
-    constexpr std::string_view kConfigPrefix = "config-";
-    if (spec.group == IpcCommandGroup::Config && spec.name.starts_with(kConfigPrefix)) {
-      return std::format("config {}", spec.name.substr(kConfigPrefix.size()));
+    if (spec.group == IpcCommandGroup::Config && spec.name.starts_with(kConfigCommandPrefix)) {
+      return std::format("config {}", spec.name.substr(kConfigCommandPrefix.size()));
     }
     return std::string(spec.name);
   }

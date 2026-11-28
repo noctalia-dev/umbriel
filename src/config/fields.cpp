@@ -70,7 +70,7 @@ namespace umbriel {
       return std::nullopt;
     }
     if (loaded.scratchpads.empty()) {
-      if (!scratchpad->name.empty() && scratchpad->name != "default") {
+      if (!scratchpad->name.empty() && scratchpad->name != kImplicitScratchpad) {
         return std::format("unknown scratchpad '{}'", scratchpad->name);
       }
       return std::nullopt;
@@ -89,7 +89,7 @@ namespace umbriel {
 
   std::optional<std::string> scratchpadTargetError(const Config& loaded, std::string_view name) {
     if (loaded.scratchpads.empty()) {
-      return name == "default" ? std::nullopt : std::optional{std::format("unknown scratchpad '{}'", name)};
+      return name == kImplicitScratchpad ? std::nullopt : std::optional{std::format("unknown scratchpad '{}'", name)};
     }
     const bool configured = std::ranges::any_of(loaded.scratchpads, [name](const ScratchpadConfig& candidate) {
       return candidate.name == name;

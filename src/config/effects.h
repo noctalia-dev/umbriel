@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace umbriel {
@@ -15,6 +16,8 @@ namespace umbriel {
   class Section;
 
   enum class EffectKind : std::uint8_t { Animation, Border, Window, Screen, Cursor };
+  // Past the last kind, so a table indexed by kind sizes itself; a new kind after `Cursor` has to move this.
+  inline constexpr std::size_t kEffectKindCount = std::to_underlying(EffectKind::Cursor) + 1;
   enum class EffectSelectionPolicy : std::uint8_t { UnusedFirst, RoundRobin, Random };
   enum class EffectReferenceConstraint : std::uint8_t { PresetOnly, PresetOrPool, PoolRequired };
 
@@ -118,6 +121,12 @@ namespace umbriel {
   std::optional<std::string> effectReferenceError(
       const Effects& effects, std::string_view name, EffectKind kind, bool allowOff,
       EffectReferenceConstraint constraint = EffectReferenceConstraint::PresetOnly
+  );
+  // Whether `name` can stand where a reference of `kind` under `constraint` is expected. The names completion offers
+  // are filtered with this, so it offers exactly what `effectReferenceError` accepts.
+  bool effectReferenceAccepted(
+      const Effects& effects, std::string_view name, EffectKind kind, bool allowOff,
+      EffectReferenceConstraint constraint
   );
 
 } // namespace umbriel
