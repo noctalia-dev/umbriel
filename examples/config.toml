@@ -83,6 +83,10 @@ files = []
 [appearance.blur]
 radius = 3
 
+# Applications using ext_background_effect_v1 ask for blur on their own surface.
+# Set to false to keep the protocol advertised but ignore the requests.
+# client_requests = true
+
 # Optional title bar with modifier-free dragging and floating frame resizing.
 # [appearance.title_bar]
 # mode = "on" # Follow client decoration preferences.

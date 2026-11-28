@@ -101,6 +101,7 @@ opaque_fullscreen = true
 ```toml
 [appearance.blur]
 enabled = true
+client_requests = true
 optimized = true
 passes = 2
 radius = 5
@@ -110,18 +111,20 @@ contrast = 0.9
 saturation = 1.1
 ```
 
-| Key          | Default | Description                                                    |
-| ------------ | ------- | -------------------------------------------------------------- |
-| `enabled`    | `true`  | Enable blur rendering.                                         |
-| `optimized`  | `true`  | Share one cached background blur across surfaces on an output. |
-| `passes`     | `2`     | Blur passes from 0 to 8.                                       |
-| `radius`     | `5`     | Blur radius from 0 to 100.                                     |
-| `noise`      | `0.02`  | Noise overlay from 0.0 to 1.0.                                 |
-| `brightness` | `0.9`   | Brightness multiplier from 0.0 to 2.0.                         |
-| `contrast`   | `0.9`   | Contrast multiplier from 0.0 to 2.0.                           |
-| `saturation` | `1.1`   | Saturation multiplier from 0.0 to 2.0.                         |
+| Key               | Default | Description                                                    |
+| ----------------- | ------- | -------------------------------------------------------------- |
+| `enabled`         | `true`  | Enable blur rendering.                                         |
+| `client_requests` | `true`  | Honor blur regions that clients request for their own surface. |
+| `optimized`       | `true`  | Share one cached background blur across surfaces on an output. |
+| `passes`          | `2`     | Blur passes from 0 to 8.                                       |
+| `radius`          | `5`     | Blur radius from 0 to 100.                                     |
+| `noise`           | `0.02`  | Noise overlay from 0.0 to 1.0.                                 |
+| `brightness`      | `0.9`   | Brightness multiplier from 0.0 to 2.0.                         |
+| `contrast`        | `0.9`   | Contrast multiplier from 0.0 to 2.0.                           |
+| `saturation`      | `1.1`   | Saturation multiplier from 0.0 to 2.0.                         |
 
 - `enabled` is the master switch. Each window or panel still opts in through a [window rule](window-rules-appearance.md) or [layer rule](layer-rules.md), and blur shows only where it is transparent.
+- Applications that draw their own backdrop blur can ask for it instead: Umbriel advertises `ext_background_effect_v1`, so a client names the part of its surface that should be blurred. A non-empty region turns blur on for that surface and limits it to that area even without a rule, an empty region means no blur even under an enabled rule, and a surface that makes no request keeps whatever its window or layer rule says. `client_requests = false` keeps the protocol advertised but ignores requests, so a client cannot opt itself in.
 - Optimized blur samples the wallpaper. Set `optimized = false` to blur the live windows behind a surface, at a higher rendering cost.
 - Apps that clear their content before closing can leave a blurred rectangle; see [Transparent content and blur](window-rules-appearance.md#transparent-content-and-blur).
 
