@@ -87,4 +87,27 @@ if ! windows | jq -e '[.[] | select(.title | startswith("pad-tile-"))]
   exit 1
 fi
 
-echo "a scratchpad tiled its windows on a layout change, kept layout actions and its strip to itself, and floated again"
+# Returning an already tiled member must join the destination layout, not just keep its tiled flag.
+"$UMBRIEL" config set scratchpad '[{ name = "tiles", layout.mode = "dwindle" }]' > /dev/null
+"$UMBRIEL" msg window-focus "$(field "$A" id)" > /dev/null
+"$UMBRIEL" msg window-toggle-scratchpad tiles > /dev/null
+"$UMBRIEL" msg workspace-set-layout scrolling > /dev/null
+"$UMBRIEL" settle
+home=$(field "$A" workspace)
+"$UMBRIEL" msg window-focus "$(field "$B" id)" > /dev/null
+"$UMBRIEL" settle
+if [[ $(field "$B" floating) != false || $(field "$B" scratchpad) != tiles ]]; then
+  echo "restore requires an already tiled scratchpad member: $(windows)"
+  exit 1
+fi
+"$UMBRIEL" msg window-toggle-scratchpad tiles > /dev/null
+"$UMBRIEL" settle
+if ! windows | jq -e --arg title "$B" --arg home "$home" '
+  any(.[]; .title == $title and .scratchpad == "" and .workspace == $home
+    and .floating == false and .column >= 0 and .row >= 0 and .active and .visible)
+' > /dev/null; then
+  echo "restored scratchpad member did not join the scrolling layout: $(windows)"
+  exit 1
+fi
+
+echo "scratchpad layout changes, output clipping, and tiled restoration verified"

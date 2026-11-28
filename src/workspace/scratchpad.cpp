@@ -1493,6 +1493,10 @@ namespace umbriel {
     }
     if (entry.returnTiled) {
       view->setFloating(false, false);
+      // A tiling scratchpad can return a view that is already tiled, so setFloating need not attach it.
+      if (workspace != nullptr) {
+        workspace->layoutAttach(view);
+      }
     } else {
       view->setFloating(true, false);
       if (restoreOutput != nullptr && restoreOutput != scratchpadOutput) {
