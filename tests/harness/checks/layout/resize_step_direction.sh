@@ -60,6 +60,8 @@ wait_for_windows 3
 "$UMBRIEL" msg window-focus "$(field_of tiny id)" > /dev/null
 "$UMBRIEL" msg window-modify-secondary-extent -0.1 > /dev/null
 "$UMBRIEL" msg window-modify-primary-extent -0.05 > /dev/null
+"$UMBRIEL" msg window-modify-width-right -0.05 > /dev/null
+"$UMBRIEL" msg window-modify-height-down -0.1 > /dev/null
 "$UMBRIEL" settle
 if (($(field_of tiny w) != 110)) || (($(field_of tiny h) != 50)); then
   echo "expected the small float to stay 110x50: $("$UMBRIEL" windows --json)"
@@ -71,6 +73,8 @@ wait_for_windows 4
 "$UMBRIEL" msg window-focus "$(field_of huge id)" > /dev/null
 "$UMBRIEL" msg window-modify-secondary-extent 0.1 > /dev/null
 "$UMBRIEL" msg window-modify-primary-extent 0.05 > /dev/null
+"$UMBRIEL" msg window-modify-width-right 0.05 > /dev/null
+"$UMBRIEL" msg window-modify-height-down 0.1 > /dev/null
 "$UMBRIEL" settle
 if (($(field_of huge w) != 1500)) || (($(field_of huge h) != 900)); then
   echo "expected the large float to stay 1500x900: $("$UMBRIEL" windows --json)"
