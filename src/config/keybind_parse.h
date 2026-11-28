@@ -147,6 +147,7 @@ namespace umbriel {
     WorkspaceSwapActiveOutputDown,
     WorkspaceSwapActiveOutputNext,
     WorkspaceSwapActiveOutputPrevious,
+    WorkspaceSwap,
     WindowModifyPrimaryExtent,
     WindowCenter,
     WindowMoveTo,
