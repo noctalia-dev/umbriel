@@ -11,19 +11,24 @@ vrr = "always"
 
 ## Behavior keys
 
-| Key                       | Default | Description                                                                                                                 |
-| ------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `confine_pointer`         | `false` | Keep the pointer inside the window while it has keyboard focus. See [Games](#games).                                        |
-| `allow_shortcuts_inhibit` | `true`  | Let the app take over compositor shortcuts. See [Keep compositor shortcuts](#keep-compositor-shortcuts).                    |
-| `background_render`       | `false` | Keep drawing while hidden. See [Keep drawing while hidden](#keep-drawing-while-hidden).                                     |
-| `block_capture`           | `false` | Leave the window out of screenshots and recordings. See [Hide a window from screenshots](#hide-a-window-from-screenshots).  |
-| `focus_on_activate`       | global  | Override `general.focus_on_activate`. See [Focus on activation](#focus-on-activation).                                      |
-| `touchpad_scroll_factor`  | unset   | Touchpad scroll speed multiplier, 0.1 to 10.0. See [Touchpad scroll speed](#touchpad-scroll-speed).                         |
-| `vrr`                     | output  | Override the output's [VRR](display-features.md#variable-refresh-rate) policy: `"disabled"`, `"always"`, or `"fullscreen"`. |
-| `tearing`                 | client  | Request (`true`) or veto (`false`) [tearing](display-features.md#tearing).                                                  |
-| `hdr`                     | output  | Override the output's [HDR](display-features.md#hdr) policy.                                                                |
+| Key                       | Default                 | Description                                                                                                                 |
+| ------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `confine_pointer`         | `false`                 | Keep the pointer inside the window while it has keyboard focus. See [Games](#games).                                        |
+| `allow_shortcuts_inhibit` | `true`                  | Let the app take over compositor shortcuts. See [Keep compositor shortcuts](#keep-compositor-shortcuts).                    |
+| `background_render`       | `false`                 | Keep drawing while hidden. See [Keep drawing while hidden](#keep-drawing-while-hidden).                                     |
+| `block_capture`           | `false`                 | Leave the window out of screenshots and recordings. See [Hide a window from screenshots](#hide-a-window-from-screenshots).  |
+| `focus_on_activate`       | global                  | Override `general.focus_on_activate`. See [Focus on activation](#focus-on-activation).                                      |
+| `touchpad_scroll_factor`  | unset                   | Touchpad scroll speed multiplier, 0.1 to 10.0. See [Touchpad scroll speed](#touchpad-scroll-speed).                         |
+| `vrr`                     | output                  | Override the output's [VRR](display-features.md#variable-refresh-rate) policy: `"disabled"`, `"always"`, or `"fullscreen"`. |
+| `tearing`                 | client                  | Request (`true`) or veto (`false`) [tearing](display-features.md#tearing).                                                  |
+| `supersample`             | output and content type | Override the render scale policy. See [Supersampling](#supersampling).                                                      |
+| `hdr`                     | output                  | Override the output's [HDR](display-features.md#hdr) policy.                                                                |
 
 `vrr`, `tearing`, and `hdr` apply while the window is focused. A window rule's `vrr = "fullscreen"` follows the window's own fullscreen state.
+
+## Supersampling
+
+The `supersample` rule chooses whether a window uses its output's `render_scale`. It overrides the fullscreen and content-type defaults, including the output's `supersample_fullscreen` setting. Use `supersample = false` to reduce rendering cost for a 3D application in every window state. See [Supersampling with `render_scale`](outputs.md#supersampling-with-render_scale).
 
 ## Games
 

@@ -46,6 +46,7 @@ namespace umbriel {
           && lhs.mode == rhs.mode
           && lhs.position == rhs.position
           && lhs.scale == rhs.scale
+          && lhs.renderScale == rhs.renderScale
           && lhs.transform == rhs.transform
           && lhs.vrr == rhs.vrr
           && lhs.hdr == rhs.hdr
@@ -62,6 +63,13 @@ namespace umbriel {
       const OutputRule& lhs = before != nullptr ? *before : defaults;
       const OutputRule& rhs = after != nullptr ? *after : defaults;
       return lhs.allowTearing == rhs.allowTearing;
+    }
+
+    bool sameSurfaceScalePolicy(const OutputRule* before, const OutputRule* after) {
+      static const OutputRule defaults;
+      const OutputRule& lhs = before != nullptr ? *before : defaults;
+      const OutputRule& rhs = after != nullptr ? *after : defaults;
+      return lhs.supersampleFullscreen == rhs.supersampleFullscreen;
     }
 
     bool sameOutputScreenEffect(const OutputRule* before, const OutputRule* after) {
@@ -237,6 +245,7 @@ namespace umbriel {
             && (selectsEffect(before.windowRules) || selectsEffect(after.windowRules)));
     return {
         .outputState = outputState,
+        .surfaceScalePolicy = outputNamesChanged || outputProjectionChanged(before, after, sameSurfaceScalePolicy),
         .tearingPolicy = tearingPolicy,
         .directScanoutPolicy = directScanoutPolicy,
         .workspaceInventory = workspaceInventory,
@@ -248,9 +257,10 @@ namespace umbriel {
             || before.appearance.tabBar != after.appearance.tabBar
             || before.appearance.titleBar != after.appearance.titleBar,
         .sceneBlur = sceneBlur,
+        .sceneDownsample = before.appearance.downsample != after.appearance.downsample,
         // [colors] owns the border, backdrop, insert-hint, and shadow colors, so
         // any color edit refreshes window chrome.
-        .viewChrome = before.appearance != after.appearance
+        .viewChrome = !before.appearance.chromeEquals(after.appearance)
             || before.colors != after.colors
             || before.windowRules != after.windowRules
             || focusAppearance,
@@ -269,11 +279,13 @@ namespace umbriel {
   ConfigEffects ConfigEffects::everything() {
     return {
         .outputState = true,
+        .surfaceScalePolicy = true,
         .tearingPolicy = true,
         .directScanoutPolicy = true,
         .workspaceInventory = true,
         .workspaceLayout = true,
         .sceneBlur = true,
+        .sceneDownsample = true,
         .viewChrome = true,
         .layerEffects = true,
         .animation = true,
@@ -384,11 +396,13 @@ namespace umbriel {
       out += name;
     };
     add(outputState, "output state");
+    add(surfaceScalePolicy, "surface scale policy");
     add(tearingPolicy, "tearing policy");
     add(directScanoutPolicy, "direct scanout policy");
     add(workspaceInventory, "workspace inventory");
     add(workspaceLayout, "workspace layout");
     add(sceneBlur, "scene blur");
+    add(sceneDownsample, "scene downsample");
     add(viewChrome, "view chrome");
     add(internalUi, "internal UI");
     add(animation, "animation state");

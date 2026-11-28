@@ -70,6 +70,7 @@ namespace umbriel {
   // not source sections: one source change can invalidate several consumers.
   struct ConfigEffects {
     bool outputState = false;
+    bool surfaceScalePolicy = false;
     // Per-frame async presentation policy. This is separate from outputState
     // so a policy reload does not reapply modes, HDR, VRR, focus, or scale.
     bool tearingPolicy = false;
@@ -79,6 +80,9 @@ namespace umbriel {
     bool workspaceInventory = false;
     bool workspaceLayout = false;
     bool sceneBlur = false;
+    // Minified-buffer sampling method ([appearance] downsample): a scene-level
+    // policy, so it needs a fresh frame rather than any object rebuild.
+    bool sceneDownsample = false;
     bool viewChrome = false;
     bool layerEffects = false;
     bool animation = false;
@@ -91,11 +95,13 @@ namespace umbriel {
 
     bool any() const {
       return outputState
+          || surfaceScalePolicy
           || tearingPolicy
           || directScanoutPolicy
           || workspaceInventory
           || workspaceLayout
           || sceneBlur
+          || sceneDownsample
           || viewChrome
           || layerEffects
           || animation

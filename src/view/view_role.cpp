@@ -126,6 +126,8 @@ namespace umbriel {
       m_xFullscreenSize.reset();
       wlr_xwayland_surface_set_fullscreen(m_xsurface, fullscreen);
     }
+    // The fullscreen policy may change the scale hint, so send it before the configure.
+    refreshScaleHints();
     syncSsdFrame();
   }
 

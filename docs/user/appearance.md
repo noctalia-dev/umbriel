@@ -78,6 +78,7 @@ outer_border_width = 0
 corner_radius = 10
 drag_opacity = 0.75
 opaque_fullscreen = true
+downsample = "box"
 ```
 
 | Key                  | Default | Description                                                                                         |
@@ -88,6 +89,7 @@ opaque_fullscreen = true
 | `corner_radius`      | `10`    | Radius of the whole decorated window; `0` keeps it square.                                          |
 | `drag_opacity`       | `0.75`  | Opacity while dragging a window.                                                                    |
 | `opaque_fullscreen`  | `true`  | Draw fullscreen windows over the backdrop and ignore window rule `opacity`.                         |
+| `downsample`         | `"box"` | Sampling method for content that shrinks. Supports `"box"`, `"bilinear"`, and `"nearest"`.          |
 
 - Borders draw outside the window content and count in layout spacing.
 - A [window rule](window-rules-appearance.md#borders-corners-and-shadow) can override the border widths and corner radius for matching windows.
@@ -95,6 +97,8 @@ opaque_fullscreen = true
 
 > [!NOTE]
 > Restart applications after changing `prefer_no_csd`; they read it when they connect.
+
+`downsample` picks the sampling method whenever content shrinks: the [render_scale supersample](outputs.md#supersampling-with-render_scale) downsample, a window scaled down while it animates, or a thumbnail. `box` averages each destination pixel's source footprint in linear light. Up to 4:1 on an axis every texel that axis covers counts by its area, at any ratio; beyond that the axis falls back to a fixed grid of bilinear taps, so every texel is weighed up to 8:1 and above that some texels fall between taps. `bilinear` takes one interpolated sample per pixel and `nearest` the closest texel, so both alias more. A reload applies the method immediately, including to a capture already in progress.
 
 ## Blur
 
