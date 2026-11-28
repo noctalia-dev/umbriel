@@ -3851,6 +3851,7 @@ namespace umbriel {
       return;
     }
 
+    // Mod hover only hints resize near an edge; a move shows its cursor once the drag starts.
     const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
     if (modHeld && under != nullptr && under->mapped()) {
       const uint32_t edges = hoverResizeEdges(under);
@@ -3859,8 +3860,6 @@ namespace umbriel {
         setCompositorCursor(name != nullptr ? name : "default");
         return;
       }
-      setCompositorCursor("grab");
-      return;
     }
 
     if (!modHeld) {
