@@ -296,6 +296,14 @@ Disconnect, malformed or oversized input, or 250 ms without a snapshot closes th
 
 `umbriel config set`, `config get`, and `config unset` manage [runtime overrides](configuration.md#runtime-overrides). Their requests are `{"cmd":"config-set","args":["<key>","<value>"]}`, `{"cmd":"config-get","args":["<key>"]}`, and `{"cmd":"config-unset","args":["<key>"]}` (or `["--all"]`).
 
+## Capture scale
+
+`{"cmd":"capture-scale","args":["<window-id>","<scale>"]}` sets the render scale one window's image-copy capture source uses. Smaller values shrink the buffers `ext_image_copy_capture` clients receive, which cuts capture readback cost for thumbnail-style consumers. `<scale>` is in `[0, 1]`; `0` or `"auto"` restores the output's own scale. The window ID is the `id` field from `windows`.
+
+```json
+{"cmd":"capture-scale","args":["0x55f3a2b1c0","0.25"]}
+```
+
 ## Virtual outputs
 
 | Request                                                                                             | CLI                                   |

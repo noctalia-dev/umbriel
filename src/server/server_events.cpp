@@ -4305,7 +4305,7 @@ namespace umbriel {
     view->syncCaptureClip();
 
     if (Output* output = view->currentOutput()) {
-      umbrielfx_scene_capture_source_set_scale(view->m_captureSource, output->wlr()->scale);
+      umbrielfx_scene_capture_source_set_scale(view->m_captureSource, view->captureScale(*output));
     }
 
     wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(request, view->m_captureSource);

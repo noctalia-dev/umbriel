@@ -46,6 +46,7 @@ namespace umbriel {
     static nlohmann::json configSet(Server& server, IpcArgs args);
     static nlohmann::json configGet(Server& server, IpcArgs args);
     static nlohmann::json configUnset(Server& server, IpcArgs args);
+    static nlohmann::json captureScale(Server& server, IpcArgs args);
 #ifdef UMBRIEL_HARNESS
     // The reply to a settle request. The IPC server holds the request until the compositor is settled.
     static nlohmann::json settle(Server& server, IpcArgs args);

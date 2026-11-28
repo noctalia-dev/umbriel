@@ -204,6 +204,12 @@ namespace umbriel {
     // The window id the ext-foreign-toplevel protocol hands to clients, which the IPC surface reuses verbatim for its
     // own window identity. Null only while no ext handle exists (the handle lives for the whole map lifetime).
     const char* extForeignIdentifier() const { return m_extForeign != nullptr ? m_extForeign->identifier : nullptr; }
+    // Per-window image-copy capture scale override (0 = none). Thumbnail-style
+    // clients ask for a small render scale to cut capture readback cost.
+    void setCaptureScaleOverride(float scale);
+    // Effective capture scale on `output`: this override when set, else the
+    // output's own scale.
+    float captureScale(const Output& output) const;
     // Seat-global activation, tracked independently of the per-workspace focus
     // state the IPC `focused` field reports.
     bool activated() const { return m_activated; }
@@ -1042,6 +1048,7 @@ namespace umbriel {
     wlr_ext_foreign_toplevel_handle_v1* m_extForeign = nullptr;
     wlr_output* m_foreignOutput = nullptr;
     wlr_ext_image_capture_source_v1* m_captureSource = nullptr;
+    float m_captureScaleOverride = 0.0F;
     bool m_captureBlocked = false;
     bool m_ruleCaptureBlocked = false;
     wlr_xdg_dialog_v1* m_dialog = nullptr;
