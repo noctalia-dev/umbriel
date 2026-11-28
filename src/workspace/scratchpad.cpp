@@ -110,7 +110,7 @@ namespace umbriel {
       // A pad workspace's closing snapshots follow that pad's own visibility fade, so opening another pad on the same
       // output cannot revive them. This also reaps snapshots the server dropped (an output release).
       if (scratchpad.workspace != nullptr) {
-        scratchpad.workspace->syncCloseSnapshots(static_cast<float>(std::clamp(scratchpad.fade.current(), 0.0, 1.0)));
+        scratchpad.workspace->syncCloseSnapshots();
       }
     }
 

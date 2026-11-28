@@ -1710,11 +1710,10 @@ namespace umbriel {
   void Workspace::trackCloseSnapshot(CloseSnapshotId id, const wlr_box& outputBox) {
     const wlr_box canvas{outputBox.x - m_slideOffsetX, outputBox.y - m_slideOffsetY, outputBox.width, outputBox.height};
     m_trackedCloseSnapshots.push_back({.id = id, .canvas = canvas});
-    ScratchpadManager* scratchpads = m_scratchpad ? m_group->server()->scratchpadManager() : nullptr;
-    syncCloseSnapshots(scratchpads != nullptr ? scratchpads->fadeFor(this) : 1.0F);
+    syncCloseSnapshots();
   }
 
-  void Workspace::syncCloseSnapshots(float padFade) {
+  void Workspace::syncCloseSnapshots() {
     if (m_group == nullptr) {
       return;
     }
@@ -1727,7 +1726,8 @@ namespace umbriel {
     float fade = 1.0F;
     if (m_scratchpad) {
       // A pad workspace stays active; its snapshots follow the owning pad's own visibility fade instead.
-      fade = padFade;
+      const ScratchpadManager* scratchpads = server->scratchpadManager();
+      fade = scratchpads != nullptr ? scratchpads->fadeFor(this) : 0.0F;
       visible = fade > 0.001F;
     }
     for (const TrackedCloseSnapshot& snapshot : m_trackedCloseSnapshots) {
