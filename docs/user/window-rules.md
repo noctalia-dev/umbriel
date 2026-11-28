@@ -30,6 +30,7 @@ The keys are grouped by what they change: [Placement rules](window-rules-placeme
 | Remove borders and shadow from an app | `border_width`, `corner_radius`, `shadow`   | [Appearance](window-rules-appearance.md#applications-with-their-own-decorations) |
 | Show title bars per app or layout     | `title_bar`                                 | [Appearance](window-rules-appearance.md#title-bars)                              |
 | Blur a translucent app                | `blur`, `blur_ignore_alpha`                 | [Appearance](window-rules-appearance.md#transparent-content-and-blur)            |
+| Control supersampling per app         | `supersample`                               | [Behavior](window-rules-behavior.md#supersampling)                               |
 | Tune a game: VRR, tearing, pointer    | `vrr`, `tearing`, `confine_pointer`         | [Behavior](window-rules-behavior.md#games)                                       |
 | Keep shortcuts in a virtual machine   | `allow_shortcuts_inhibit`                   | [Behavior](window-rules-behavior.md#keep-compositor-shortcuts)                   |
 | Hide a window from screen sharing     | `block_capture`                             | [Behavior](window-rules-behavior.md#hide-a-window-from-screenshots)              |

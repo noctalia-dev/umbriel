@@ -46,6 +46,7 @@ namespace umbriel {
           && lhs.mode == rhs.mode
           && lhs.position == rhs.position
           && lhs.scale == rhs.scale
+          && lhs.renderScale == rhs.renderScale
           && lhs.transform == rhs.transform
           && lhs.vrr == rhs.vrr
           && lhs.hdr == rhs.hdr
@@ -62,6 +63,13 @@ namespace umbriel {
       const OutputRule& lhs = before != nullptr ? *before : defaults;
       const OutputRule& rhs = after != nullptr ? *after : defaults;
       return lhs.allowTearing == rhs.allowTearing;
+    }
+
+    bool sameSurfaceScalePolicy(const OutputRule* before, const OutputRule* after) {
+      static const OutputRule defaults;
+      const OutputRule& lhs = before != nullptr ? *before : defaults;
+      const OutputRule& rhs = after != nullptr ? *after : defaults;
+      return lhs.supersampleFullscreen == rhs.supersampleFullscreen;
     }
 
     bool sameOutputScreenEffect(const OutputRule* before, const OutputRule* after) {
@@ -237,6 +245,7 @@ namespace umbriel {
             && (selectsEffect(before.windowRules) || selectsEffect(after.windowRules)));
     return {
         .outputState = outputState,
+        .surfaceScalePolicy = outputNamesChanged || outputProjectionChanged(before, after, sameSurfaceScalePolicy),
         .tearingPolicy = tearingPolicy,
         .directScanoutPolicy = directScanoutPolicy,
         .workspaceInventory = workspaceInventory,
@@ -269,6 +278,7 @@ namespace umbriel {
   ConfigEffects ConfigEffects::everything() {
     return {
         .outputState = true,
+        .surfaceScalePolicy = true,
         .tearingPolicy = true,
         .directScanoutPolicy = true,
         .workspaceInventory = true,
@@ -384,6 +394,7 @@ namespace umbriel {
       out += name;
     };
     add(outputState, "output state");
+    add(surfaceScalePolicy, "surface scale policy");
     add(tearingPolicy, "tearing policy");
     add(directScanoutPolicy, "direct scanout policy");
     add(workspaceInventory, "workspace inventory");
