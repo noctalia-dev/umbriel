@@ -4,7 +4,7 @@ Actions are the compositor's verbs. Bind one under `[keybinds]`, attach it to a 
 
 ## Argument forms
 
-Arguments follow the action name as separate words. On the command line each word is a shell argument. In config strings words split on whitespace, and single quotes, double quotes, and backslash escapes group a word containing spaces, as in `"Mod+W" = "workspace-switch 'My web'"`. `spawn` takes the rest of a config string verbatim; on the command line its remaining words are joined with single spaces and run through the shell, so pass a command needing shell quoting as one quoted argument. `--output <output>`, `--window <window-id>`, and `--name <name>` qualify some actions; they may appear anywhere after the action name, with the value as the next word. `<angle>` forms are required, `[bracket]` forms are optional.
+Arguments follow the action name as separate words. On the command line each word is a shell argument. In config strings words split on whitespace, and single quotes, double quotes, and backslash escapes group a word containing spaces, as in `"Mod+W" = "workspace-switch 'My web'"`. `spawn` and `spawn-floating` take the rest of a config string verbatim; on the command line their remaining words are joined with single spaces and run through the shell, so pass a command needing shell quoting as one quoted argument. `--output <output>`, `--window <window-id>`, and `--name <name>` qualify some actions; they may appear anywhere after the action name, with the value as the next word. `<angle>` forms are required, `[bracket]` forms are optional.
 
 | Form                                                               | Meaning                                                                                                                                                                                                                                                              |
 | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -23,7 +23,7 @@ Arguments follow the action name as separate words. On the command line each wor
 | `<normal\|tabbed>`                                                 | How `column-set-display` shows the rows around the focused window: stacked, or as a tab group                                                                                                                                                                        |
 | `<index>`                                                          | Tab position for `column-focus-tab`, counted from `1` within the focused tab group; negative counts back from the last tab, `-1`                                                                                                                                     |
 | `[skip-confirmation]`                                              | `session-quit` only: quit without the on-screen confirmation                                                                                                                                                                                                         |
-| `<anchor> <x> <y> [--window <window-id>]`                          | `window-move-to` only: an anchor from [Floating position](window-rules.md#floating-position) and signed offsets in logical pixels. Right and bottom anchors measure inward from those edges; the result is kept inside the usable area                               |
+| `<anchor> <x> <y> [--window <window-id>]`                          | `window-move-to` only: an anchor from [Float, size, and position](window-rules-placement.md#float-size-and-position) and signed offsets in logical pixels. Right and bottom anchors measure inward from those edges; the result is kept inside the usable area       |
 | `<delta-x> <delta-y> [--window <window-id>]`                       | `window-move-by` only: signed offsets in logical pixels from the current position, kept inside the usable area                                                                                                                                                       |
 
 Effect `set` and `cycle` take the preset or pool name as a word and the target as `--window <window-id>` (window and border effects) or `--output <output>` (screen effects). For example, `effect-screen-set cinema --output vendor/panel` selects `cinema` on output `vendor/panel`, and `effect-window-cycle --window <window-id>` cycles that window's current pool. Omit the target for the focused window or preferred output. Cursor actions take no target. `off` is accepted only by `set`.
@@ -32,9 +32,10 @@ Named `set` and successful `cycle` create a runtime override and clear suppressi
 
 ## Apps
 
-| Action           | Effect                                       |
-| ---------------- | -------------------------------------------- |
-| `spawn <cmd...>` | Run a command with a launch activation token |
+| Action                    | Effect                                          |
+| ------------------------- | ----------------------------------------------- |
+| `spawn <cmd...>`          | Run a command with a launch activation token    |
+| `spawn-floating <cmd...>` | Run a command whose first window opens floating |
 
 ## Screencasting
 
@@ -88,7 +89,7 @@ Changing a window stream to an output, or an output stream to a window, is suppo
 
 ## Move & size
 
-Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
+Sizing rules per layout live in [Window sizing and states](window-states.md#extent-actions).
 
 | Action                                                                                         | Effect                                                      |
 | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -155,7 +156,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-swap-right`                                                                            | Swap with the window to the right                           |
 | `window-swap-up`                                                                               | Swap with the window above                                  |
 
-`window-set-region` works on ordinary eligible windows in stacking, including explicitly floating windows. It rejects windows above tiling layouts, tiled, attached, fullscreen, pinned, and scratchpad windows, and regions smaller than the client's minimum size. Invalid requests leave placement and restore geometry unchanged. Repeating the current region is idempotent; choosing another region preserves the original normal box. `window-clear-region` restores that box and is a no-op without a placement. Setting a retained region while maximized leaves maximize and applies the region. Maximize and fullscreen round trips preserve placement within stacking; manual movement or resizing ends it. These actions remain available when `layout.stacking.drop_zones` is disabled, since that option controls pointer drop zones only.
+`window-set-region` works on ordinary eligible windows in stacking, including explicitly floating windows and windows of a floating scratchpad. It rejects windows above tiling layouts, tiled, attached, fullscreen, and pinned windows, and regions smaller than the client's minimum size. Invalid requests leave placement and restore geometry unchanged. Repeating the current region is idempotent; choosing another region preserves the original normal box. `window-clear-region` restores that box and is a no-op without a placement. Setting a retained region while maximized leaves maximize and applies the region. Maximize and fullscreen round trips preserve placement within stacking; manual movement or resizing ends it. These actions remain available when `layout.stacking.drop_zones` is disabled, since that option controls pointer drop zones only.
 
 ## Windows
 
@@ -180,7 +181,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-toggle-maximize-to-edges`      | Toggle maximize without gaps, struts, or borders           |
 | `window-toggle-pinned`                 | Pin the focused window above other windows                 |
 
-Which windows minimize and how they come back is described in [Minimize](layout.md#minimize).
+Which windows minimize and how they come back is described in [Minimize](window-states.md#minimize).
 
 `window-close` asks the application to close a window. `window-kill` forcefully closes its client, even if it ignores close requests, and can lose unsaved work. For native Wayland clients, it sends `SIGKILL` to the owning process and closes all windows owned by that process; an unavailable client PID returns an error. For Xwayland clients, it disconnects the owning X11 connection and destroys its windows and other X11 resources, including windows retained after the process exits. Other windows sharing that X11 connection also close; the process may continue running if it handles losing the connection.
 
@@ -199,15 +200,17 @@ For Xwayland windows, fullscreen entered with `window-toggle-fullscreen` remains
 
 Scratchpads are global named holding areas that roam between outputs. [Scratchpads](scratchpad.md) covers their configuration, restoration rules, and multi-output behavior.
 
-| Action                                           | Effect                                            |
-| ------------------------------------------------ | ------------------------------------------------- |
-| `scratchpad-focus-next [<scratchpad>]`           | Focus the next visible scratchpad window          |
-| `scratchpad-toggle [<scratchpad>]`               | Show or hide the selected scratchpad windows      |
-| `scratchpad-window-show-next [<scratchpad>]`     | Show only the next scratchpad window              |
-| `scratchpad-window-show-previous [<scratchpad>]` | Show only the previous scratchpad window          |
-| `window-move-to-scratchpad [<scratchpad>]`       | Move the focused window into a scratchpad         |
-| `window-restore-from-scratchpad [<scratchpad>]`  | Return a scratchpad window to its saved workspace |
-| `window-toggle-scratchpad [<scratchpad>]`        | Move the focused window to or from a scratchpad   |
+| Action                                            | Effect                                                      |
+| ------------------------------------------------- | ----------------------------------------------------------- |
+| `scratchpad-focus-next [<scratchpad>]`            | Focus the next visible scratchpad window                    |
+| `scratchpad-toggle [<scratchpad>]`                | Show or hide the selected scratchpad windows                |
+| `scratchpad-window-cycle [<scratchpad>]`          | Show the next scratchpad window, or hide the scratchpad     |
+| `scratchpad-window-cycle-previous [<scratchpad>]` | Show the previous scratchpad window, or hide the scratchpad |
+| `scratchpad-window-show-next [<scratchpad>]`      | Show only the next scratchpad window                        |
+| `scratchpad-window-show-previous [<scratchpad>]`  | Show only the previous scratchpad window                    |
+| `window-move-to-scratchpad [<scratchpad>]`        | Move the focused window into a scratchpad                   |
+| `window-restore-from-scratchpad [<scratchpad>]`   | Return a scratchpad window to its saved workspace           |
+| `window-toggle-scratchpad [<scratchpad>]`         | Move the focused window to or from a scratchpad             |
 
 ## Workspaces
 
@@ -319,5 +322,6 @@ See [Layout](layout.md) for geometry, directions, and resizing behavior.
 - `column-focus-tab-next` and `column-focus-tab-previous` wrap unless `layout.tabs.wrap_focus` is off. In the scrolling layout a tab group is one row of its column: `window-focus-up` and `window-focus-down` step over it, and `window-move-up` and `window-move-down` take a tab out of it or a window into it. In a tabbed master area they step through its tabs without wrapping.
 - Floating and pinned behavior is described in [Layout](layout.md) and [Scratchpads](scratchpad.md).
 - An action unavailable in the active layout does nothing from a keybind and returns an explanatory error through `umbriel msg`.
-- `spawn` supplies an activation token and records the pointer-preferred output and its active workspace. The launched application's first window opens there even if you switch workspaces while it starts. Opening on a workspace you left is silent, and explicit `default_output`, `default_workspace`, and `default_scratchpad` window rules take precedence. `focus_on_activate` controls whether an activation request focuses the window, not the recorded launch destination. Autostart commands do not receive a token or recorded placement.
+- `spawn` supplies an activation token and records the pointer-preferred output and its active workspace. The launched application's first window opens there even if you switch workspaces while it starts. Opening on a workspace you left is silent, and explicit `default_output`, `default_workspace`, and `default_scratchpad` window rules take precedence. `focus_on_activate` controls whether an activation request focuses the window, not the recorded launch destination. Autostart commands do not receive a token or recorded placement. A `spawn` reply says nothing about the launched program, so a program that starts nothing still answers `{"ok": null}`; Umbriel records the launch in its own log, naming the command and the process it created, and [A launched program does not appear](troubleshooting.md#a-launched-program-does-not-appear) describes the queries that find a launch and whatever the program wrote.
+- `spawn-floating` records the same launch and opens that first window floating, as a `default_floating = true` window rule would; a window rule that sets `default_floating` takes precedence.
 - Bare `session-quit` asks for confirmation. Use `session-quit skip-confirmation` only when an immediate exit is intended.

@@ -26,6 +26,8 @@ namespace umbriel {
     static nlohmann::json keyboardLayouts(Server& server, IpcArgs args);
     static nlohmann::json inputCapturePermissions(Server& server, IpcArgs args);
     static nlohmann::json inputCaptureRevoke(Server& server, IpcArgs args);
+    static nlohmann::json globalShortcuts(Server& server, IpcArgs args);
+    static nlohmann::json globalShortcutsRevoke(Server& server, IpcArgs args);
     static std::optional<EffectAudio> parseAudioSpectrum(const nlohmann::json& request);
     static nlohmann::json effects(Server& server, IpcArgs args);
     static nlohmann::json windows(Server& server, IpcArgs args);
@@ -44,13 +46,13 @@ namespace umbriel {
     static nlohmann::json configSet(Server& server, IpcArgs args);
     static nlohmann::json configGet(Server& server, IpcArgs args);
     static nlohmann::json configUnset(Server& server, IpcArgs args);
+#ifdef UMBRIEL_HARNESS
     // The reply to a settle request. The IPC server holds the request until the compositor is settled.
     static nlohmann::json settle(Server& server, IpcArgs args);
     static nlohmann::json clockFreeze(Server& server, IpcArgs args);
     // The reply to clock-advance. The IPC server advances the clock and holds the reply until every output has drawn.
     static nlohmann::json clockAdvance(Server& server, IpcArgs args);
     static nlohmann::json clockResume(Server& server, IpcArgs args);
-#ifdef UMBRIEL_HARNESS
     static nlohmann::json rendererRecover(Server& server, IpcArgs args);
     static nlohmann::json swipeForTest(Server& server, IpcArgs args);
     static nlohmann::json animationCaptureFail(Server& server, IpcArgs args);

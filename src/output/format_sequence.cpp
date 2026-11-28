@@ -166,12 +166,17 @@ namespace umbriel {
       result.usedModeFallback = true;
       if (!params.modeFallbackAlreadyWarned) {
         result.modeFallbackWarnedNow = true;
-        const std::string requested = params.configuredModeSpec->refreshMHz != 0
-            ? std::format(
-                  "{}x{}@{}mHz", params.configuredModeSpec->width, params.configuredModeSpec->height,
-                  params.configuredModeSpec->refreshMHz
-              )
-            : std::format("{}x{}", params.configuredModeSpec->width, params.configuredModeSpec->height);
+        const OutputMode& spec = *params.configuredModeSpec;
+        std::string requested;
+        if (spec.target == OutputModeTarget::HighRefreshRate) {
+          requested = "highest_refresh";
+        } else if (spec.target == OutputModeTarget::HighResolution) {
+          requested = "highest_resolution";
+        } else if (spec.refreshMHz != 0) {
+          requested = std::format("{}x{}@{}mHz", spec.width, spec.height, spec.refreshMHz);
+        } else {
+          requested = std::format("{}x{}", spec.width, spec.height);
+        }
         ops.warnModeFallback(requested, *params.preferredMode);
       }
 

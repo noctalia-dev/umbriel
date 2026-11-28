@@ -18,6 +18,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
@@ -45,11 +46,13 @@ struct wlr_xwayland_surface_configure_event;
 namespace umbriel {
 
   class Server;
+  class Output;
   class SsdFrame;
   class ScratchpadManager;
   class ColorManager;
   class Workspace;
   enum class LayoutAttachOrigin;
+  struct OutputIdentity;
   struct ResolvedWindowRule;
   struct WorkspaceLaunchAnchor;
   struct DisplacedWorkspace;
@@ -99,6 +102,8 @@ namespace umbriel {
     // True while the latest configure is still queued, or sent but not yet acknowledged and committed. Always false for
     // X11 windows, which acknowledge nothing.
     bool configureOutstanding() const;
+    // True once the latest configure has been sent and acknowledged, whether or not a commit has applied it yet.
+    bool configureAcknowledged() const;
     // True while the shared scene draws the window: its frame and every ancestor are enabled.
     bool presented() const;
     void updateDimBehind();
@@ -230,6 +235,7 @@ namespace umbriel {
     int decorationCornerRadius() const { return m_decoration.cornerRadius(); }
     // Padding of this window's border preset, 0 without one.
     int borderEffectPadding() const { return m_effects.borderPadding(); }
+    bool borderUnfocused();
     // Opacity multiplier the overview applies to windows it leaves on screen (pinned ones) while it opens and closes.
     void setOverviewOpacity(float opacity);
     wlr_scene_tree* homeTree() const;
@@ -404,6 +410,10 @@ namespace umbriel {
     // `usable` less the margin a maximized tile keeps (struts, then gap and border), so the border stays on screen.
     // A client capped below that box by its maximum size keeps the capped size, centered in it.
     wlr_box floatingMaximizedBox(const wlr_box& usable, const ResolvedLayoutConfig* layout = nullptr) const;
+    // Opening configures use resolved rules before the view's live maximize and title-bar state is installed.
+    wlr_box floatingMaximizedBox(
+        const wlr_box& usable, bool maximizedToEdges, int barHeight, const ResolvedLayoutConfig* layout
+    ) const;
     // The usable area inside the layout struts and the gap plus border margin; `usable` when that leaves nothing.
     wlr_box floatingMarginArea(const wlr_box& usable, const ResolvedLayoutConfig* layout = nullptr) const;
     // Put a maximized float back in the box its settings give it now, after a layout, border, strut, or usable area
@@ -447,6 +457,8 @@ namespace umbriel {
     // Re-derive the surface clip from committed state alone (tile geometry when tiled, none otherwise), for the paths
     // that leave presentation-driven cropping behind: map, drag entry, drag drop.
     void resetSurfaceClip();
+    // Keep the isolated toplevel capture scene clipped to the window's committed content bounds.
+    void syncCaptureClip();
     void setFadeAlpha(float alpha);
     void cancelFadeAnimation();
     void cancelPositionAnimation();
@@ -464,13 +476,9 @@ namespace umbriel {
     // output's usable area and restores to the box it had before; tiled windows
     // toggle their column's full-width state.
     void toggleMaximized();
-    // Apply the maximize state a client request would carry (what a titlebar
-    // double-click produces): a tiled window honors the workspace's
-    // client_maximize, and a floating window keeps the default behavior
-    // whatever it says. handleRequestMaximize ends here too, so the gesture and
-    // a client request pick the same target. The direction is explicit because
-    // the gesture computes the opposite of the current state at its second
-    // press.
+    // Shared target policy for client maximize, title bars, and pointer gestures.
+    // Tiled and stacking windows honor client_maximize; other floats use normal
+    // maximize. The caller supplies the direction for toggles.
     void setMaximizedLikeClientRequest(bool maximized);
     // Restore a floating maximized window to its saved box before a pointer
     // move takes ownership of its position.
@@ -495,6 +503,9 @@ namespace umbriel {
     // Enable/disable the view's frame, and its shadow when a tile has lent it to the workspace.
     void setNodeEnabled(bool enabled);
     void raiseToTop();
+    // Ends with the result of raiseToTop() on each view in turn, the last on top, without passing a frame above one it
+    // ends below.
+    static void raiseInOrder(std::span<View* const> views);
     // The only way to move the frame to another tree: a tile's shadow joins the workspace's tile shadow layer, and
     // any other window's shadow stays in the frame.
     void setSceneParent(wlr_scene_tree* parent);
@@ -694,7 +705,11 @@ namespace umbriel {
     // Refresh a finished/cancelled resize, retaining layout and pending floating frame ownership.
     void finishSizeAnimation();
     bool sizeAnimating() const {
-      return m_presentation.animating() || m_layoutMotion || tiledOpeningActive() || fullscreenOpeningActive();
+      return m_presentation.animating()
+          || m_layoutMotion
+          || tiledOpeningActive()
+          || fullscreenOpeningActive()
+          || openingInsetActive();
     }
     bool layoutPresentationOwned() const { return sizeAnimating() || m_layoutPresentationHeld; }
     void requestTiledSize(int width, int height);
@@ -707,11 +722,15 @@ namespace umbriel {
     // The same for a window that opens fullscreen: the layout owns the output box it rests in, windows_in owns the
     // scaled box it is presented at until the fade ends.
     bool fullscreenOpeningActive() const;
+    // A floating window that opens with an inset scales from the box it rests in at the size its client last drew, so
+    // a client that resizes itself while opening grows toward its new size instead of being squeezed into the old one.
+    bool floatingOpeningActive() const;
+    wlr_box floatingOpeningBox() const;
     // A built-in popin, zoom, or slide open offsets the presented box inside the box the layout assigned it, until
     // the fade that drives it reaches rest.
     bool openingInsetPending() const { return m_openingScale < 1.0 || m_openingSlide != 0; }
     bool openingInsetActive() const {
-      return openingInsetPending() && (tiledOpeningActive() || fullscreenOpeningActive());
+      return openingInsetPending() && (tiledOpeningActive() || fullscreenOpeningActive() || floatingOpeningActive());
     }
     // `box` with that inset applied, else `box` itself. Both extents are at least 1.
     wlr_box openingInsetBox(const wlr_box& box) const;
@@ -744,8 +763,6 @@ namespace umbriel {
     // A pointer resize, and the final request it flushes on release until the client answers, shows the client's frame
     // as drawn: never scaled, cropped 1:1 to a smaller tile, with the opposite edges of a float held in place.
     bool presentsCommittedSize() const;
-    // A tiled resize grab steps through held switches (windows_resize.wait_for_redraw) instead of stretching buffers.
-    bool tiledResizeWaitsForClient() const;
     // Cursor owns when a drag starts and ends; View owns the scene invariants
     // for the temporary global presentation and its resting presentation.
     void enterDragPresentation();
@@ -773,7 +790,7 @@ namespace umbriel {
     // Kick the owning output so an animation started outside a frame gets ticked.
     void scheduleFrame();
     void cancelSizeAnimation();
-    void updateFullscreenPresentation(int width, int height);
+    void updateFullscreenPresentation(int width, int height, bool centerDrawn = false);
     // Apply subsurface clip to the toplevel surface only, not xdg popup children.
     void setSurfaceTreeClip(const wlr_box* clip);
     void unconstrainPopup(wlr_xdg_popup* popup);
@@ -832,7 +849,8 @@ namespace umbriel {
     void releaseDialog();
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
     void syncTransientSceneParent();
-    void raiseTransientTree();
+    // Appends the frames a raise of this transient tree lifts, in the order it lifts them.
+    void collectTransientTree(std::vector<wlr_scene_node*>& frames);
     void updateForeignIdentity();
     void updateForeignState();
     void enterForeignOutput();
@@ -840,7 +858,7 @@ namespace umbriel {
     void leaveForeignOutput();
     bool assignLaunchOrigin(
         std::string_view token, std::shared_ptr<WorkspaceLaunchAnchor> workspace, uint32_t timeoutMsec,
-        std::string_view scratchpad
+        std::string_view scratchpad, bool floating
     );
     bool consumeLaunchActivation(std::string_view token);
     bool cancelLaunchOrigin(std::string_view token);
@@ -850,12 +868,21 @@ namespace umbriel {
     // `resolved` lets a caller that already resolved the rules pass them in, avoiding a second regex pass.
     void applyDynamicRules(const ResolvedWindowRule* resolved = nullptr);
     void updateBorderColor(bool focusChanged);
+    void applyBorderColors();
     void refreshStartupRuleEffects();
     // Applies or undoes the alone size effect after the workspace's tiled set changes.
     bool notifyAloneStateChanged();
     // Resolves the rules with `alone` forced, so the alone effect can compare both outcomes, and so the opening paths
-    // can read the alone rules before the view is in the layout.
-    ResolvedWindowRule resolveRulesWithAlone(bool alone) const;
+    // can read the alone rules before the view is in the layout. `output` selects what `match.output` tests; null
+    // resolves against the window's current output.
+    ResolvedWindowRule resolveRulesWithAlone(bool alone, const Output* output = nullptr) const;
+    // Opening rules resolved against the output the window is about to open on. Placement rules pick that output
+    // and `match.output` rules pick the placement, so resolution iterates until the prediction settles.
+    ResolvedWindowRule resolveRulesForOpening(WindowRuleState state) const;
+    // The output the placement rules in `rule` would open this window on, mirroring the map-time attach order.
+    Output* predictedRuleOutput(const ResolvedWindowRule& rule) const;
+    // The identity `match.output` tests: `output`, or the window's current output when null.
+    std::optional<OutputIdentity> ruleOutputIdentity(const Output* output = nullptr) const;
     ResolvedWindowRule aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
     void revertAloneRuleEffects();
@@ -887,9 +914,12 @@ namespace umbriel {
     std::optional<std::string> m_rulesXdgTag;
     ContentType m_rulesContentType = ContentType::None;
     WindowRuleState m_rulesState;
+    // `match.output` resolves against the window's output, so it is part of the resolution key too.
+    Output* m_rulesOutput = nullptr;
     // The state applyDynamicRules last applied effects for. Any resolvedRules() caller refreshes the cache above, so
     // only this tells a transition whether the effects on screen still match the window's state.
     WindowRuleState m_appliedRuleState;
+    Output* m_appliedRuleOutput = nullptr;
     // Alone effects: one of the four size effects applies while the window is alone, and the window remembers which
     // one to undo once it is not alone anymore.
     bool m_aloneEffectsActive = false;
@@ -1024,6 +1054,7 @@ namespace umbriel {
     bool m_launchPlacementPending = false;
     std::shared_ptr<WorkspaceLaunchAnchor> m_launchWorkspace;
     std::string m_launchScratchpad;
+    bool m_launchFloating = false;
     std::optional<std::string> m_launchToken;
     std::string m_launchWorkspaceId;
     wl_event_source* m_launchPlacementTimer = nullptr;
@@ -1061,7 +1092,6 @@ namespace umbriel {
     // Inset a built-in windows_in style starts an opener at, interpolated to rest by the fade: a popin or zoom scale
     // (1.0 = none) and a slide offset in logical pixels (0 = none).
     double m_openingScale = 1.0;
-    std::optional<std::array<int, 2>> m_openingFloatingSize;
     int m_openingSlide = 0;
     bool m_tiled = false;
     // Floating because its workspace uses stacking; tiles again when moved to a tiling layout.

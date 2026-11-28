@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "input/cursor.h"
 #include "input/input_capture.h"
+#include "output/output.h"
 #include "scene/quit_confirm.h"
 #include "server/server.h"
 #include "wlr.h"
@@ -134,6 +135,24 @@ namespace {
             confirmation != nullptr && confirmation->visible(),
             m_server.inputCapture() != nullptr && m_server.inputCapture()->active(), m_server.cursor()->wlr()->x,
             m_server.cursor()->wlr()->y
+        );
+      } else if (action == "output-mode") {
+        int width = 0;
+        int height = 0;
+        auto* output = m_server.outputFromWlr(m_server.preferredOutput());
+        if (!(words >> width >> height) || width <= 0 || height <= 0 || output == nullptr) {
+          throw std::runtime_error("could not apply the isolated output mode");
+        }
+        output->applyMode(width, height, 60000);
+      } else if (action == "shortcut-status") {
+        std::string tag;
+        words >> tag;
+        const auto* confirm = m_server.quitConfirm();
+        const bool visible =
+            confirm != nullptr && confirm->visible() && confirm->kind() == umbriel::QuitConfirm::Kind::GlobalShortcuts;
+        std::println(
+            "shortcut-status tag={} visible={} page={} pages={}", tag, visible,
+            visible ? confirm->shortcutPage() + 1 : 0, visible ? confirm->shortcutPages() : 0
         );
       } else if (action == "quit") {
         m_server.stop();

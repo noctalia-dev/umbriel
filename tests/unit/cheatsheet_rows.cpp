@@ -32,8 +32,8 @@ namespace {
     return result;
   }
 
-  Keybind spawnBind(uint32_t keysym, const std::string& command) {
-    Keybind result = bind(KeybindAction::Spawn, keysym);
+  Keybind spawnBind(uint32_t keysym, const std::string& command, KeybindAction action = KeybindAction::Spawn) {
+    Keybind result = bind(action, keysym);
     umbriel::SpawnArg spawn;
     spawn.command = command;
     result.payload = std::move(spawn);
@@ -185,6 +185,14 @@ UMBRIEL_TEST(spawnWithNoArgumentsFallsBackToTheBinary) {
   CHECK_EQ(rows[0].spawnBinary, std::string{"foot"});
   CHECK(rows[0].spawnArgs.empty());
   CHECK_EQ(rows[0].action, std::string{"foot"});
+}
+
+UMBRIEL_TEST(spawnFloatingIsMarkedInItsArguments) {
+  const std::vector<Keybind> binds = {spawnBind(XKB_KEY_Return, "/usr/bin/foot -e htop", KeybindAction::SpawnFloating)};
+  const auto rows = buildCheatsheetRows(binds);
+  CHECK_EQ(rows.size(), size_t{1});
+  CHECK_EQ(rows[0].spawnBinary, std::string{"foot"});
+  CHECK_EQ(rows[0].spawnArgs, std::string{"-e htop (floating)"});
 }
 
 UMBRIEL_TEST(spawnsWithDifferentCommandsDoNotMerge) {

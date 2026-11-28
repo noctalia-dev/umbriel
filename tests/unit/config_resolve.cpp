@@ -714,15 +714,26 @@ UMBRIEL_TEST(windowRuleEffectOverridesUseLastWriterWins) {
   umbriel::WindowRule first;
   first.appIdPatterns.add("foot");
   first.borderEffect = "pulse";
+  first.borderUnfocused = true;
   first.windowEffect = "lines";
   umbriel::WindowRule second = first;
   second.borderEffect = "off";
+  second.borderUnfocused = false;
   second.windowEffect.reset();
   config.windowRules = {first, second};
   const auto resolved =
       umbriel::resolveWindowRules(config, "foot", std::nullopt, std::nullopt, ContentType::None, {}, 0);
   CHECK(resolved.borderEffect == "off");
+  CHECK(resolved.borderUnfocused == false);
   CHECK(resolved.windowEffect == "lines");
+
+  config.windowRules[1].borderUnfocused.reset();
+  const auto inherited =
+      umbriel::resolveWindowRules(config, "foot", std::nullopt, std::nullopt, ContentType::None, {}, 0);
+  CHECK(inherited.borderUnfocused == true);
+  const auto unmatched =
+      umbriel::resolveWindowRules(config, "other", std::nullopt, std::nullopt, ContentType::None, {}, 0);
+  CHECK(!unmatched.borderUnfocused.has_value());
 }
 
 UMBRIEL_TEST(windowRulesMergeWorkspaceTargetsAcrossSelectorKinds) {
@@ -749,6 +760,46 @@ UMBRIEL_TEST(windowRulesMergeWorkspaceTargetsAcrossSelectorKinds) {
   const auto* name = merged.defaultWorkspace ? std::get_if<umbriel::WorkspaceName>(&*merged.defaultWorkspace) : nullptr;
   CHECK(name != nullptr);
   CHECK(name != nullptr && name->value == "2");
+}
+
+UMBRIEL_TEST(windowRuleOutputMatchesConnectorOrDescriptor) {
+  Config config;
+
+  WindowRule connector;
+  connector.appIdPatterns.add("^obsidian$");
+  connector.outputPatterns.add("^HDMI-A-1$");
+  connector.defaultScrollingExtent = 1.0;
+  config.windowRules.push_back(std::move(connector));
+
+  WindowRule descriptor;
+  descriptor.outputPatterns.add("AU Optronics");
+  descriptor.defaultScrollingExtent = 0.5;
+  config.windowRules.push_back(std::move(descriptor));
+
+  const OutputIdentity hdmi = identity("HDMI-A-1", "Dell", "U2723QE", "CN-0");
+  const OutputIdentity edidless = identity("DP-2");
+  const OutputIdentity otherPanel = identity("DP-3", "AU Optronics", "0x6693", "Unknown");
+
+  // The connector rule is the only one matching the HDMI output's identity.
+  const auto onHdmi =
+      umbriel::resolveWindowRules(config, "obsidian", std::nullopt, std::nullopt, ContentType::None, {}, 0, &hdmi);
+  CHECK(onHdmi.defaultScrollingExtent && *onHdmi.defaultScrollingExtent == 1.0);
+
+  // The descriptor form matches make/model/serial as `umbriel outputs` prints it.
+  const auto onDp3 = umbriel::resolveWindowRules(
+      config, "obsidian", std::nullopt, std::nullopt, ContentType::None, {}, 0, &otherPanel
+  );
+  CHECK(onDp3.defaultScrollingExtent && *onDp3.defaultScrollingExtent == 0.5);
+
+  // An EDID-less output only answers to its connector, never "Unknown Unknown Unknown".
+  const auto unknown =
+      umbriel::resolveWindowRules(config, "obsidian", std::nullopt, std::nullopt, ContentType::None, {}, 0, &edidless);
+  CHECK(!unknown.defaultScrollingExtent);
+
+  // No output context matches no output selector.
+  const auto noOutput =
+      umbriel::resolveWindowRules(config, "obsidian", std::nullopt, std::nullopt, ContentType::None, {}, 0);
+  CHECK(!noOutput.defaultScrollingExtent);
 }
 
 UMBRIEL_TEST(windowRulesMergeDefaultScratchpadLastWriterWins) {
@@ -917,9 +968,19 @@ UMBRIEL_TEST(windowRulesMatchWindowStateSelectors) {
   scratchpadRule.opacity = 0.9;
   config.windowRules.push_back(std::move(scratchpadRule));
 
+  WindowRule maximizedRule;
+  maximizedRule.matchMaximized = true;
+  maximizedRule.borderWidth = 0;
+  config.windowRules.push_back(std::move(maximizedRule));
+
   const auto tiled = umbriel::resolveWindowRules(config, "foot", "shell", std::nullopt, ContentType::None, {}, 0);
   CHECK(!tiled.opacity);
   CHECK(!tiled.blur);
+  CHECK(!tiled.borderWidth);
+
+  const auto maximized =
+      umbriel::resolveWindowRules(config, "foot", "shell", std::nullopt, ContentType::None, {.maximized = true}, 0);
+  CHECK(maximized.borderWidth && *maximized.borderWidth == 0);
 
   const auto floating =
       umbriel::resolveWindowRules(config, "foot", "shell", std::nullopt, ContentType::None, {.floating = true}, 0);
@@ -1528,6 +1589,25 @@ UMBRIEL_TEST(maximizedToEdgesSelectsCurrentState) {
       config, "app", "title", std::nullopt, ContentType::None, {.maximizedToEdges = true}, 0
   );
   CHECK(edges.titleBar == umbriel::TitleBarMode::Off);
+}
+
+UMBRIEL_TEST(scratchpadLayoutDefaultsToStackingAndTakesItsOwnOverrides) {
+  Config config;
+  config.layout.mode = LayoutMode::Dwindle;
+  config.layout.gap = 7;
+  const umbriel::ResolvedLayoutConfig implicit = umbriel::resolveScratchpadLayout(config, "default");
+  CHECK(implicit.mode == LayoutMode::Stacking);
+  CHECK_EQ(implicit.gap, 7);
+
+  umbriel::ScratchpadConfig tiles;
+  tiles.name = "tiles";
+  tiles.layout.mode = LayoutMode::Master;
+  tiles.layout.gap = 3;
+  config.scratchpads.push_back(std::move(tiles));
+  const umbriel::ResolvedLayoutConfig resolved = umbriel::resolveScratchpadLayout(config, "tiles");
+  CHECK(resolved.mode == LayoutMode::Master);
+  CHECK_EQ(resolved.gap, 3);
+  CHECK_EQ(resolved.totalGap, 3 + 2 * config.appearance.totalBorderWidth());
 }
 
 int main() { return RUN_TESTS(); }

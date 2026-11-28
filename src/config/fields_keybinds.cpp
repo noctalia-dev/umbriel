@@ -3,6 +3,11 @@
 #include "config/fields.h"
 #include "config/keybind_parse.h"
 #include "config/store.h"
+#include "input/global_shortcuts.h"
+
+extern "C" {
+#include <wlr/types/wlr_keyboard.h>
+}
 
 // clang-format off
 #include <xkbcommon/xkbcommon.h>
@@ -109,11 +114,7 @@ namespace umbriel {
 
         Keybind binding;
         if (!parseChord(chord, binding)) {
-          if (binding.keysym != XKB_KEY_NoSymbol && binding.modifiers == 0 && !binding.useMod) {
-            warnAt(key.source(), "ignoring keybind '{}' (needs at least one modifier)", chord);
-          } else {
-            warnAt(key.source(), "ignoring keybind '{}' (bad chord)", chord);
-          }
+          warnAt(key.source(), "ignoring keybind '{}' (bad chord)", chord);
           continue;
         }
         if (options.release && (binding.wheel != WheelDirection::None || binding.modifierOnly)) {
@@ -175,6 +176,58 @@ namespace umbriel {
           registry::describeFields(keybindFields(), KeybindOptions{}, "", keys);
           return keys;
         }()
+    );
+  }
+
+  registry::Field<Config> globalShortcutsTable() {
+    using registry::KeyDescription;
+    return registry::handRead<Config>(
+        "global_shortcuts", KeyDescription("map"),
+        [] {
+          registry::Descriptions keys{KeyDescription("map"), KeyDescription("string").withFormat("chord")};
+          keys[0].path = ".<name>";
+          keys[1].path = ".<name>.<name>";
+          return keys;
+        }(),
+        [](Section& root, Config& loaded, registry::ReadContext&) {
+          const auto* node = root.take("global_shortcuts");
+          if (node == nullptr) {
+            return;
+          }
+          const auto* applications = node->as_table();
+          if (applications == nullptr) {
+            root.error(*node, "global_shortcuts must be a table of application tables");
+            return;
+          }
+          for (const auto& [application, entries] : *applications) {
+            const std::string path = std::format("global_shortcuts.{}", application.str());
+            if (!validGlobalShortcutId(application.str())) {
+              errorAt(application.source(), "{} requires a non-empty application ID of at most 256 bytes", path);
+              continue;
+            }
+            const auto* shortcuts = entries.as_table();
+            if (shortcuts == nullptr) {
+              errorAt(entries.source(), "{} must be a table of shortcut IDs", path);
+              continue;
+            }
+            for (const auto& [id, value] : *shortcuts) {
+              const std::string key = std::format("{}.{}", path, id.str());
+              if (!validGlobalShortcutId(id.str())) {
+                errorAt(id.source(), "{} requires a non-empty shortcut ID of at most 256 bytes", key);
+                continue;
+              }
+              const auto chord = value.value<std::string>();
+              // The server resolves symbolic Mod; any supported mask validates its syntax here.
+              if (!chord) {
+                errorAt(value.source(), "{} must be a string", key);
+              } else if (!chord->empty() && !parseGlobalShortcutOverride(*chord, WLR_MODIFIER_LOGO)) {
+                errorAt(value.source(), "{} must be a keyboard chord or an empty string to disable it", key);
+              } else {
+                loaded.globalShortcuts[std::string(application.str())][std::string(id.str())] = *chord;
+              }
+            }
+          }
+        }
     );
   }
 

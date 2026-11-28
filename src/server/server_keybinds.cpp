@@ -1,9 +1,11 @@
 #include "config/config.h"
 #include "input/cursor.h"
+#include "input/global_shortcuts_controller.h"
 #include "input/input_capture.h"
 #include "input/keyboard.h"
 #include "input/modifier_tap.h"
 #include "input/seat.h"
+#include "input/shortcut_keysym.h"
 #include "input/text_input.h"
 #include "layer/layer_surface.h"
 #include "output/output.h"
@@ -63,6 +65,9 @@ namespace umbriel {
       return false;
     }
 
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts->suspend();
+    }
     if (m_inputCapture != nullptr) {
       m_inputCapture->suspend();
     }
@@ -120,6 +125,13 @@ namespace umbriel {
       }
       for (size_t index = 0; index < group->workspaceCount(); ++index) {
         if (Workspace* workspace = group->workspaceAt(index); workspace != nullptr && workspace->arrangePending()) {
+          workspace->refreshAloneRuleStates();
+        }
+      }
+    }
+    if (m_scratchpadManager != nullptr) {
+      for (Workspace* workspace : m_scratchpadManager->workspaces()) {
+        if (workspace->arrangePending()) {
           workspace->refreshAloneRuleStates();
         }
       }
@@ -304,8 +316,6 @@ namespace umbriel {
   }
 
   const Keybind* Server::matchKeybind(uint32_t keysym, uint32_t rawKeysym, uint32_t modifiers, bool onRelease) const {
-    const uint32_t effective = modifiers & ~(WLR_MODIFIER_CAPS | WLR_MODIFIER_MOD2);
-    const uint32_t lowered = xkb_keysym_to_lower(keysym);
     const std::string_view currentSubmap = m_activeSubmaps.empty() ? std::string_view{} : m_activeSubmaps.back();
 
     for (const Keybind& bind : config().keybinds) {
@@ -331,7 +341,7 @@ namespace umbriel {
         continue;
       }
       const uint32_t expected = bind.modifiers | (bind.useMod ? modKey() : 0);
-      if (effective != expected || (lowered != bind.keysym && rawKeysym != bind.keysym)) {
+      if (!matchesShortcutKeysym(expected, bind.keysym, modifiers, keysym, rawKeysym)) {
         continue;
       }
       return &bind;

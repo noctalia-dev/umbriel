@@ -80,6 +80,8 @@ _enable-tests m=mode harness="no":
     if ((${#args[@]} > 0)); then
         meson configure "build-{{m}}" "${args[@]}"
     fi
+    # meson configure only records options; regenerate now, since meson compile resolves target names before ninja would.
+    ninja -C "build-{{m}}" build.ninja > /dev/null
 
 build m=mode: (_ensure-configured m)
     meson compile -C build-{{m}} umbriel
@@ -193,6 +195,10 @@ _docs_formatter:
     if [[ ! tools/remark/node_modules/.package-lock.json -nt tools/remark/package-lock.json ]]; then
         npm ci --prefix tools/remark --no-audit --no-fund --loglevel=error
     fi
+
+# Regenerate the user-guide screenshots in a nested compositor (needs noctalia, mpvpaper, grim, foot, magick, cwebp).
+screenshots: debug
+    tools/screenshots.sh build-debug/umbriel
 
 # Tracked Markdown and MDX files, parsed with the docs site's remark plugins.
 format-docs: _docs_formatter

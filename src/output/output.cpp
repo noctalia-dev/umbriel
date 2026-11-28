@@ -60,7 +60,6 @@ namespace umbriel {
 
   namespace {
     constexpr Logger kLog("output");
-    constexpr int kFrameRetryDelayMs = 16;
 
     std::string_view directScanoutReason(wlr_scene_direct_scanout_status status) {
       switch (status) {
@@ -828,7 +827,7 @@ namespace umbriel {
           stagedMode = selectOutputMode(m_output, *rule->mode);
           if (stagedMode != nullptr) {
             keptLiveMode = keepLiveModeOrStage(state, *m_output, stagedMode);
-          } else {
+          } else if (rule->mode->target == OutputModeTarget::None) {
             wlr_output_state_set_custom_mode(&state, rule->mode->width, rule->mode->height, rule->mode->refreshMHz);
           }
         }
@@ -863,7 +862,13 @@ namespace umbriel {
       kLog.warn("output '{}': VRR requested but adaptive sync is not supported", m_output->name);
     }
 
-    const bool tryVrrOn = vrrRequested && vrrSupported;
+    const bool vrrLive = m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
+    // A new mode, configuration, or HDR state may let a frame commit switch VRR where it was rejected before.
+    m_vrrTransition.reset();
+    // An HDR transition modesets, so it could switch VRR on where a frame commit cannot; if the driver then rejects
+    // switching it off again, VRR stays on after the fullscreen content that wanted it is gone. Leave enabling to the
+    // frame path, which tests the change and remembers a rejection.
+    const bool tryVrrOn = vrrRequested && vrrSupported && (stageGeometry || vrrLive);
 
     // HDR pre-flight.
     std::string_view earlyHdrFail;
@@ -954,6 +959,7 @@ namespace umbriel {
     std::string_view pendingHdrFail = earlyHdrFail;
     std::string_view pendingSdr10Fail;
     bool hdrRejected = !earlyHdrFail.empty();
+    bool deferredForPageFlip = false;
 
     if (enabled) {
       const FormatSequenceParams seqParams{
@@ -1048,11 +1054,18 @@ namespace umbriel {
             lock->handleOutputCommit(*this, m_output->commit_seq);
           }
         }
+        const bool modesetAllowed = frameState.allow_reconfiguration;
         wlr_output_state_finish(&frameState);
         switch (commitResult) {
         case RenderedStateCommitResult::Committed:
           return FormatCommitResult::Committed;
         case RenderedStateCommitResult::CommitFailed:
+          // wlroots refuses a non-blocking commit while the previous page flip is pending. That is transient, so
+          // retry at the next frame boundary; a commit that fails again there takes the normal fallbacks.
+          if (m_output->enabled && m_pageFlipRetry.shouldDefer(m_output->frame_pending, modesetAllowed)) {
+            deferredForPageFlip = true;
+            return FormatCommitResult::Retry;
+          }
           return FormatCommitResult::Rejected;
         case RenderedStateCommitResult::BuildFailed:
         case RenderedStateCommitResult::MissingBuffer:
@@ -1136,6 +1149,16 @@ namespace umbriel {
 
     const bool imageDescriptionCommitted = (state.committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) != 0;
     wlr_output_state_finish(&state);
+    if (deferredForPageFlip) {
+      m_pageFlipRetry.defer(stageGeometry);
+      updateSceneSdrWhite();
+      markBlurBackgroundDirty();
+      m_server->updateColorPreferences();
+      kLog.info("output '{}': page flip pending, deferring configured state to the next frame", m_output->name);
+      scheduleFullFrame();
+      return true;
+    }
+    m_pageFlipRetry.reset();
     m_hdrTransition.recordCommit(enabled, hdrRequested, anyCommitted);
     if (anyCommitted) {
       m_server->connectorHdrState().recordCommit(
@@ -1206,6 +1229,9 @@ namespace umbriel {
     }
     if (stageGeometry) {
       updateHdrAvailability(hdrRejected);
+    }
+    if (vrrRequested && !tryVrrOn) {
+      updateVrr();
     }
     m_server->updateColorPreferences();
     return true;
@@ -1319,7 +1345,7 @@ namespace umbriel {
       return;
     }
     const bool currentlyEnabled = m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
-    if (configuredVrrEnabled() == currentlyEnabled) {
+    if (!m_vrrTransition.shouldTry(configuredVrrEnabled(), currentlyEnabled)) {
       return;
     }
     // Apply with the next frame commit: a separate commit supersedes the pending page flip, and wlroots then never
@@ -1732,6 +1758,7 @@ namespace umbriel {
         || layoutUsableArea.width != logged.width
         || layoutUsableArea.height != logged.height) {
       m_loggedUsableArea = layoutUsableArea;
+      markDirty(Dirty::QuitConfirm);
       kLog.debug(
           "{} usable={}x{}+{}+{}", m_output->name, layoutUsableArea.width, layoutUsableArea.height, layoutUsableArea.x,
           layoutUsableArea.y
@@ -1915,7 +1942,8 @@ namespace umbriel {
 
   void Output::armFrameRetry() {
     if (m_frameRetryTimer != nullptr && outputFrameAllowed(m_server->stopping(), m_server->session())) {
-      wl_event_source_timer_update(m_frameRetryTimer, kFrameRetryDelayMs);
+      wl_event_source_timer_update(m_frameRetryTimer, frameRetryDelayMs(m_failedFrameCommits));
+      ++m_failedFrameCommits;
     }
   }
 
@@ -1966,6 +1994,7 @@ namespace umbriel {
     } else {
       // Mode changes can drop the DRM gamma LUT; re-apply on the next frame.
       m_gammaDirty = true;
+      m_vrrTransition.reset();
       // A mode change also rebuilds the SDR gamut transform so the supplied
       // scene transform is re-established from the current characterization.
       updateSdrGamutTransform(findOutputRule(config(), identity()), true);
@@ -2042,6 +2071,9 @@ namespace umbriel {
       m_fullscreenAboveTopLayer = above;
       m_server->refreshLayerFocus(this);
     }
+    if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
+      scratchpad->updateStacking();
+    }
   }
 
   void Output::handleFrame() {
@@ -2112,12 +2144,17 @@ namespace umbriel {
     const auto dimsBehind = [](const auto& rule) { return rule.dimBehind.value_or(0.0) > 0.0; };
     if (std::ranges::any_of(config().windowRules, dimsBehind)) {
       for (const auto& view : m_server->views()) {
-        view->updateDimBehind();
+        // Each output's frame refreshes only its own views; outputless views have no owner, so every frame takes them.
+        if (Output* owner = view->currentOutput(); owner == nullptr || owner == this) {
+          view->updateDimBehind();
+        }
       }
     }
     if (std::ranges::any_of(config().layerRules, dimsBehind)) {
       for (const auto& layer : m_server->layerSurfaces()) {
-        layer->updateDimBehind();
+        if (Output* owner = layer->output(); owner == nullptr || owner == this) {
+          layer->updateDimBehind();
+        }
       }
     }
 
@@ -2206,23 +2243,28 @@ namespace umbriel {
         cursor->refreshPointerContents(this);
       }
     }
-    const bool hdrTransitionPending = m_hdrTransition.pending(m_output->enabled, hdrRequested());
-    if (hdrTransitionPending) {
-      // Run at the frame boundary, after the previous page flip completed. The
-      // configured-state commit builds the scene into the same state as the
-      // image-description and render-format switch.
+    // HDR transitions and page-flip-deferred applies both run at the frame boundary
+    // after the previous flip has completed.
+    const std::optional<bool> deferredApply = m_pageFlipRetry.take();
+    const bool frameApplyPending =
+        m_hdrTransition.pending(m_output->enabled, hdrRequested()) || deferredApply.has_value();
+    if (frameApplyPending) {
+      const bool stageGeometry = deferredApply.value_or(false);
       m_inFrame = true;
-      const bool committed = applyConfiguredState(false);
+      const bool committed = applyConfiguredState(stageGeometry);
       m_inFrame = false;
       commitFailed = !committed;
       if (committed) {
         if (effectFrame) {
           ++m_effectFrames;
         }
+        if (stageGeometry) {
+          markDirty(Dirty::LayerArrange | Dirty::Banner);
+        }
         m_server->updateOutputManagerConfig();
       }
     }
-    if (!hdrTransitionPending && (sceneChanged || m_gammaDirty || m_vrrPending)) {
+    if (!frameApplyPending && (sceneChanged || m_gammaDirty || m_vrrPending)) {
       m_inFrame = true;
       if (effectFrame) {
         ++m_effectFrames;
@@ -2284,13 +2326,18 @@ namespace umbriel {
         if (m_vrrPending && hasBuffer) {
           m_vrrPending = false;
           const bool enabled = configuredVrrEnabled();
-          if (enabled != (m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED)) {
+          if (m_vrrTransition.shouldTry(enabled, m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED)) {
             wlr_output_state_set_adaptive_sync_enabled(&state, enabled);
             if (wlr_output_test_state(m_output, &state)) {
               vrrChange = enabled;
             } else {
               state.committed &= ~WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED;
-              kLog.warn("output '{}': failed to {} VRR", m_output->name, enabled ? "enable" : "disable");
+              m_vrrTransition.reject(enabled);
+              kLog.warn(
+                  "output '{}': backend rejected {} VRR without a modeset; leaving it {} until the next mode, "
+                  "configuration, or HDR change",
+                  m_output->name, enabled ? "enabling" : "disabling", enabled ? "off" : "on"
+              );
             }
           }
         }
@@ -2376,6 +2423,10 @@ namespace umbriel {
       m_output->idle_frame = nullptr;
     }
 
+    if (!commitFailed) {
+      m_failedFrameCommits = 0;
+    }
+
     // A failed commit has no vblank to pace an immediate retry. Defer it so event-loop signal and session sources get
     // dispatched first. This also replaces animation scheduling for the failed frame, otherwise the animation path
     // would recreate the same immediate retry loop.
@@ -2427,10 +2478,14 @@ namespace umbriel {
     if ((event->state->committed & (WLR_OUTPUT_STATE_MODE | WLR_OUTPUT_STATE_ENABLED)) != 0) {
       markDirty(Dirty::LayerArrange | Dirty::Banner | Dirty::Backdrop);
       m_gammaDirty = true;
+      m_vrrTransition.reset();
       updateHdrAvailability();
       m_server->updateColorPreferences();
       if (SessionLock* lock = m_server->sessionLock()) {
         lock->handleOutputStateChanged(*this);
+      }
+      if (m_server->sessionLocked()) {
+        m_server->updateLockBlank();
       }
     }
     wlr_output_schedule_frame(m_output);

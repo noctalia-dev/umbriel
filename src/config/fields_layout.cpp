@@ -412,6 +412,10 @@ namespace umbriel {
 
   } // namespace
 
+  const registry::Fields<WorkspaceLayoutOverrides>& workspaceLayoutFields() {
+    return layoutFields<WorkspaceLayoutOverrides>();
+  }
+
   const registry::Choices<ColumnDisplay>& columnDisplays() {
     static const registry::Choices<ColumnDisplay> choices{
         {.name = "normal", .value = ColumnDisplay::Normal},

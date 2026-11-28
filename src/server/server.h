@@ -118,7 +118,7 @@ namespace umbriel {
   // game/network loop on the frame callback stalls. A suspended view gets none: clients such as Firefox detect
   // occlusion only from a long callback gap, and a slow tick reads as a slow display that drops video frames.
   inline constexpr int kBackgroundFrameIntervalMs = 100;
-  // Longest windows_resize.wait_for_redraw holds a reflow for its clients before it switches without them.
+  // Longest a resizing reflow holds for its clients' redraw before it moves on without them.
   inline constexpr double kRedrawWaitMs = 150.0;
   // Longest a held close snapshot stays: a safety net well past kRedrawWaitMs, released by the switch before then.
   inline constexpr double kMaxCloseHoldMs = 1000.0;
@@ -130,10 +130,12 @@ namespace umbriel {
 
   enum class WheelDirection;
   struct Keybind;
+  struct GlobalShortcutBind;
 
   class Cursor;
   class EisInput;
   class InputCapture;
+  class GlobalShortcuts;
   class BackendManager;
   class DrmLeaseManager;
   class FocusManager;
@@ -143,6 +145,7 @@ namespace umbriel {
   class Gestures;
   class ColorManager;
   struct ColorDescription;
+  class DmabufImplicitBarrier;
   class SyncobjAcquireBarrier;
   class SyncobjSupersededRelease;
   class SyncobjUnmapRelease;
@@ -187,6 +190,7 @@ namespace umbriel {
     Xwayland* xwayland() const { return m_xwayland.get(); }
     EisInput* eisInput() const { return m_eisInput.get(); }
     InputCapture* inputCapture() const { return m_inputCapture.get(); }
+    GlobalShortcuts* globalShortcuts() const { return m_globalShortcuts.get(); }
     bool physicalInputDevice(const wlr_input_device* device) const;
     bool keyboardKeyConsumed(wlr_keyboard* keyboard, uint32_t keycode) const;
     wlr_backend* backend() const { return m_backend; }
@@ -293,6 +297,8 @@ namespace umbriel {
     void confirmScreenCastDynamic();
     void confirmInputEmulation();
     void confirmInputCapture(bool remember = false);
+    void confirmGlobalShortcuts();
+    void failGlobalShortcuts();
     void dismissConfirmation();
     // Owners register themselves for the frame tick. The registry is kept in phase order, so the three traversals above
     // never re-state which owners exist or in what order they run.
@@ -353,7 +359,9 @@ namespace umbriel {
     void relayoutBanner();
     void relayoutCheatsheet();
     void relayoutQuitConfirm();
-    void spawn(const char* command, const char* description = nullptr, bool withActivationToken = false);
+    void spawn(
+        const char* command, const char* description = nullptr, bool withActivationToken = false, bool floating = false
+    );
     void completeIpcLaunch(std::string_view tokenName, pid_t pid);
     void handleConfigReload(const ConfigReloadResult& result);
     // Re-evaluate application idle inhibitors after a surface's presentation
@@ -550,6 +558,8 @@ namespace umbriel {
     void requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode);
     void cancelInputCapture(uint64_t id);
     void inputCaptureStateChanged(bool active);
+    void requestGlobalShortcuts(uint64_t id, std::string_view application, const GlobalShortcutBind& bind);
+    void cancelGlobalShortcuts(uint64_t id);
     static void onSessionActive(wl_listener* listener, void* data);
     void updateDrmLeaseState();
     friend class Output;
@@ -615,7 +625,9 @@ namespace umbriel {
     static void onDisplacedRestoreIdle(void* data);
     static void onSuspensionSyncIdle(void* data);
 
-    void trackActivationToken(wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid = 0);
+    void trackActivationToken(
+        wlr_xdg_activation_token_v1* token, bool compositorIssued, pid_t launchPid = 0, bool launchFloating = false
+    );
     void assignLaunchOriginFromEnvironment(View& view);
     bool claimLaunchOrigin(View& view, wlr_xdg_activation_token_v1* token);
 
@@ -736,6 +748,7 @@ namespace umbriel {
       bool inputBacked = false;
       bool pointerBacked = false;
       bool launchClaimed = false;
+      bool launchFloating = false;
       pid_t launchPid = 0;
       std::shared_ptr<WorkspaceLaunchAnchor> launchWorkspace;
       std::string launchScratchpad;
@@ -760,6 +773,7 @@ namespace umbriel {
     wlr_content_type_manager_v1* m_contentTypeManager = nullptr;
     wlr_security_context_manager_v1* m_securityContextManager = nullptr;
     std::unique_ptr<ColorManager> m_colorManager;
+    std::unique_ptr<DmabufImplicitBarrier> m_dmabufImplicitBarrier;
     std::unique_ptr<SyncobjAcquireBarrier> m_syncobjAcquireBarrier;
     std::unique_ptr<SyncobjUnmapRelease> m_syncobjUnmapRelease;
     std::unique_ptr<SyncobjSupersededRelease> m_syncobjSupersededRelease;
@@ -953,6 +967,7 @@ namespace umbriel {
     std::string m_socketName;
     std::string m_systemdRunExecutable;
     std::string m_systemctlExecutable;
+    std::string m_dinitControlCommand;
     std::string m_applicationScopePartOfProperty;
     std::string m_applicationScopeBindsToProperty;
     std::string m_applicationScopeAfterProperty;
@@ -963,6 +978,8 @@ namespace umbriel {
     std::unique_ptr<Xwayland> m_xwayland;
     std::unique_ptr<EisInput> m_eisInput;
     std::unique_ptr<InputCapture> m_inputCapture;
+    std::unique_ptr<GlobalShortcuts> m_globalShortcuts;
+    uint64_t m_pendingGlobalShortcutsId = 0;
     uint64_t m_pendingCaptureId = 0;
     uint32_t m_inputCaptureCapabilities = 0;
     uint64_t m_pendingInputId = 0;

@@ -144,8 +144,8 @@ expect_active() {
   fi
 }
 
-# A window a default_focused rule brings into a pad showing one window, on opening or on taking a matching title, is
-# shown and focused in place of the one on show.
+# A window a default_focused rule brings into the pad is shown and focused: in place of the one on show while the pad
+# shows one window, or with the whole pad once a focused window behind it has dismissed it.
 spawn pad-red 0xFFFF0000
 expect scratchpad-window-show-next red
 spawn pad-focused-open 0xFF00FF00
@@ -160,13 +160,15 @@ for _ in $(seq 80); do
   [[ -n "$(window_of plain-blue)" ]] && break
   sleep 0.025
 done
+# Focusing a window behind the pad dismisses it, so the retitled window summons the whole pad.
 "$UMBRIEL" msg window-focus "$(window_of plain-blue | jq -r .id)" > /dev/null
+expect "" blue
 printf 't\n' >&"$retitle_fd"
 for _ in $(seq 80); do
   [[ $(window_of pad-focused-retitled | jq -r .scratchpad) == default ]] && break
   sleep 0.025
 done
-expect "" blue
+expect "" "red green blue"
 expect_active pad-focused-retitled "a default_focused rule taking a focused window into the pad by its new title"
 
 echo "scratchpad-window-show-next/previous showed one window at a time and cycled through the rest"

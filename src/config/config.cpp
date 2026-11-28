@@ -43,6 +43,7 @@ namespace umbriel {
           inputTable(),
           outputTable(),
           keybindsTable(),
+          globalShortcutsTable(),
           windowRuleTable(),
           layerRuleTable(),
           securityContextRuleTable(),

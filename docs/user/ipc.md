@@ -14,17 +14,19 @@ Replies use `{"ok": ...}` or `{"err": "..."}`. Commands that take arguments send
 
 ## Queries
 
-| Request                                          | CLI                                        |
-| ------------------------------------------------ | ------------------------------------------ |
-| `{"cmd":"effects"}`                              | `umbriel effects --json`                   |
-| `{"cmd":"windows"}`                              | `umbriel windows --json`                   |
-| `{"cmd":"focused-window"}`                       | `umbriel focused-window --json`            |
-| `{"cmd":"workspaces"}`                           | `umbriel workspaces --json`                |
-| `{"cmd":"submap"}`                               | `umbriel submap --json`                    |
-| `{"cmd":"layers"}`                               | `umbriel layers --json`                    |
-| `{"cmd":"outputs"}`                              | `umbriel outputs --json`                   |
-| `{"cmd":"input-capture-permissions"}`            | `umbriel input-capture-permissions --json` |
-| `{"cmd":"input-capture-revoke","args":["<id>"]}` | `umbriel input-capture-revoke <id>`        |
+| Request                                                      | CLI                                             |
+| ------------------------------------------------------------ | ----------------------------------------------- |
+| `{"cmd":"effects"}`                                          | `umbriel effects --json`                        |
+| `{"cmd":"windows"}`                                          | `umbriel windows --json`                        |
+| `{"cmd":"focused-window"}`                                   | `umbriel focused-window --json`                 |
+| `{"cmd":"workspaces"}`                                       | `umbriel workspaces --json`                     |
+| `{"cmd":"submap"}`                                           | `umbriel submap --json`                         |
+| `{"cmd":"layers"}`                                           | `umbriel layers --json`                         |
+| `{"cmd":"outputs"}`                                          | `umbriel outputs --json`                        |
+| `{"cmd":"input-capture-permissions"}`                        | `umbriel input-capture-permissions --json`      |
+| `{"cmd":"input-capture-revoke","args":["<id>"]}`             | `umbriel input-capture-revoke <id>`             |
+| `{"cmd":"global-shortcuts"}`                                 | `umbriel global-shortcuts --json`               |
+| `{"cmd":"global-shortcuts-revoke","args":["<application>"]}` | `umbriel global-shortcuts-revoke <application>` |
 
 ## Actions
 
@@ -71,7 +73,7 @@ Programs run an [action](actions.md) with a typed request instead of the words p
 {"cmd":"action","action":"session-quit","skip_confirmation":true}
 ```
 
-Window entries include IDs, application identity, process ID, geometry, output, workspace, and scratchpad membership. X11 windows report the process ID they publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a [tab group](layout.md#tab-groups) reports `tabbed`, its place among the group's tabs as `tab_index` (from 0, `-1` outside a group), and `tab_hidden` while its group shows another tab; the plain listing marks it `tab` instead of `tile`.
+Window entries include IDs, application identity, process ID, geometry, output, workspace, and scratchpad membership. X11 windows report the process ID they publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a [tab group](tab-groups.md) reports `tabbed`, its place among the group's tabs as `tab_index` (from 0, `-1` outside a group), and `tab_hidden` while its group shows another tab; the plain listing marks it `tab` instead of `tile`.
 
 `{"cmd":"focused-window"}` answers with the focused window's listing entry: the window the window actions act on. The seat's focused window wins (for a modal dialog, the dialog itself; for a visible scratchpad window holding the keyboard, that window); while a layer surface or the overview holds the keyboard, the answer falls back to the pointer output's active workspace's remembered focus; and the reply is `{"err": "no focused window"}` while a scratchpad owns the seat with no window focused, or when nothing is focused. The entry is exactly a `windows` entry for that window; its `focused` member stays the workspace-local remembered focus and does not select which window the query answers about.
 
@@ -87,7 +89,7 @@ Window state follows what Umbriel has decided, ahead of the client's redraw, the
 | `maximized_to_edges` | Maximized without gaps, struts, or borders                                                                                                                                                                                                                                   |
 | `pinned`             | Pinned above other windows on every workspace of its output. Its `workspace` is always the output's active workspace                                                                                                                                                         |
 | `minimizable`        | Supports minimize in its current placement: a mapped, unattached floating window on a workspace, outside a scratchpad and not pinned. Matches the minimize capability offered to the application; fullscreen or an active move or resize can still reject a minimize request |
-| `minimized`          | Hidden by `window-minimize`, the application, or a taskbar; see [Minimize](layout.md#minimize)                                                                                                                                                                               |
+| `minimized`          | Hidden by `window-minimize`, the application, or a taskbar; see [Minimize](window-states.md#minimize)                                                                                                                                                                        |
 | `visible`            | On its output's active workspace (or pinned), not a hidden tab, not minimized, and not in a hidden scratchpad; it may still be scrolled out of view                                                                                                                          |
 | `parent`             | ID of the window the client named as its parent, or `""`                                                                                                                                                                                                                     |
 | `column`, `row`      | Place in a scrolling strip, from 0; `-1` for floating windows and other layouts                                                                                                                                                                                              |
@@ -112,7 +114,7 @@ Three diagnostic fields retain successful scene-buffer commit history for each o
 
 The counters survive configuration reloads and power cycles. They reset when Umbriel restarts or the output is destroyed and recreated. Compare snapshots from the same output lifetime to measure activity during a game session. A zero increase in `scanout_commits` means no direct scanout commits occurred during that interval.
 
-Scanout-triggered subscription notifications and routine log messages still wait until a state has held for half a second. Counter increments alone do not trigger subscription events. Other output events can carry a newer snapshot before that interval expires. Poll `outputs` when immediate state or updated counters are needed. See [direct scanout](outputs.md#direct-scanout) for the reasons.
+Scanout-triggered subscription notifications and routine log messages still wait until a state has held for half a second. Counter increments alone do not trigger subscription events. Other output events can carry a newer snapshot before that interval expires. Poll `outputs` when immediate state or updated counters are needed. See [direct scanout](display-features.md#direct-scanout) for the reasons.
 
 ## Effect inspection
 
@@ -129,6 +131,28 @@ Inspection never picks, compiles, or binds an effect. Use `effects`, not `output
 `input-capture-permissions` lists remembered grants with `id`, `application`, `capabilities`, and `persist_mode`. Application identifiers can be empty and are not verified display names. The reply never contains restore credentials.
 
 `input-capture-revoke <id>` forgets a grant and stops its live capture sessions. `input-capture-revoke all` forgets every grant. Revoking an already forgotten valid ID succeeds. A state-write error is reported even though matching live capture sessions are stopped. See [Input capture](security.md#input-capture) for approval lifetimes and the state file location.
+
+## Global shortcuts
+
+`global-shortcuts` lists live and remembered shortcuts, grouped by exact `application` ID. Each application has `live` (whether it has an open bridge session) and `shortcuts`. Without `--json`, the command prints a readable listing with quoted requester text. Inspection does not register shortcuts, restore credentials, or change ownership.
+
+Each shortcut has:
+
+| Field               | Meaning                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `id`, `description` | Requester-supplied shortcut ID and description. Application labels are unverified.                                    |
+| `session`           | Live bridge session number, or `null` for remembered scope without a current registration.                            |
+| `pending`           | The live registration is awaiting physical approval.                                                                  |
+| `trigger`           | Assigned chord, or `null`. This describes assignment, including while activation is suppressed by capture or locking. |
+| `candidate`         | Resolved chord before conflicts, or `null`. Remembered entries have candidates but no assigned trigger.               |
+| `source`            | `config`, `stored`, `preferred`, or `none`.                                                                           |
+| `conflict`          | `none`, `unassigned`, `disabled`, `reserved`, or `in_use`.                                                            |
+
+Multiple live sessions or remembered grants can contain the same shortcut ID. Session numbers distinguish live registrations; remembered scope remains visible for IDs not registered in any live session using that grant. Offline candidates do not reserve keys. An unreadable or locked state store returns an error instead of an incomplete listing. Credentials are never included.
+
+`global-shortcuts-revoke <application>` forgets every grant for that exact application ID, deactivates its held shortcuts, and closes its live sessions, including pending review. `global-shortcuts-revoke all` does this for every application. Already forgotten valid application IDs succeed. If durable deletion fails, matching live sessions still close and the command reports an error; credentials may remain usable until deletion succeeds. Successful revocation invalidates stale restore credentials. Configuration overrides remain in the config file, and new sessions need fresh approval.
+
+See [Global shortcuts](configuration.md#global-shortcuts) for chord overrides and [Global shortcut approval](security.md#global-shortcut-approval) for permission handling.
 
 ## Event stream
 

@@ -20,9 +20,12 @@ namespace umbriel {
 
   inline constexpr uint64_t kStartupRuleDurationMs = 60'000;
 
+  // `output` is the identity of the output the window is on or about to open
+  // on; null when unknown, which matches no `match.output` selector.
   ResolvedWindowRule resolveWindowRules(
       const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,
-      std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs
+      std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs,
+      const OutputIdentity* output = nullptr
   );
   ResolvedLayerRule resolveLayerRules(
       const Config& config, std::optional<std::string_view> layerNamespace, LayerShellLayer layer, uint64_t uptimeMs
@@ -43,6 +46,9 @@ namespace umbriel {
   // Direction the output arranges its workspaces along; vertical when no rule matches.
   WorkspaceAxis resolveWorkspaceAxis(const Config& config, const OutputIdentity& identity);
   ResolvedLayoutConfig resolveGlobalLayout(const Config& config);
+  // A scratchpad's layout: [layout] with `stacking` as the mode, then the pad's own `layout` keys. A name without a
+  // definition, as the implicit pad has, gets only the first part.
+  ResolvedLayoutConfig resolveScratchpadLayout(const Config& config, std::string_view name);
   ResolvedLayoutConfig
   resolveWorkspaceLayout(const Config& config, const OutputIdentity& identity, std::string_view name, size_t index);
   // Resolve an unnamed dynamic workspace. Its numeric protocol label is not an

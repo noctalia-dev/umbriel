@@ -2,7 +2,7 @@
 
 This file collects contributor-facing details for Umbriel: design goals, stack notes, testing, contribution rules, code style, source layout, commits, and debugging helpers. Umbriel shares its conventions with [noctalia](https://github.com/noctalia-dev/noctalia): same team, same style. If in doubt, match what noctalia does.
 
-For dependencies and normal build commands, start with the [installation guide](docs/user/installation.md#manual-build). For what the project accepts and declines, read [SCOPE.md](SCOPE.md): it is the reference used when triaging feature requests and unsolicited pull requests.
+For dependencies and normal build commands, start with [building from source](docs/user/building.md). For what the project accepts and declines, read [SCOPE.md](SCOPE.md): it is the reference used when triaging feature requests and unsolicited pull requests.
 
 ## Design Principles
 
@@ -107,6 +107,10 @@ Rendering, layout, animation, Wayland lifecycle, and compositor integration chan
 
 - `zwlr_virtual_pointer_v1` cannot generate touchpad gesture events, so changes to gesture state or gesture feel need a real input device in a running session.
 - The harness `layer-client` maps a real exclusive zone (see `layout/struts`). Extend it for layer arrangement and usable-area changes; interaction with real bars and panels still needs a running session.
+
+Global shortcut approval uses backend-boundary input devices in a private headless compositor: `bash tests/global_shortcuts.sh build-debug`. The public frontend check is `bash tests/global_shortcuts_portal.sh build-debug ../xdg-desktop-portal-umbriel/build-debug /path/to/xdg-desktop-portal`. Build both repositories with their test clients first. These checks need `jq`, `dbus-daemon`, `dbus-send`, and `xdg-permission-store` beside the supplied frontend executable.
+
+The public check covers binding, activation, ownership and promotion, cancellation and teardown, restart persistence, cache-write failures, and revocation. See the portal's [GlobalShortcuts verification](../xdg-desktop-portal-umbriel/README.md#globalshortcuts-verification) for build commands and coverage. Both checks use private state and services; failed runs retain their logs, and `UMBRIEL_SHORTCUTS_KEEP_LOGS=1` also retains successful runs. A visual check in a nested desktop additionally needs its window focused in the parent compositor.
 
 ## Releases
 

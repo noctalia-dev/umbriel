@@ -35,12 +35,20 @@ if [[ $("$UMBRIEL" config get layout.gap --json) != '{"override":true,"value":40
   exit 1
 fi
 
+# A refused override is parsed and rolled back, so its diagnostics describe a configuration that was never active and
+# must not reach the log: the store logs where a load's outcome is decided, not while parsing.
+LOG_MARK=$(($(wc -l < "$UMBRIEL_LOG") + 1))
 if "$UMBRIEL" config set layout.gap '"wide"' 2> "$UMBRIEL_RUNTIME_DIR/refused"; then
   echo "an invalid override was accepted"
   exit 1
 fi
 if ! grep -q "layout.gap" "$UMBRIEL_RUNTIME_DIR/refused" || [[ $("$UMBRIEL" config get layout.gap) != 40 ]]; then
   echo "a refused override was not reported or changed the value: $(cat "$UMBRIEL_RUNTIME_DIR/refused")"
+  exit 1
+fi
+if tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | grep -q "layout.gap"; then
+  echo "a refused override wrote its diagnostics to the log:"
+  tail -n +"$LOG_MARK" "$UMBRIEL_LOG" | sed "s/^/    /"
   exit 1
 fi
 

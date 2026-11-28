@@ -12,6 +12,7 @@
 #include "input/cursor.h"
 #include "input/eis.h"
 #include "input/gestures.h"
+#include "input/global_shortcuts_controller.h"
 #include "input/input_capture.h"
 #include "input/keyboard.h"
 #include "input/keyboard_leds.h"
@@ -30,6 +31,7 @@
 #include "server/allocator.h"
 #include "server/backend_manager.h"
 #include "server/color_manager.h"
+#include "server/dmabuf_implicit_barrier.h"
 #include "server/drm_lease.h"
 #include "server/ipc.h"
 #include "server/syncobj_acquire_barrier.h"
@@ -211,7 +213,7 @@ namespace umbriel {
       }
     }
 
-    std::string sessionEnvironmentCommand(bool managedReadiness) {
+    std::string sessionEnvironmentCommand(bool managedReadiness, const std::string& dinitControl) {
       std::string configuredAssignments;
       for (const auto& [name, value] : config().environment.variables) {
         configuredAssignments += ' ';
@@ -220,23 +222,49 @@ namespace umbriel {
 
       const std::string publishConfigured =
           configuredAssignments.empty() ? "" : " && systemctl --user set-environment" + configuredAssignments;
-      std::string command =
-          "variables='WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE "
-          "XCURSOR_THEME XCURSOR_SIZE UMBRIEL_SOCKET'; systemd_ready=false; "
-          "if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then "
-          "if systemctl --user import-environment $variables";
-      command += publishConfigured;
-      command += "; then systemd_ready=true; else "
-                 "echo 'umbriel: failed to publish the session environment' >&2; exit 1; fi; fi; "
-                 // The compositor waits on this script with its event loop stopped. Without a bus address, libdbus
-                 // autolaunches over X11, and DISPLAY names an Xwayland that only that loop can start. Use the
-                 // user bus socket when the address is unset, and skip the update when there is no bus at all.
-                 "if [ -z \"${DBUS_SESSION_BUS_ADDRESS:-}\" ] && [ -S \"${XDG_RUNTIME_DIR:-}/bus\" ]; then "
-                 "export DBUS_SESSION_BUS_ADDRESS=\"unix:path=$XDG_RUNTIME_DIR/bus\"; fi; "
-                 "if [ -n \"${DBUS_SESSION_BUS_ADDRESS:-}\" ] "
-                 "&& command -v dbus-update-activation-environment >/dev/null 2>&1; then "
-                 "dbus-update-activation-environment $variables || { "
-                 "echo 'umbriel: failed to update the D-Bus activation environment' >&2; exit 1; }; fi; ";
+      const std::string variables = "WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE "
+                                    "XCURSOR_THEME XCURSOR_SIZE UMBRIEL_SOCKET";
+      std::string command;
+      if (!dinitControl.empty()) {
+        std::string assignments;
+        std::istringstream names(variables);
+        for (std::string name; names >> name;) {
+          if (const char* value = std::getenv(name.c_str()); value != nullptr) {
+            assignments += ' ' + shellQuote(name + '=' + value);
+          }
+        }
+        command = "variables='"
+            + variables
+            + "'; "
+            + dinitControl
+            + " unsetenv $variables && "
+            + dinitControl
+            + " setenv"
+            + assignments
+            + configuredAssignments
+            + " || { echo 'umbriel: failed to publish the session environment' >&2; exit 1; }; ";
+      } else {
+        command = "variables='WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE "
+                  "XCURSOR_THEME XCURSOR_SIZE UMBRIEL_SOCKET'; systemd_ready=false; "
+                  "if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then "
+                  "if systemctl --user import-environment $variables";
+        command += publishConfigured;
+        command += "; then systemd_ready=true; else "
+                   "echo 'umbriel: failed to publish the session environment' >&2; exit 1; fi; fi; ";
+      }
+      command +=
+          // The compositor waits on this script with its event loop stopped. Without a bus address, libdbus
+          // autolaunches over X11, and DISPLAY names an Xwayland that only that loop can start. Use the
+          // user bus socket when the address is unset, and skip the update when there is no bus at all.
+          "if [ -z \"${DBUS_SESSION_BUS_ADDRESS:-}\" ] && [ -S \"${XDG_RUNTIME_DIR:-}/bus\" ]; then "
+          "export DBUS_SESSION_BUS_ADDRESS=\"unix:path=$XDG_RUNTIME_DIR/bus\"; fi; "
+          "if [ -n \"${DBUS_SESSION_BUS_ADDRESS:-}\" ] "
+          "&& command -v dbus-update-activation-environment >/dev/null 2>&1; then "
+          "dbus-update-activation-environment $variables || { "
+          "echo 'umbriel: failed to update the D-Bus activation environment' >&2; exit 1; }; fi; ";
+      if (!dinitControl.empty()) {
+        return command;
+      }
       if (managedReadiness) {
         command += "$systemd_ready";
       } else {
@@ -365,6 +393,10 @@ namespace umbriel {
   }
 
   void Server::dismissConfirmation() {
+    if (m_pendingGlobalShortcutsId != 0 && m_globalShortcuts != nullptr) {
+      const auto id = std::exchange(m_pendingGlobalShortcutsId, 0);
+      m_globalShortcuts->authorizeSession(id, GlobalShortcutsBridge::Authorization::Cancelled);
+    }
     if (m_pendingCaptureId != 0 && m_inputCapture != nullptr) {
       const auto id = std::exchange(m_pendingCaptureId, 0);
       m_inputCapture->authorizeSession(id, false);
@@ -485,9 +517,82 @@ namespace umbriel {
     }
   }
 
+  void Server::requestGlobalShortcuts(uint64_t id, std::string_view application, const GlobalShortcutBind& bind) {
+    if (m_stopping
+        || m_sessionLock != nullptr
+        || sessionLocked()
+        || (m_session != nullptr && !m_session->active)
+        || m_quitConfirm == nullptr
+        || m_quitConfirm->visible()
+        || m_pendingGlobalShortcutsId != 0
+        || (m_inputCapture != nullptr && m_inputCapture->active())) {
+      m_globalShortcuts->authorizeSession(id, GlobalShortcutsBridge::Authorization::Failed);
+      return;
+    }
+    m_pendingGlobalShortcutsId = id;
+    m_quitConfirm->showGlobalShortcuts(application, bind.shortcuts);
+    if (!m_quitConfirm->visible()) {
+      failGlobalShortcuts();
+    }
+  }
+
+  void Server::confirmGlobalShortcuts() {
+    if (m_pendingGlobalShortcutsId == 0) {
+      return;
+    }
+    if (m_stopping
+        || m_sessionLock != nullptr
+        || sessionLocked()
+        || (m_session != nullptr && !m_session->active)
+        || (m_inputCapture != nullptr && m_inputCapture->active())
+        || m_quitConfirm == nullptr
+        || !m_quitConfirm->visible()
+        || m_quitConfirm->kind() != QuitConfirm::Kind::GlobalShortcuts) {
+      failGlobalShortcuts();
+      return;
+    }
+    if (m_quitConfirm->refreshShortcutApproval()) {
+      return;
+    }
+    if (!m_quitConfirm->shortcutPageFinal()) {
+      m_quitConfirm->advanceShortcutPage();
+      return;
+    }
+    const auto id = std::exchange(m_pendingGlobalShortcutsId, 0);
+    m_quitConfirm->hide();
+    m_globalShortcuts->authorizeSession(id, GlobalShortcutsBridge::Authorization::Approved);
+  }
+
+  void Server::failGlobalShortcuts() {
+    if (m_pendingGlobalShortcutsId == 0) {
+      return;
+    }
+    const auto id = std::exchange(m_pendingGlobalShortcutsId, 0);
+    if (m_quitConfirm != nullptr && m_quitConfirm->kind() == QuitConfirm::Kind::GlobalShortcuts) {
+      m_quitConfirm->hide();
+    }
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts->authorizeSession(id, GlobalShortcutsBridge::Authorization::Failed);
+    }
+  }
+
+  void Server::cancelGlobalShortcuts(uint64_t id) {
+    if (id != m_pendingGlobalShortcutsId) {
+      return;
+    }
+    m_pendingGlobalShortcutsId = 0;
+    if (m_quitConfirm != nullptr && m_quitConfirm->kind() == QuitConfirm::Kind::GlobalShortcuts) {
+      m_quitConfirm->hide();
+    }
+  }
+
   void Server::inputCaptureStateChanged(bool active) {
     if (m_stopping) {
       return;
+    }
+    if (active && m_globalShortcuts != nullptr) {
+      failGlobalShortcuts();
+      m_globalShortcuts->suspend();
     }
     const uint32_t capabilities = active ? m_inputCapture->capabilities() : m_inputCaptureCapabilities;
     m_inputCaptureCapabilities = active ? capabilities : 0;
@@ -532,6 +637,10 @@ namespace umbriel {
     self = wl_container_of(listener, self, m_sessionActive);
     self->updateDrmLeaseState();
     if (!self->m_session->active) {
+      self->failGlobalShortcuts();
+      if (self->m_globalShortcuts != nullptr) {
+        self->m_globalShortcuts->suspend();
+      }
       if (self->m_inputCapture != nullptr) {
         self->m_inputCapture->suspend();
       }
@@ -665,7 +774,8 @@ namespace umbriel {
     m_cursorEffectSlot.configuredSelector = config().effects.cursor;
     resolveEffectSlot(m_cursorEffectSlot, EffectKind::Cursor);
     effectRegistry().prepare(m_renderer);
-    m_compositor = wlr_compositor_create(m_display, 5, m_renderer);
+    m_compositor = wlr_compositor_create(m_display, 6, m_renderer);
+    m_dmabufImplicitBarrier = std::make_unique<DmabufImplicitBarrier>(m_compositor);
     if (explicitSync) {
       m_syncobjAcquireBarrier = std::make_unique<SyncobjAcquireBarrier>(m_compositor);
       m_syncobjUnmapRelease = std::make_unique<SyncobjUnmapRelease>(m_compositor);
@@ -729,6 +839,8 @@ namespace umbriel {
     wlr_scene_set_background_color(m_scene, config().colors.backdrop.data());
 
     // Global stacking keeps scratchpads above normal windows and below drag, panels, fullscreen, overlays, and lock.
+    // ScratchpadManager::updateStacking() lifts them above fullscreen windows, still below pinned ones, while a shown
+    // pad would otherwise be hidden behind fullscreen.
     // Per-output layer trees keep normal windows below panels.
     m_backdrop = wlr_scene_rect_create(&m_scene->tree, 0, 0, config().colors.backdrop.data());
     wlr_scene_rect_set_corner_radius(m_backdrop, 0);
@@ -961,6 +1073,10 @@ namespace umbriel {
   Server::~Server() {
     m_stopping = true;
     updateDrmLeaseState();
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts.reset();
+      wl_display_flush_clients(m_display);
+    }
     m_inputCapture.reset();
     if (m_sessionActive.link.next != nullptr) {
       wl_list_remove(&m_sessionActive.link);
@@ -1029,6 +1145,12 @@ namespace umbriel {
     wl_list_remove(&m_toplevelCaptureRequest.link);
     wl_list_remove(&m_padKeyboardFocusChange.link);
     wl_list_remove(&m_layerKeyboardFocusChange.link);
+    // Scratchpad workspaces reference their output's group and their windows; park them while both still exist.
+    if (m_scratchpadManager != nullptr) {
+      for (const auto& output : m_outputs) {
+        m_scratchpadManager->releaseOutput(output.get());
+      }
+    }
     m_configWatcher.reset();
     m_ipc.reset();
     m_insertHint.reset();
@@ -1101,6 +1223,7 @@ namespace umbriel {
     wl_display_destroy_clients(m_display);
     m_drmLeaseManager.reset();
     m_colorManager.reset();
+    m_dmabufImplicitBarrier.reset();
     m_syncobjAcquireBarrier.reset();
     m_syncobjUnmapRelease.reset();
     m_syncobjSupersededRelease.reset();
@@ -1163,6 +1286,27 @@ namespace umbriel {
   }
 
   bool Server::start(const char* startupCmd) {
+    ServiceReadyPipe dinitReady("UMBRIEL_DINIT_READY_FD");
+    if (!m_nested && dinitReady.present()) {
+      if (!dinitReady.valid()) {
+        kLog.error("invalid session readiness pipe: {}", std::strerror(errno));
+        return false;
+      }
+      const std::string executable = resolveExecutable("dinitctl");
+      const char* socketPath = std::getenv("DINIT_SOCKET_PATH");
+      const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+      const char* home = std::getenv("HOME");
+      const std::string controlSocket = socketPath != nullptr && socketPath[0] != '\0' ? socketPath
+          : runtime != nullptr && runtime[0] != '\0' ? std::string(runtime) + "/dinitctl"
+          : home != nullptr                          ? std::string(home) + "/.dinitctl"
+                                                     : "";
+      if (executable.empty() || controlSocket.empty()) {
+        kLog.error("cannot locate the dinit session controller");
+        return false;
+      }
+      m_dinitControlCommand = shellQuote(executable) + " --user --socket-path " + shellQuote(controlSocket);
+      m_sessionShutdownAvailable = true;
+    }
     const char* socket = wl_display_add_socket_auto(m_display);
     if (socket == nullptr) {
       wlr_log(WLR_ERROR, "failed to add Wayland socket");
@@ -1198,7 +1342,8 @@ namespace umbriel {
     wl_event_loop* loop = wl_display_get_event_loop(m_display);
     m_signalSources[0] = wl_event_loop_add_signal(loop, SIGINT, onTerminateSignal, this);
     m_signalSources[1] = wl_event_loop_add_signal(loop, SIGTERM, onTerminateSignal, this);
-    m_applicationScopesRequired = !m_nested && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
+    m_applicationScopesRequired =
+        !m_nested && m_dinitControlCommand.empty() && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
     const char* inheritedNotifySocket = std::getenv("NOTIFY_SOCKET");
     const std::string notifySocket =
         m_applicationScopesRequired && inheritedNotifySocket != nullptr ? inheritedNotifySocket : "";
@@ -1262,7 +1407,15 @@ namespace umbriel {
     });
     m_inputCapture->setAuthorizationCancelled([this](uint64_t id) { cancelInputCapture(id); });
     m_inputCapture->setActiveChanged([this](bool active) { inputCaptureStateChanged(active); });
+    m_globalShortcuts = std::make_unique<GlobalShortcuts>(*this);
+    m_globalShortcuts->setAuthorize([this](auto id, auto application, const auto& bind) {
+      requestGlobalShortcuts(id, application, bind);
+    });
+    m_globalShortcuts->setAuthorizationCancelled([this](auto id) { cancelGlobalShortcuts(id); });
     for (const auto& keyboard : m_keyboards) {
+      for (size_t index = 0; index < keyboard->wlr()->num_keycodes; ++index) {
+        m_globalShortcuts->observeKey(keyboard.get(), keyboard->wlr()->keycodes[index], 0, true);
+      }
       if (!keyboard->virtualDevice()) {
         m_inputCapture->addKeyboard(keyboard->wlr());
       }
@@ -1286,6 +1439,10 @@ namespace umbriel {
       if (m_xwayland->available() && m_xwayland->setInputSocket(m_eisInput->socketFd())) {
         setenv("DISPLAY", m_xwayland->displayName(), 1);
       } else {
+        // A creation failure already logged itself in the Xwayland constructor; only this branch is otherwise silent.
+        if (m_xwayland->available()) {
+          kLog.error("Xwayland could not expose its EIS input socket; X11 applications will not work");
+        }
         m_xwayland.reset();
         m_eisInput.reset();
       }
@@ -1295,10 +1452,10 @@ namespace umbriel {
     // the inherited PATH and bus addresses. Readiness and autostart must not
     // release session services until these imports have completed.
     if (!m_nested) {
-      const std::string command = sessionEnvironmentCommand(!notifySocket.empty());
+      const std::string command = sessionEnvironmentCommand(!notifySocket.empty(), m_dinitControlCommand);
       if (!runShellCommand(command)) {
         kLog.error("session environment synchronization failed: {}", std::strerror(errno));
-        if (!notifySocket.empty()) {
+        if (!notifySocket.empty() || !m_dinitControlCommand.empty()) {
           return false;
         }
       }
@@ -1338,7 +1495,7 @@ namespace umbriel {
       m_cheatsheet->showOnStartup();
     }
     m_quitConfirm = std::make_unique<QuitConfirm>(*this, m_quitConfirmTree);
-    if (!notifyServiceReady(notifySocket)) {
+    if (!notifyServiceReady(notifySocket) || (!m_nested && !dinitReady.notify())) {
       kLog.error("failed to report session readiness: {}", std::strerror(errno));
       return false;
     }
@@ -1354,6 +1511,8 @@ namespace umbriel {
   void Server::showConfigDiagnostics() {
     std::vector<ConfigDiagnostic> diagnostics = configDiagnostics();
     if (config().general.xwayland && m_xwayland == nullptr) {
+      // Derived from runtime state rather than recorded while reading the configuration, so it is re-drawn on every
+      // reload; the failure itself is logged once, where it happens.
       ConfigDiagnostic diagnostic;
       diagnostic.severity = ConfigDiagnostic::Severity::Warning;
       diagnostic.message =
@@ -1402,6 +1561,11 @@ namespace umbriel {
 
   void Server::stop() {
     m_stopping = true;
+    failGlobalShortcuts();
+    if (m_globalShortcuts != nullptr) {
+      m_globalShortcuts->suspend();
+      wl_display_flush_clients(m_display);
+    }
     updateDrmLeaseState();
     wl_display_terminate(m_display);
   }
@@ -1453,8 +1617,10 @@ namespace umbriel {
       return;
     }
     m_sessionExitResultFd = resultPipe[0];
-    const std::string command = shellQuote(m_systemctlExecutable)
-        + " --user start --job-mode=replace-irreversibly --no-block umbriel-shutdown.target 1>&2 && printf x";
+    const std::string command = m_dinitControlCommand.empty()
+        ? shellQuote(m_systemctlExecutable)
+            + " --user start --job-mode=replace-irreversibly --no-block umbriel-shutdown.target 1>&2 && printf x"
+        : m_dinitControlCommand + " stop --force --no-wait umbriel 1>&2 && printf x";
     const pid_t pid = fork();
     if (pid == 0) {
       resetChildSignalState();
@@ -1463,7 +1629,7 @@ namespace umbriel {
       if (dup2(resultPipe[1], STDOUT_FILENO) < 0
           || fcntl(STDOUT_FILENO, F_SETFD, 0) < 0
           || !closeChildFileDescriptors()
-          || !restoreSystemdControlEnvironment(m_systemdControlEnvironment)) {
+          || (m_dinitControlCommand.empty() && !restoreSystemdControlEnvironment(m_systemdControlEnvironment))) {
         _exit(1);
       }
       execl("/bin/sh", "/bin/sh", "-c", command.c_str(), nullptr);
@@ -1543,9 +1709,9 @@ namespace umbriel {
     return m_shellLayerTrees[layer];
   }
 
-  void Server::spawn(const char* command, const char* description, bool withActivationToken) {
+  void Server::spawn(const char* command, const char* description, bool withActivationToken, bool floating) {
     if (m_socketName.empty()) {
-      wlr_log(WLR_ERROR, "cannot spawn before the Wayland socket exists");
+      kLog.error("cannot spawn before the Wayland socket exists");
       return;
     }
 
@@ -1558,9 +1724,10 @@ namespace umbriel {
       kLog.error("cannot launch application because systemd scope isolation is unavailable");
       return;
     }
-    const std::string scopeUnitArgument = scopeRequired
-        ? "--unit=app-umbriel-" + std::to_string(getpid()) + "-" + std::to_string(m_nextApplicationScopeId++) + ".scope"
+    const std::string scopeUnitName = scopeRequired
+        ? "app-umbriel-" + std::to_string(getpid()) + "-" + std::to_string(m_nextApplicationScopeId++) + ".scope"
         : "";
+    const std::string scopeUnitArgument = scopeRequired ? "--unit=" + scopeUnitName : "";
 
     wlr_xdg_activation_token_v1* launchToken = nullptr;
     std::string launchTokenName;
@@ -1579,7 +1746,7 @@ namespace umbriel {
       if (launchToken != nullptr) {
         wlr_xdg_activation_token_v1_destroy(launchToken);
       }
-      wlr_log(WLR_ERROR, "fork failed");
+      kLog.error("cannot launch application: fork failed");
       return;
     }
     if (pid == 0) {
@@ -1619,19 +1786,32 @@ namespace umbriel {
     }
 
     if (launchToken != nullptr) {
-      trackActivationToken(launchToken, true, pid);
+      trackActivationToken(launchToken, true, pid, floating);
     }
-    if (scopeRequired) {
-      wlr_log(
-          WLR_INFO, "launch requested for '%s' on WAYLAND_DISPLAY=%s", description == nullptr ? command : description,
-          m_socketName.c_str()
-      );
-    } else {
-      wlr_log(
-          WLR_INFO, "spawned '%s' on WAYLAND_DISPLAY=%s", description == nullptr ? command : description,
-          m_socketName.c_str()
-      );
-    }
+    // Bound the label and the command so a long one cannot push the pid and unit past the log line cap; those two
+    // are the only trace a program that starts nothing leaves. Bytes, not display width: a run of zero-width
+    // characters has no width to count but still fills the line.
+    constexpr std::size_t kMaxLabelBytes = 1024;
+    const auto bounded = [](const char* text) {
+      std::string_view view = text;
+      if (view.size() <= kMaxLabelBytes) {
+        return std::string(view);
+      }
+      std::size_t end = kMaxLabelBytes;
+      while (end > 0 && (static_cast<unsigned char>(view[end]) & 0xC0U) == 0x80U) {
+        --end;
+      }
+      return std::string(view.substr(0, end)) + "…";
+    };
+    const char* label = description == nullptr ? command : description;
+    const std::string boundedLabel = bounded(label);
+    const std::string commandField =
+        description == nullptr ? std::string() : std::format(", command '{}'", bounded(command));
+    const std::string ownerUnit = scopeRequired ? std::format(", unit {}", scopeUnitName) : std::string();
+    kLog.info(
+        "launch requested for '{}' (pid {}{}{}) on WAYLAND_DISPLAY={}", boundedLabel, pid, ownerUnit, commandField,
+        m_socketName
+    );
   }
 
   void Server::updateSeatCapabilities() { m_seat->updateCapabilities(!m_keyboards.empty(), !m_touchDevices.empty()); }
@@ -2144,7 +2324,10 @@ namespace umbriel {
         }
       }
     }
-    return true;
+    return m_scratchpadManager == nullptr
+        || std::ranges::none_of(m_scratchpadManager->workspaces(), [](const Workspace* workspace) {
+             return workspace->arrangePending();
+           });
   }
 
   CloseSnapshotId Server::animateCloseSnapshot(
