@@ -12,6 +12,7 @@
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/effect_registry.h"
+#include "scene/ssd_frame_geometry.h"
 #include "server/server.h"
 #include "view/floating.h"
 #include "view/registry.h"
@@ -1032,6 +1033,119 @@ namespace umbriel {
     if (m_arrangePending) {
       arrange(m_arrangeAnimate);
     }
+  }
+
+  bool Workspace::arrangeFloatingWithLayout(LayoutMode mode, wlr_box* focusedTarget) {
+    // This action is a stacking-workspace operation; never change the live
+    // workspace layout as a side effect of building the temporary layout.
+    if (m_layoutMode != LayoutMode::Stacking || mode == LayoutMode::Stacking || m_group == nullptr) {
+      return false;
+    }
+    const wlr_box area = tiledArea();
+    if (area.width <= 0 || area.height <= 0) {
+      return false;
+    }
+
+    // Only ordinary mapped windows participate. Keep the existing floating
+    // stack order so non-focused windows have a stable ordering. A window the
+    // pointer is moving or resizing stays with the grab, as refitFloatingMaximized
+    // and refitFloatingRegion already do.
+    const Cursor* cursor = m_group->server()->cursor();
+    std::vector<View*> views;
+    for (View* view : m_floatingStack) {
+      if (view == nullptr
+          || view->workspace() != this
+          || !view->mapped()
+          || !view->floating()
+          || view->pinned()
+          || view->attached()
+          || view->minimized()
+          || view->scheduledFullscreen()
+          || view->currentFullscreen()
+          || (cursor != nullptr && (cursor->isDraggingView(view) || cursor->isResizingView(view)))) {
+        continue;
+      }
+      views.push_back(view);
+    }
+    if (views.empty()) {
+      return false;
+    }
+
+    // Make the focused window the first layout member. In master mode this
+    // gives it the master position; in other modes it determines the first
+    // insertion in the template layout.
+    const auto focused = std::ranges::find(views, m_focusedView);
+    if (focused != views.end()) {
+      std::rotate(views.begin(), focused, std::next(focused));
+    }
+
+    // Leave region and maximize state *before* measuring. A maximize-to-edges
+    // float would otherwise make tiledTargetBox() return the whole area, and
+    // make a scrolling template give its column the full viewport, because
+    // both read View::maximizedToEdges().
+    for (View* view : views) {
+      view->clearRegionState();
+      view->dropMaximizedForResize();
+    }
+
+    // This layout is strictly a geometry calculator. Its lifetime ends before
+    // the action returns; the workspace's stacking layout remains untouched.
+    // Pin the knobs that would otherwise override insertion order or the
+    // visible area:
+    //  - new_becomes_master would hand the master slot to the *last* insert;
+    //  - new_on_top would reverse the stack relative to insertion order;
+    //  - default_display = tabbed would give a whole master stack one shared
+    //    box, and stacking windows draw no tab bar to switch between them;
+    //  - scrolling columns default to 0.5 viewport, so with three or more
+    //    windows the strip runs past the output edge (the temporary layout has
+    //    no scroll offset). Fit the strip to one viewport instead.
+    ResolvedLayoutConfig temporaryConfig = m_layoutConfig;
+    temporaryConfig.mode = mode;
+    temporaryConfig.master.newBecomesMaster = false;
+    temporaryConfig.master.newOnTop = false;
+    temporaryConfig.tabs.defaultDisplay = ColumnDisplay::Normal;
+    temporaryConfig.scrolling.defaultExtentFraction = 1.0 / static_cast<double>(views.size());
+    std::unique_ptr<Layout> temporary = createLayout(mode);
+    temporary->setConfig(&temporaryConfig);
+    temporary->setConstraints(&viewLayoutConstraints);
+    for (size_t index = 0; index < views.size(); ++index) {
+      temporary->insertView(views[index], static_cast<int>(index));
+    }
+    temporary->arrange(area);
+
+    bool changed = false;
+    for (View* view : views) {
+      // Use the same tile-to-content conversion as the normal workspace
+      // presentation path, including the title-bar offset.
+      wlr_box target = tiledTargetBox(view, area, temporary.get());
+      if (target.width <= 0 || target.height <= 0) {
+        continue;
+      }
+
+      // Floating windows honor their own client size limits. Center a capped
+      // window in its assigned tile instead of stretching it to fill the tile.
+      const SizeHints hints = view->sizeHints();
+      const int width = clampWidth(target.width, hints);
+      const int height = clampHeight(target.height, hints);
+      target.x += (target.width - width) / 2;
+      target.y += (target.height - height) / 2;
+      target.width = width;
+      target.height = height;
+
+      view->requestFloatingSize(target.width, target.height);
+      view->beginResizeAnimation(target.width, target.height);
+      view->animateTo(target.x, target.y);
+      view->rememberFloatingPosition();
+      if (focusedTarget != nullptr && view == m_focusedView) {
+        *focusedTarget = target;
+      }
+      changed = true;
+    }
+
+    if (changed) {
+      m_group->server()->scheduleIpcWindowsEvent();
+    }
+    return changed;
   }
 
   std::unique_ptr<Layout> Workspace::previewArrangedLayout() const {

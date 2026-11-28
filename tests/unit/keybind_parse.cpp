@@ -399,6 +399,15 @@ UMBRIEL_TEST(parsesLayoutModeActions) {
   CHECK(threeMode != nullptr && threeMode->toggleSequence[2] == umbriel::LayoutMode::Dwindle);
 }
 
+UMBRIEL_TEST(rejectsInvalidTemporaryArrangementLayouts) {
+  Keybind bind;
+  CHECK(!parseAction("workspace-arrange", bind));
+  CHECK(!parseAction("workspace-arrange stacking", bind));
+  CHECK(!parseAction("workspace-arrange spiral", bind));
+  CHECK(!parseAction("workspace-arrange Master", bind));
+  CHECK(!parseAction("workspace-arrange master dwindle", bind));
+}
+
 UMBRIEL_TEST(rejectsInvalidLayoutModeActions) {
   Keybind bind;
   CHECK(!parseAction("workspace-set-layout spiral", bind));                       // not a known mode
@@ -769,6 +778,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
     case ActionArgKind::LayoutMode:
       input += " toggle";
       break;
+    case ActionArgKind::ArrangeLayout:
+      input += " master";
+      break;
     case ActionArgKind::WindowRegion:
       input += " left";
       break;
@@ -826,6 +838,9 @@ UMBRIEL_TEST(payloadAlternativeMatchesTheDeclaredArgKind) {
       break;
     case ActionArgKind::LayoutMode:
       CHECK(umbriel::payloadIf<umbriel::LayoutModeArg>(bind) != nullptr);
+      break;
+    case ActionArgKind::ArrangeLayout:
+      CHECK(umbriel::payloadIf<umbriel::ArrangeLayoutArg>(bind) != nullptr);
       break;
     case ActionArgKind::WindowRegion:
       CHECK(umbriel::payloadIf<umbriel::WindowRegionArg>(bind) != nullptr);
@@ -925,6 +940,9 @@ UMBRIEL_TEST(everyActionSpecRoundTripsThroughParseAction) {
       break;
     case ActionArgKind::LayoutMode:
       input += " toggle";
+      break;
+    case ActionArgKind::ArrangeLayout:
+      input += " master";
       break;
     case ActionArgKind::WindowRegion:
       input += " left";
@@ -1107,6 +1125,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return " 0.1";
     case ActionArgKind::LayoutMode:
       return " scrolling";
+    case ActionArgKind::ArrangeLayout:
+      return " master";
     case ActionArgKind::WindowRegion:
       return " top_left";
     case ActionArgKind::ColumnDisplay:
@@ -1165,6 +1185,8 @@ UMBRIEL_TEST(everyAdvertisedActionParsesWithItsDeclaredArgument) {
       return "<delta>";
     case ActionArgKind::LayoutMode:
       return "<scrolling|dwindle|master|stacking|toggle [mode1 mode2 ...]>";
+    case ActionArgKind::ArrangeLayout:
+      return "<scrolling|dwindle|master>";
     case ActionArgKind::WindowRegion:
       return "<left|right|top|bottom|top_left|top_right|bottom_left|bottom_right>";
     case ActionArgKind::ColumnDisplay:

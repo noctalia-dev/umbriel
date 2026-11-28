@@ -188,6 +188,10 @@ namespace umbriel {
     // Whether `view` records focus changes instead of drawing them; see deferFocusChrome.
     bool defersFocusChrome(const View* view) const;
     void arrange(bool animate = true);
+    // Calculate boxes with a temporary tiling layout and apply them to the ordinary floating windows in a stacking
+    // workspace. The active layout is never replaced or otherwise mutated. False when no window was placed. When the
+    // focused window was placed and `focusedTarget` is set, it receives that window's final content box.
+    bool arrangeFloatingWithLayout(LayoutMode mode, wlr_box* focusedTarget = nullptr);
     // Record that the layout is stale instead of rebuilding it now. The work runs once, before the next frame, however
     // many times this is called in between: a touchpad swipe marks on every motion event, and unrelated paths reached
     // in the same frame (a focus change, a config reload, a client's fullscreen commit) coalesce into one arrange.

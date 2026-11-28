@@ -224,6 +224,11 @@ namespace {
           return label;
         }
         return name;
+      case umbriel::ActionArgKind::ArrangeLayout:
+        if (const auto* arg = umbriel::payloadIf<umbriel::ArrangeLayoutArg>(bind)) {
+          return name + " " + std::string(umbriel::layoutModeName(arg->mode));
+        }
+        return name;
       case umbriel::ActionArgKind::WindowRegion:
         if (const auto* arg = umbriel::payloadIf<umbriel::WindowRegionArg>(bind)) {
           return name + " " + std::string(umbriel::windowRegionName(arg->region));
@@ -504,6 +509,7 @@ namespace {
     case A::WorkspaceMoveDown:
     case A::WorkspaceMoveUp:
     case A::WorkspaceSetLayout:
+    case A::WorkspaceArrange:
     case A::WorkspaceMoveToOutput:
     case A::WorkspaceMoveToOutputLeft:
     case A::WorkspaceMoveToOutputRight:

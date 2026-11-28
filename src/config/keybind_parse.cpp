@@ -627,6 +627,8 @@ namespace umbriel {
         {"window-toggle-pinned", "", "Pin the focused window above other windows", KeybindAction::TogglePinned},
         {"window-toggle-scratchpad", "[<scratchpad>]", "Move the focused window to or from a scratchpad",
          KeybindAction::WindowToggleScratchpad, ActionArgKind::OptionalScratchpad},
+        {"workspace-arrange", "<scrolling|dwindle|master>", "Arrange stacking windows with a temporary layout",
+         KeybindAction::WorkspaceArrange, ActionArgKind::ArrangeLayout},
         {"workspace-focus-last", "", "Focus the previously active workspace", KeybindAction::WorkspaceFocusLast},
         {"workspace-move-down", "", "Move the focused workspace down the list", KeybindAction::WorkspaceMoveDown},
         {"workspace-move-to-output", "<destination> [<workspace>] [--output <output>]",
@@ -1008,6 +1010,14 @@ namespace umbriel {
           return std::nullopt;
         }
         return std::move(*mode);
+      }
+      case ActionArgKind::ArrangeLayout: {
+        const auto word = singleWord(words);
+        const auto mode = word ? layoutModeNamed(*word) : std::nullopt;
+        if (!mode || *mode == LayoutMode::Stacking) {
+          return std::nullopt;
+        }
+        return ArrangeLayoutArg{.mode = *mode};
       }
       case ActionArgKind::WindowMoveTo:
         return parseWindowMoveToWords(words);
