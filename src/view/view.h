@@ -309,6 +309,10 @@ namespace umbriel {
     // A member of a tabbed column other than the one it shows. It keeps its layout slot and stays mapped and configured
     // at that size, but its frame stays disabled whatever else asks to enable it.
     void setTabHidden(bool hidden);
+    // True while the view's visibility belongs above its workspace: a live drag
+    // presentation, or a pinned transient ancestor whose output root presents the
+    // subtree. A workspace must not show or hide a view this returns true for.
+    bool dragPresentationOwnsVisibility() const;
     bool tabHidden() const { return m_tabHidden; }
     // Minimized: hidden, but keeping its workspace, floating box, stacking slot, and taskbar entries. Focusing the
     // window shows it again.
@@ -778,6 +782,22 @@ namespace umbriel {
     void setDragPhysicsGrab(double localX, double localY);
     void moveDragPhysics(double dx, double dy);
     void endDragPhysics();
+    // True while the physics sheet is displaced from its resting box: grabbed,
+    // or still settling after the release.
+    bool dragSheetDisplaced() const;
+    // True while the drag tree actively presents this view: held by the cursor,
+    // or still displaced after the release. Resting under the drag tree once the
+    // spring settles is not presentation.
+    bool dragPresented() const;
+    // True while the drag tree actively presents this view or a transient
+    // ancestor: the placement the drag owns, and the stable form of it.
+    bool dragPresentationLive() const;
+    // The release's say over where the view rests: the window closes when the
+    // release handler ends, flush lands the wait immediately.
+    void closeReleaseRehomeWindow();
+    void flushReleaseRehome();
+    // True while a view rests under the drag tree.
+    bool dragTreeOccupied() const;
     // Refits the sheet to the content tree's drawn bounds when they changed, or when the grab moved.
     void fitDragPhysics(bool grabMoved);
     struct DragFit {
@@ -851,9 +871,27 @@ namespace umbriel {
     void syncModalShade();
     void releaseDialog();
     [[nodiscard]] bool inheritScratchpadFromParent(bool restoreTiled);
-    void syncTransientSceneParent();
+    // Re-homes this node under the tree its transient parent now lives in. Returns true when the move changed the
+    // view's presentation tree, so the caller re-homes the subtree and collapses the drag elevation.
+    bool syncTransientSceneParent();
+    // The one reparent policy: waits out a displaced sheet, moves the node with its shadow and X11 state, and returns
+    // whether the move entered or left a presentation tree (the drag tree or a pinned root), so the caller re-homes
+    // the transient subtree. The caller owns that subtree.
+    bool applySceneParent(wlr_scene_tree* parent);
+    // True while this node rests under the server's pinned tree, which every output's pinned root hangs from.
+    bool underPinnedRoot() const;
+    // The parent whose landing or unpin re-homes this view: the transient parent when the chain holds, else the
+    // declared parent while a drag or pinned presentation carries it across a workspace change.
+    View* rehomeParent() const;
+    // Lowers the drag tree under its icons once no drag-presented view is left in it.
+    void demoteDragTreeIfIdle();
     // Appends the frames a raise of this transient tree lifts, in the order it lifts them.
     void collectTransientTree(std::vector<wlr_scene_node*>& frames);
+    // Re-points transient children at the trees this view now lives under.
+    void syncTransientChildren();
+    // The one transient walk: re-homes each node, and appends it when `frames` is given. An attached dialog's subtree
+    // is skipped, because its parent's own frame already carries it.
+    void walkTransientTree(std::vector<wlr_scene_node*>* frames);
     void updateForeignIdentity();
     void updateForeignState();
     void enterForeignOutput();
@@ -1027,6 +1065,12 @@ namespace umbriel {
     ViewPresentation m_presentation;
     DragPhysics m_dragPhysics;
     double m_dragPhysicsMsec = 0; // animation clock at the sheet's last tick
+    // The resting re-home requested while the released sheet was still
+    // displaced (setSceneParent defers it); applied when the spring settles.
+    wlr_scene_tree* m_pendingHomeParent = nullptr;
+    // Armed for one release flow: setSceneParent absorbs the reparents the
+    // release issues until closeReleaseRehomeWindow() ends the flow.
+    bool m_releaseRehomeArmed = false;
     // The frame-local grab and the content tree's drawn bounds the sheet was last fitted to.
     double m_dragGrabX = 0;
     double m_dragGrabY = 0;
