@@ -1190,6 +1190,10 @@ namespace umbriel {
     }
     updateForeignState();
     if (Output* output = currentOutput()) {
+      // An output counts a view as fullscreen until its client commits the exit, so that commit changes the VRR policy.
+      if (m_committedFullscreen != currentFullscreen()) {
+        output->updateVrr();
+      }
       output->updateHdr();
     }
     // The commit that leaves fullscreen uncovers top-layer surfaces, so an exclusive one takes the seat back.
