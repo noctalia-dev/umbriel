@@ -129,6 +129,7 @@ namespace umbriel {
     m_ssdFrame->setMaximized(scheduledMaximized() || floatingMaximized());
     m_ssdFrame->setFocused(m_borderFocusedState);
     m_ssdFrame->setAlphas(chromeAlpha(), blurAlpha());
+    m_ssdFrame->setColors(m_titleBarColors);
     applyBorderColors();
     m_ssdFrame->setBlurOptions(blurOptions());
     m_ssdFrame->setBlurLive(m_server->cursor() != nullptr && m_server->cursor()->isDraggingView(this));
@@ -153,6 +154,12 @@ namespace umbriel {
       }
     }
     m_ssdFrame->setButtons(std::span(shown.data(), count));
+  }
+
+  void View::syncTitleBarColors() {
+    if (m_ssdFrame != nullptr) {
+      m_ssdFrame->setColors(m_titleBarColors);
+    }
   }
 
   bool View::decorated() const { return m_decoration.bordersVisible(); }

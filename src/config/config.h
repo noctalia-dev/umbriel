@@ -521,6 +521,20 @@ namespace umbriel {
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
     std::optional<std::array<float, 4>> borderColorOuter;
+    // Overrides [colors.title_bar] for windows this rule matches.
+    std::optional<std::array<float, 4>> titleBarBackground;
+    std::optional<std::array<float, 4>> titleBarBackgroundUnfocused;
+    std::optional<std::array<float, 4>> titleBarText;
+    std::optional<std::array<float, 4>> titleBarTextUnfocused;
+    std::optional<std::array<float, 4>> titleBarClose;
+    std::optional<std::array<float, 4>> titleBarCloseGlyph;
+    std::optional<std::array<float, 4>> titleBarCloseGlyphHover;
+    std::optional<std::array<float, 4>> titleBarMaximize;
+    std::optional<std::array<float, 4>> titleBarMaximizeGlyph;
+    std::optional<std::array<float, 4>> titleBarMaximizeGlyphHover;
+    std::optional<std::array<float, 4>> titleBarMinimize;
+    std::optional<std::array<float, 4>> titleBarMinimizeGlyph;
+    std::optional<std::array<float, 4>> titleBarMinimizeGlyphHover;
     // Override [appearance] border_width, outer_border_width, corner_radius, and shadow.enabled for windows this rule
     // matches.
     std::optional<int> borderWidth;
@@ -591,6 +605,19 @@ namespace umbriel {
           && borderColorFocused == other.borderColorFocused
           && borderColorUnfocused == other.borderColorUnfocused
           && borderColorOuter == other.borderColorOuter
+          && titleBarBackground == other.titleBarBackground
+          && titleBarBackgroundUnfocused == other.titleBarBackgroundUnfocused
+          && titleBarText == other.titleBarText
+          && titleBarTextUnfocused == other.titleBarTextUnfocused
+          && titleBarClose == other.titleBarClose
+          && titleBarCloseGlyph == other.titleBarCloseGlyph
+          && titleBarCloseGlyphHover == other.titleBarCloseGlyphHover
+          && titleBarMaximize == other.titleBarMaximize
+          && titleBarMaximizeGlyph == other.titleBarMaximizeGlyph
+          && titleBarMaximizeGlyphHover == other.titleBarMaximizeGlyphHover
+          && titleBarMinimize == other.titleBarMinimize
+          && titleBarMinimizeGlyph == other.titleBarMinimizeGlyph
+          && titleBarMinimizeGlyphHover == other.titleBarMinimizeGlyphHover
           && borderWidth == other.borderWidth
           && outerBorderWidth == other.outerBorderWidth
           && cornerRadius == other.cornerRadius
@@ -643,6 +670,19 @@ namespace umbriel {
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
     std::optional<std::array<float, 4>> borderColorOuter;
+    std::optional<std::array<float, 4>> titleBarBackground;
+    std::optional<std::array<float, 4>> titleBarBackgroundUnfocused;
+    std::optional<std::array<float, 4>> titleBarText;
+    std::optional<std::array<float, 4>> titleBarTextUnfocused;
+    std::optional<std::array<float, 4>> titleBarClose;
+    std::optional<std::array<float, 4>> titleBarCloseGlyph;
+    std::optional<std::array<float, 4>> titleBarCloseGlyphHover;
+    std::optional<std::array<float, 4>> titleBarMaximize;
+    std::optional<std::array<float, 4>> titleBarMaximizeGlyph;
+    std::optional<std::array<float, 4>> titleBarMaximizeGlyphHover;
+    std::optional<std::array<float, 4>> titleBarMinimize;
+    std::optional<std::array<float, 4>> titleBarMinimizeGlyph;
+    std::optional<std::array<float, 4>> titleBarMinimizeGlyphHover;
     std::optional<int> borderWidth;
     std::optional<int> outerBorderWidth;
     std::optional<int> cornerRadius;

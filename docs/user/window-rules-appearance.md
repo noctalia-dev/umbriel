@@ -33,7 +33,20 @@ blur = true
 | `corner_radius`          | global  | Override `appearance.corner_radius`, 0 to 100.                                                                                  |
 | `shadow`                 | global  | Override `appearance.shadow.enabled`.                                                                                           |
 | `title_bar`              | global  | `"on"`, `"negotiated"`, `"forced"`, or `"off"`; overrides `appearance.title_bar.mode`.                                          |
-| `title_bar_buttons`      | global  | Override `appearance.title_bar.buttons`: any of `"minimize"`, `"maximize"`, `"close"` from the title outward, or `[]` for none. |
+| `title_bar_buttons`              | global  | Override `appearance.title_bar.buttons`: any of `"minimize"`, `"maximize"`, `"close"` from the title outward, or `[]` for none. |
+| `title_bar_background`           | global  | Override `colors.title_bar.background`.                                                                                         |
+| `title_bar_background_unfocused` | global  | Override `colors.title_bar.background_unfocused`.                                                                               |
+| `title_bar_text`                 | global  | Override `colors.title_bar.text`.                                                                                               |
+| `title_bar_text_unfocused`       | global  | Override `colors.title_bar.text_unfocused`.                                                                                     |
+| `title_bar_close`                | global  | Override `colors.title_bar.close`.                                                                                              |
+| `title_bar_close_glyph`          | global  | Override `colors.title_bar.close_glyph`.                                                                                        |
+| `title_bar_close_glyph_hover`    | global  | Override `colors.title_bar.close_glyph_hover`.                                                                                  |
+| `title_bar_maximize`             | global  | Override `colors.title_bar.maximize`.                                                                                           |
+| `title_bar_maximize_glyph`       | global  | Override `colors.title_bar.maximize_glyph`.                                                                                     |
+| `title_bar_maximize_glyph_hover` | global  | Override `colors.title_bar.maximize_glyph_hover`.                                                                               |
+| `title_bar_minimize`             | global  | Override `colors.title_bar.minimize`.                                                                                           |
+| `title_bar_minimize_glyph`       | global  | Override `colors.title_bar.minimize_glyph`.                                                                                     |
+| `title_bar_minimize_glyph_hover` | global  | Override `colors.title_bar.minimize_glyph_hover`.                                                                               |
 
 ### Effects
 

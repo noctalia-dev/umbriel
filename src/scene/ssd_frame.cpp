@@ -141,9 +141,17 @@ namespace umbriel {
     updateBlur();
   }
 
+  void SsdFrame::setColors(const Config::Colors::TitleBar& colors) {
+    if (m_colors == colors) {
+      return;
+    }
+    m_colors = colors;
+    redraw();
+  }
+
   void SsdFrame::updateBlur() {
     const auto& cfg = config().appearance.blur;
-    const auto& colors = config().colors.titleBar;
+    const auto& colors = m_colors;
     const float backgroundAlpha = (m_focused ? colors.background : colors.backgroundUnfocused)[3];
     // The title bar has its own transparency, independent of the client's opaque region or alpha mask.
     const bool enabled = m_tree->node.enabled
@@ -261,7 +269,7 @@ namespace umbriel {
   }
 
   void SsdFrame::updateColors() {
-    const auto& colors = config().colors.titleBar;
+    const auto& colors = m_colors;
     const auto& style = config().appearance.titleBar;
     const bool backgrounds = style.buttonBackground;
     float color[4];
@@ -374,7 +382,7 @@ namespace umbriel {
     drawButton(m_close, parts.button(TitleBarButton::Close));
     drawButton(m_maximize, parts.button(TitleBarButton::Maximize));
     drawButton(m_minimize, parts.button(TitleBarButton::Minimize));
-    const auto& colors = config().colors.titleBar;
+    const auto& colors = m_colors;
     TabLabelRequest request{
         .text = m_title,
         .color = m_focused ? colors.text : colors.textUnfocused,
@@ -498,6 +506,7 @@ namespace umbriel {
       frame->setFocused(m_focused);
       frame->setOpaqueBorderInset(m_opaqueBorderInset);
       frame->setBlurOptions(m_blurOptions);
+      frame->setColors(m_colors);
       frame->reloadConfig();
     }
   }

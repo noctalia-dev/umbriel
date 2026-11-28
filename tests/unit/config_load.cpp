@@ -1553,6 +1553,49 @@ UMBRIEL_TEST(windowRuleBorderColorsLoad) {
   CHECK(!store.config().windowRules[0].borderColorFocused);
 }
 
+UMBRIEL_TEST(windowRuleTitleBarColorsLoad) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[[window_rule]]\nmatch.app_id = \"^foot$\"\n"
+      "title_bar_background = \"#FF0000FF\"\n"
+      "title_bar_background_unfocused = \"#00FF00FF\"\n"
+      "title_bar_text = \"#0000FFFF\"\n"
+      "title_bar_text_unfocused = \"#102030FF\"\n"
+      "title_bar_close = \"#405060FF\"\n"
+      "title_bar_close_glyph = \"#708090FF\"\n"
+      "title_bar_close_glyph_hover = \"#A0B0C0FF\"\n"
+      "title_bar_maximize = \"#111111FF\"\n"
+      "title_bar_maximize_glyph = \"#222222FF\"\n"
+      "title_bar_maximize_glyph_hover = \"#333333FF\"\n"
+      "title_bar_minimize = \"#444444FF\"\n"
+      "title_bar_minimize_glyph = \"#555555FF\"\n"
+      "title_bar_minimize_glyph_hover = \"#666666FF\"\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  const auto& rule = store.config().windowRules[0];
+  CHECK(rule.titleBarBackground && (*rule.titleBarBackground)[0] == 1.0F);
+  CHECK(rule.titleBarBackgroundUnfocused && (*rule.titleBarBackgroundUnfocused)[1] == 1.0F);
+  CHECK(rule.titleBarText && (*rule.titleBarText)[2] == 1.0F);
+  CHECK(rule.titleBarTextUnfocused.has_value());
+  CHECK(rule.titleBarClose.has_value());
+  CHECK(rule.titleBarCloseGlyph.has_value());
+  CHECK(rule.titleBarCloseGlyphHover.has_value());
+  CHECK(rule.titleBarMaximize.has_value());
+  CHECK(rule.titleBarMaximizeGlyph.has_value());
+  CHECK(rule.titleBarMaximizeGlyphHover.has_value());
+  CHECK(rule.titleBarMinimize.has_value());
+  CHECK(rule.titleBarMinimizeGlyph.has_value());
+  CHECK(rule.titleBarMinimizeGlyphHover.has_value());
+
+  file.write("[[window_rule]]\ntitle_bar_background = false\n");
+  CHECK(store.reload().success);
+  CHECK(!store.config().windowRules[0].titleBarBackground);
+}
+
 // Colors are recognized only inside [colors]; anywhere else they are ordinary
 // unknown keys.
 UMBRIEL_TEST(colorKeysOutsideTheColorsSectionAreUnknown) {
