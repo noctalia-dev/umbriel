@@ -1054,6 +1054,8 @@ namespace umbriel {
       bool shortcuts = true;
       // Favorite badge keys in preference order, one ASCII character each.
       std::string shortcutKeys = "1234567890";
+      // Enable right-button drag navigation in the overview.
+      bool rightButtonPan = false;
       bool operator==(const Overview&) const = default;
     } overview;
 

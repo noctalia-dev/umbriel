@@ -2760,7 +2760,7 @@ namespace umbriel {
     }
     m_middlePressCard = nullptr;
     m_middleOutput = nullptr;
-    m_middlePressed = false;
+    m_pointerScrollButton = 0;
     m_middleDragging = false;
     m_middlePanning = false;
     m_middleScrolling = false;
@@ -2778,9 +2778,9 @@ namespace umbriel {
     }
 
     if (!pressed) {
-      if (button == BTN_MIDDLE) {
+      if (button == m_pointerScrollButton) {
         Card* card = m_middlePressCard;
-        const bool closeCard = m_middlePressed && !m_middleDragging;
+        const bool closeCard = button == BTN_MIDDLE && !m_middleDragging;
         if (m_middleScrolling) {
           // A release settles the strip; clearMiddlePress() cancels whatever is still running.
           m_server->gestures()->endPointerScroll(false, timeMsec);
@@ -2815,7 +2815,11 @@ namespace umbriel {
     }
 
     Card* card = cardAt(lx, ly);
-    if (button == BTN_MIDDLE) {
+    if (button == BTN_MIDDLE || (button == BTN_RIGHT && config().overview.rightButtonPan)) {
+      // Keep the original press and its target until that button is released.
+      if (pointerScrollPressed()) {
+        return true;
+      }
       m_middlePressCard = card;
       Workspace* workspace = card != nullptr && card->view != nullptr
           ? card->view->workspace()
@@ -2824,7 +2828,7 @@ namespace umbriel {
       m_middlePressX = lx;
       m_middlePressY = ly;
       m_middleAccum = 0;
-      m_middlePressed = true;
+      m_pointerScrollButton = button;
       m_middleDragging = false;
       m_middlePanning = false;
       m_middleScrolling = false;
@@ -2858,7 +2862,7 @@ namespace umbriel {
       activateLiveTarget();
       applyProgress();
     }
-    if (m_middlePressed) {
+    if (pointerScrollPressed()) {
       const WorkspaceGroup* group = m_middleOutput != nullptr ? m_middleOutput->workspaceGroup() : nullptr;
       const bool horizontal = group != nullptr && group->workspaceAxis() == WorkspaceAxis::Horizontal;
       if (!m_middleDragging) {
@@ -3034,7 +3038,7 @@ namespace umbriel {
   void Overview::beginNavigation(wlr_pointer* pointer, NavigationSource source, double lx, double ly) {
     cancelNavigation();
     // A held card drag may still scroll: the touchpad finger stream must not be swallowed by the hold.
-    // Middle-press keeps refusing; handleMotion gives it its own pointer-scroll path.
+    // Pointer-button drags have their own path in handleMotion.
     const bool dragScroll = m_dragCard != nullptr && source == NavigationSource::Scroll;
     if (!interactive() || (dragging() && !dragScroll) || pointer == nullptr) {
       return;
