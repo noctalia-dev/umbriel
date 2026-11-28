@@ -349,6 +349,9 @@ namespace umbriel {
     void deferTiledOpening();
     void resumeTiledOpening();
     bool tiledOpeningDeferred() const { return m_tiledOpeningDeferred; }
+    // Warp to this view once its initial map completes, if it still holds focus. Set when a new window receives
+    // initial keyboard focus while follows_focus is enabled.
+    void applyPendingFocusWarp();
     // windows_move owns this established view's box until endLayoutMotion. `direction` feeds its custom shader.
     void beginLayoutMotion(float direction);
     // Finish at the workspace target without falling back to an older committed client buffer. If the configure that
@@ -1092,6 +1095,7 @@ namespace umbriel {
     std::optional<TiledSizeRequest> m_tiledSizeRequest;
     float m_layoutMotionDirection = 1.0F;
     bool m_tiledOpeningDeferred = false;
+    bool m_pendingFocusWarp = false;
     // Inset a built-in windows_in style starts an opener at, interpolated to rest by the fade: a popin or zoom scale
     // (1.0 = none) and a slide offset in logical pixels (0 = none).
     double m_openingScale = 1.0;

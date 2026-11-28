@@ -58,7 +58,7 @@ hide_on_touch = true
 
 - Set `hardware_cursor = false` if the cursor flickers or disappears.
 - A hidden cursor releases hover, so the window under it stops showing hover state until the pointer moves. Games that lock the pointer keep it.
-- `follows_focus` moves the cursor on keyboard focus changes and keyboard window moves, to the window's center. New windows, activations, and pointer-driven focus do not move it.
+- `follows_focus` moves the cursor on keyboard focus changes and keyboard window moves, to the window's center. A window that receives initial keyboard focus when it maps also moves the cursor to its center. Windows that map without focus, activation requests for an already-mapped window, and attached dialogs that hand focus to their parent do not move the cursor. Pointer-driven focus, gestures, and the replacement focus after a close do not move it either.
 - `window-focus-warp <id>` always moves the cursor.
 
 ## Move and resize with the mouse
