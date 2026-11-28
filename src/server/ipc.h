@@ -1,10 +1,12 @@
 #pragma once
 
+#include "scene/live_effect_uniforms.h"
 #include "server/event_pacer.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
@@ -66,6 +68,9 @@ namespace umbriel {
     // A window committed. A window off screen draws no frame when it commits its configure, so while a settle waits,
     // this asks every output for the frame that checks it again.
     void notifyWindowCommitted();
+    // Latest typed screen-effect input for an output; valid only while its IPC producer owns the slot.
+    const LiveEffectUniforms* liveUniformsForOutput(std::string_view output) const;
+    void forgetLiveUniformsForOutput(std::string_view output);
 
   private:
     enum class FrameWait : uint8_t { None, Drawn, Settled };
@@ -80,6 +85,7 @@ namespace umbriel {
       wl_event_source* deadline = nullptr;
       bool responding = false;
       bool screenCastActive = false;
+      std::string liveOutput;
       uint16_t subscribedEvents = 0;
       // A frame wait holds its reply until these outputs have each drawn a frame, and for settle until the server is
       // settled as well.
@@ -110,10 +116,16 @@ namespace umbriel {
     void broadcastEvent(uint16_t event, const nlohmann::json& payload);
     void refreshScreenCastActive();
     void dropAudioOwner();
+    void dropLiveOwner(Connection& connection);
 
     Server* m_server;
     std::string m_socketPath;
     Connection* m_audio = nullptr;
+    struct LiveSlot {
+      Connection* owner = nullptr;
+      LiveEffectUniforms snapshot;
+    };
+    std::map<std::string, LiveSlot, std::less<>> m_liveUniforms;
     int m_listenFd = -1;
     wl_event_source* m_eventSource = nullptr;
     std::vector<std::unique_ptr<Connection>> m_connections;

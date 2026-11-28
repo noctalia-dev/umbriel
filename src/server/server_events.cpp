@@ -2770,6 +2770,10 @@ namespace umbriel {
   }
 
   void Server::removeOutput(Output* output) {
+    // Release producer ownership before the output's name/scene disappear.
+    if (m_ipc != nullptr && output->wlr()->name != nullptr) {
+      m_ipc->forgetLiveUniformsForOutput(output->wlr()->name);
+    }
     const bool hadRuntimeEffect = output->screenEffectSlot().runtimeSelector.has_value();
     m_overview->onOutputRemoved(output);
     m_gestures->cancelForOutput(output);

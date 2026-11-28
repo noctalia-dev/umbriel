@@ -61,6 +61,25 @@ namespace umbriel {
   namespace {
     constexpr Logger kLog("output");
 
+    // Only inputs read by this screen program can cause damage. An empty but
+    // present snapshot still matters to a shader reading feed availability.
+    std::optional<LiveEffectUniforms>
+    screenLiveUniforms(const LiveEffectUniforms* live, const fx_effect_shader* screen) {
+      if (live == nullptr || screen == nullptr) {
+        return std::nullopt;
+      }
+      LiveEffectUniforms result{.output = live->output};
+      for (size_t i = 0; i < live->count; ++i) {
+        if (fx_effect_shader_reads(screen, live->uniforms[i].name)) {
+          result.uniforms[result.count++] = live->uniforms[i];
+        }
+      }
+      if (result.count == 0 && !fx_effect_shader_reads(screen, "umbriel_live_available")) {
+        return std::nullopt;
+      }
+      return result;
+    }
+
     std::string_view directScanoutReason(wlr_scene_direct_scanout_status status) {
       switch (status) {
       case WLR_SCENE_DIRECT_SCANOUT_ACTIVE:
@@ -278,12 +297,38 @@ namespace umbriel {
     return m_effectAudio != m_server->effects().audio() && wlr_scene_output_audio_active(m_sceneOutput);
   }
 
+  bool Output::liveUniformsPending() const {
+    if (!m_output->enabled || m_server->sessionLocked()) {
+      return false;
+    }
+    const LiveEffectUniforms* live =
+        m_server->ipc() != nullptr ? m_server->ipc()->liveUniformsForOutput(m_output->name) : nullptr;
+    if (live == nullptr) {
+      return m_effectLiveUniforms.has_value();
+    }
+    EffectRegistry& registry = m_server->effects();
+    const auto* screen = registry.ledger().suspended()
+        ? nullptr
+        : registry.preset(m_screenEffectSlot.effectiveName(), EffectKind::Screen);
+    return screenLiveUniforms(live, screen) != m_effectLiveUniforms;
+  }
+
+  void Output::scheduleLiveUniformsFrame() {
+    if (!outputFrameAllowed(m_server->stopping(), m_server->session()) || !liveUniformsPending()) {
+      return;
+    }
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    armEffectFrame(static_cast<uint64_t>(now.tv_sec) * 1000 + static_cast<uint64_t>(now.tv_nsec) / 1'000'000);
+  }
+
   void Output::applyOutputEffects() {
     EffectRegistry& registry = m_server->effects();
     const Effects& settings = config().effects;
     // Nothing configured: touch nothing (no addon, no scene calls). The registry's counts are zero too; a bound
     // screen or cursor slot keeps a ledger instance, so it is still detached below.
     if (settings.presets.empty() && !registry.active() && !registry.persistentReferenced()) {
+      m_effectLiveUniforms.reset();
       return;
     }
     wlr_scene_output_set_effect_capture_policy(m_sceneOutput, settings.inCapture);
@@ -300,6 +345,9 @@ namespace umbriel {
 #endif
     wlr_scene_output_set_effect_time(m_sceneOutput, m_server->animationClockMsec());
     m_outputEffectsTimed = false;
+    const LiveEffectUniforms* live =
+        m_server->ipc() != nullptr ? m_server->ipc()->liveUniformsForOutput(m_output->name) : nullptr;
+    m_effectLiveUniforms = screenLiveUniforms(m_output->enabled ? live : nullptr, screen);
     // Register demand after the cursor program and motion history have been updated.
     const auto bind = [&](const void* owner, fx_effect_shader* shader, bool visible) {
       const bool motion = fx_effect_shader_reads(shader, "umbriel_pointer_history")
@@ -314,6 +362,22 @@ namespace umbriel {
     if (screenPreset != nullptr) {
       fx_animation_parameters parameters{};
       registry.fillTimeUniforms(parameters, m_effectSeconds, *screenPreset, screen);
+      // The last complete producer snapshot is read at frame time. The shader
+      // decides what each numeric input means; nothing here is device-specific.
+      if (fx_effect_shader_reads(screen, "umbriel_live_available")) {
+        if (fx_uniform* available =
+                fx_parameters_add_uniform(&parameters, "umbriel_live_available", FX_UNIFORM_FLOAT, 1)) {
+          available->floats[0] = m_effectLiveUniforms.has_value() ? 1.0F : 0.0F;
+        }
+      }
+      if (m_effectLiveUniforms) {
+        for (size_t i = 0; i < m_effectLiveUniforms->count && parameters.uniform_count < FX_UNIFORMS_MAX; ++i) {
+          const fx_uniform& external = m_effectLiveUniforms->uniforms[i];
+          if (fx_uniform* uniform = fx_parameters_add_uniform(&parameters, external.name, external.type, 1)) {
+            *uniform = external;
+          }
+        }
+      }
       bind(this, screen, m_output->enabled);
       wlr_scene_output_set_screen_effect(m_sceneOutput, screen, &parameters);
     } else {
@@ -2098,12 +2162,12 @@ namespace umbriel {
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);
     const uint64_t nowMsec = static_cast<uint64_t>(now.tv_sec) * 1000 + static_cast<uint64_t>(now.tv_nsec) / 1'000'000;
-    // A frame is an effect frame when one was asked for, or when an instance here is eligible or an audio change is
-    // pending and the max_fps interval has elapsed (a delay of 1 ms is the helper's "due now"), whichever timeline
-    // scheduled the frame. The output's own timer supplies the frames nothing else asks for.
+    // A frame is an effect frame when one was asked for, or when an instance here is eligible or a dynamic input
+    // change is pending and the max_fps interval has elapsed (a delay of 1 ms is the helper's "due now"), whichever
+    // timeline scheduled the frame. The output's own timer supplies the frames nothing else asks for.
     const bool effectFrame = m_effectFrameDue
         || (!m_server->sessionLocked()
-            && (effectEligible() > 0 || audioPending())
+            && (effectEligible() > 0 || audioPending() || liveUniformsPending())
             && effectFrameDelayMs(config().effects.maxFps, nowMsec, m_lastEffectFrameMsec) <= 1);
     m_effectFrameDue = false;
     if (effectFrame) {
@@ -2132,7 +2196,9 @@ namespace umbriel {
     const uint64_t vblankNs = latestVblankNs(nowNs, m_lastPresentNs, m_refreshNs);
     const uint64_t sampleNs = vblankNs != 0 ? vblankNs : nowNs;
     m_server->tickAnimations(m_server->animationFrameClockMsec(static_cast<double>(sampleNs) / 1e6));
-    if (stampEffectTime && m_outputEffectsTimed) {
+    // Live inputs are sampled for the target output's frame, not on the
+    // producer's clock. Also push a final unavailable state on disconnect.
+    if ((stampEffectTime && m_outputEffectsTimed) || (effectFrame && liveUniformsPending())) {
       applyOutputEffects();
     }
 
@@ -2441,7 +2507,7 @@ namespace umbriel {
       break;
     }
 
-    if ((effectsEligible || audioPending()) && !commitFailed) {
+    if ((effectsEligible || audioPending() || liveUniformsPending()) && !commitFailed) {
       armEffectFrame(nowMsec);
     } else {
       disarmEffectFrame();

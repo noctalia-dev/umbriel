@@ -11,6 +11,7 @@
 #include "output/vrr_transition.h"
 #include "scene/effect_audio.h"
 #include "scene/effect_selection.h"
+#include "scene/live_effect_uniforms.h"
 
 #include <array>
 #include <cstdint>
@@ -92,6 +93,7 @@ namespace umbriel {
     // Asks for a frame on behalf of persistent effects.
     void scheduleEffectFrame();
     void scheduleAudioFrame();
+    void scheduleLiveUniformsFrame();
     // Pushes the effect capture policy and the screen and cursor presets to this output's scene. Detached while
     // effects are suspended; the instances are visible only while the output is enabled.
     void applyOutputEffects();
@@ -259,6 +261,7 @@ namespace umbriel {
     DirectScanoutState builtDirectScanout() const;
     void recordDirectScanout(const DirectScanoutState& state, uint32_t commitSeq);
     void armEffectFrame(uint64_t nowMsec);
+    bool liveUniformsPending() const;
     // Render locks other than this output's animation lock.
     int externalRenderLocks() const;
     // A capture holding `captureLocks` must see frames without in-place effects.
@@ -351,6 +354,7 @@ namespace umbriel {
     uint64_t m_effectFrames = 0;
     float m_effectSeconds = 0.0F;
     bool m_outputEffectsTimed = false; // a visible screen or cursor instance here reads umbriel_time
+    std::optional<LiveEffectUniforms> m_effectLiveUniforms; // values latched for the selected screen program
     char m_cursorEffectOwner{};        // ledger identity of the cursor slot; the screen slot uses `this`
     bool m_effectCaptureBuilt = false; // the last built frame had an effect capture pending
     View* m_autoHdrOwner = nullptr;

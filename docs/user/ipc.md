@@ -284,6 +284,31 @@ Availability reports feed freshness. Gain, smoothing, and source selection belon
 
 Disconnect, malformed or oversized input, or 250 ms without a snapshot closes the feed and clears all bands and availability. Lock and inactive sessions also disconnect the producer and reject audio until active and unlocked. Reconnect with a fresh snapshot to resume. Use a dedicated socket client; `umbriel msg` does not provide this streaming interface.
 
+## Live screen-effect uniforms
+
+External applications can supply numeric uniforms to the selected screen effect on a specific output. Use a dedicated Unix socket connection to `$UMBRIEL_SOCKET` and send complete newline-delimited JSON snapshots:
+
+```json
+{
+  "cmd": "effect-uniforms",
+  "version": 1,
+  "kind": "screen",
+  "output": "DP-1",
+  "uniforms": [
+    { "name": "strength", "type": "float", "value": 0.5 },
+    { "name": "offset", "type": "vec2", "value": [0.1, 0.2] }
+  ]
+}
+```
+
+Only version 1 is accepted, with exactly the five fields shown. The output must be an enabled connector name, not a monitor identity. Each snapshot contains one to four uniforms with distinct GLSL identifier names of at most 31 characters; the `umbriel_` prefix is reserved. Types are `float`, `vec2`, `vec3`, and `vec4`. Values are finite numbers representable as floats: a scalar for `float`, or an array of the corresponding length for a vector.
+
+Each request, including its newline, is limited to 4,096 bytes. The first accepted snapshot claims exclusive ownership of the output for that connection. Different outputs can have separate producers. Wait for `{"ok":true}` before sending the next snapshot; the reply acknowledges acceptance, not presentation. The latest complete snapshot replaces the previous one and is sampled at effect-frame time, subject to `effects.max_fps`. Unchanged values and values not read by the selected shader do not request extra frames.
+
+Keep sending snapshots while the feed is active, including when values are unchanged. Disconnect or 250 ms without a snapshot clears the feed. Removing the output also clears its feed. Requests are rejected while the session is locked or inactive.
+
+Declare matching uniforms in the screen shader. The compositor supplies only uniforms used by that shader. Missing custom numeric values are zero, including after disconnect and on outputs without a feed. A value with a mismatched GLSL type is ignored. The optional `uniform float umbriel_live_available;` is 1 while a snapshot is available and 0 otherwise; use it to select a fallback when the producer is absent. The feed does not select a screen effect or change input coordinates. Select the effect separately using configuration or an [effect action](effects.md#runtime-selection).
+
 ## Inspection commands
 
 `umbriel outputs`, `umbriel color`, `umbriel tearing`, `umbriel layers`, and `umbriel keyboard-layouts` print human-readable state. Each accepts `--json`.
