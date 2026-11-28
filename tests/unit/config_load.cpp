@@ -1553,6 +1553,45 @@ UMBRIEL_TEST(windowRuleBorderColorsLoad) {
   CHECK(!store.config().windowRules[0].borderColorFocused);
 }
 
+UMBRIEL_TEST(windowRuleAppearanceOverridesLoad) {
+  const TempConfig file;
+  ConfigStore& store = umbriel::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write(
+      "[[window_rule]]\nmatch.app_id = \"^foot$\"\n"
+      "drag_opacity = 0.5\n"
+      "title_bar_height = 40\n"
+      "title_bar_font = \"monospace 11\"\n"
+      "title_bar_title_align = \"center\"\n"
+      "title_bar_button_position = \"left\"\n"
+      "title_bar_button_corner_radius = 4\n"
+      "title_bar_button_size = 18\n"
+      "title_bar_button_gap = 6\n"
+      "title_bar_button_padding = 10\n"
+      "title_bar_button_glyph = \"always\"\n"
+      "title_bar_button_glyph_size = 10\n"
+      "title_bar_button_glyph_stroke = 1.5\n"
+      "title_bar_button_background = false\n"
+  );
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  const auto& rule = store.config().windowRules[0];
+  CHECK(rule.dragOpacity && *rule.dragOpacity == 0.5);
+  CHECK(rule.titleBarHeight && *rule.titleBarHeight == 40);
+  CHECK(rule.titleBarFont && *rule.titleBarFont == "monospace 11");
+  CHECK(rule.titleBarTitleAlign && *rule.titleBarTitleAlign == umbriel::TitleAlign::Center);
+  CHECK(rule.titleBarButtonPosition && *rule.titleBarButtonPosition == umbriel::TitleBarButtonSide::Left);
+  CHECK(rule.titleBarButtonCornerRadius && *rule.titleBarButtonCornerRadius == 4);
+  CHECK(rule.titleBarButtonSize && *rule.titleBarButtonSize == 18);
+  CHECK(rule.titleBarButtonGap && *rule.titleBarButtonGap == 6);
+  CHECK(rule.titleBarButtonPadding && *rule.titleBarButtonPadding == 10);
+  CHECK(rule.titleBarButtonGlyph && *rule.titleBarButtonGlyph == umbriel::TitleBarButtonGlyph::Always);
+  CHECK(rule.titleBarButtonGlyphSize && *rule.titleBarButtonGlyphSize == 10);
+  CHECK(rule.titleBarButtonGlyphStroke && *rule.titleBarButtonGlyphStroke == 1.5);
+  CHECK(rule.titleBarButtonBackground && !*rule.titleBarButtonBackground);
+}
+
 // Colors are recognized only inside [colors]; anywhere else they are ordinary
 // unknown keys.
 UMBRIEL_TEST(colorKeysOutsideTheColorsSectionAreUnknown) {

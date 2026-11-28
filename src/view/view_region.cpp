@@ -23,9 +23,8 @@ namespace umbriel {
                                             : resolveGlobalLayout(config());
     const wlr_box tile = windowRegionBox(floatingMarginArea(usable, &resolved), region, resolved.totalGap);
     // Region placement leaves maximize-to-edges, which makes the title bar visible again.
-    const int bar = wantsTitleBar(m_titleBarMode.value_or(config().appearance.titleBar.mode))
-        ? config().appearance.titleBar.height
-        : 0;
+    const int bar =
+        wantsTitleBar(m_titleBarMode.value_or(config().appearance.titleBar.mode)) ? m_titleBarStyle.height : 0;
     if (tile.width <= 0 || tile.height <= bar) {
       return std::nullopt;
     }

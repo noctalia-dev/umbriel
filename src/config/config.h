@@ -517,6 +517,21 @@ namespace umbriel {
     std::optional<TitleBarMode> titleBar;
     // Overrides [appearance.title_bar] buttons, read from the title outward.
     std::optional<std::vector<TitleBarButton>> titleBarButtons;
+    // Overrides the remaining [appearance.title_bar] fields for windows this rule matches.
+    std::optional<int> titleBarHeight;
+    std::optional<std::string> titleBarFont;
+    std::optional<TitleAlign> titleBarTitleAlign;
+    std::optional<TitleBarButtonSide> titleBarButtonPosition;
+    std::optional<int> titleBarButtonCornerRadius;
+    std::optional<int> titleBarButtonSize;
+    std::optional<int> titleBarButtonGap;
+    std::optional<int> titleBarButtonPadding;
+    std::optional<TitleBarButtonGlyph> titleBarButtonGlyph;
+    std::optional<int> titleBarButtonGlyphSize;
+    std::optional<double> titleBarButtonGlyphStroke;
+    std::optional<bool> titleBarButtonBackground;
+    // Overrides [appearance] drag_opacity for windows this rule matches.
+    std::optional<double> dragOpacity;
     // Overrides [colors.border] for windows this rule matches.
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
@@ -588,6 +603,19 @@ namespace umbriel {
           && blurOptimized == other.blurOptimized
           && titleBar == other.titleBar
           && titleBarButtons == other.titleBarButtons
+          && titleBarHeight == other.titleBarHeight
+          && titleBarFont == other.titleBarFont
+          && titleBarTitleAlign == other.titleBarTitleAlign
+          && titleBarButtonPosition == other.titleBarButtonPosition
+          && titleBarButtonCornerRadius == other.titleBarButtonCornerRadius
+          && titleBarButtonSize == other.titleBarButtonSize
+          && titleBarButtonGap == other.titleBarButtonGap
+          && titleBarButtonPadding == other.titleBarButtonPadding
+          && titleBarButtonGlyph == other.titleBarButtonGlyph
+          && titleBarButtonGlyphSize == other.titleBarButtonGlyphSize
+          && titleBarButtonGlyphStroke == other.titleBarButtonGlyphStroke
+          && titleBarButtonBackground == other.titleBarButtonBackground
+          && dragOpacity == other.dragOpacity
           && borderColorFocused == other.borderColorFocused
           && borderColorUnfocused == other.borderColorUnfocused
           && borderColorOuter == other.borderColorOuter
@@ -640,6 +668,19 @@ namespace umbriel {
     std::optional<bool> blurOptimized;
     std::optional<TitleBarMode> titleBar;
     std::optional<std::vector<TitleBarButton>> titleBarButtons;
+    std::optional<int> titleBarHeight;
+    std::optional<std::string> titleBarFont;
+    std::optional<TitleAlign> titleBarTitleAlign;
+    std::optional<TitleBarButtonSide> titleBarButtonPosition;
+    std::optional<int> titleBarButtonCornerRadius;
+    std::optional<int> titleBarButtonSize;
+    std::optional<int> titleBarButtonGap;
+    std::optional<int> titleBarButtonPadding;
+    std::optional<TitleBarButtonGlyph> titleBarButtonGlyph;
+    std::optional<int> titleBarButtonGlyphSize;
+    std::optional<double> titleBarButtonGlyphStroke;
+    std::optional<bool> titleBarButtonBackground;
+    std::optional<double> dragOpacity;
     std::optional<std::array<float, 4>> borderColorFocused;
     std::optional<std::array<float, 4>> borderColorUnfocused;
     std::optional<std::array<float, 4>> borderColorOuter;

@@ -141,6 +141,14 @@ namespace umbriel {
     updateBlur();
   }
 
+  void SsdFrame::setStyle(const Config::Appearance::TitleBar& style) {
+    if (m_style == style) {
+      return;
+    }
+    m_style = style;
+    redraw();
+  }
+
   void SsdFrame::updateBlur() {
     const auto& cfg = config().appearance.blur;
     const auto& colors = config().colors.titleBar;
@@ -203,7 +211,7 @@ namespace umbriel {
   }
 
   std::span<const TitleBarButton> SsdFrame::visibleButtons() const {
-    const auto& style = config().appearance.titleBar;
+    const auto& style = m_style;
     return style.buttonGlyph != TitleBarButtonGlyph::Never || style.buttonBackground
         ? std::span<const TitleBarButton>(m_buttons)
         : std::span<const TitleBarButton>();
@@ -220,7 +228,7 @@ namespace umbriel {
       }
       return;
     }
-    const auto& style = config().appearance.titleBar;
+    const auto& style = m_style;
     const int size = titleBarButtonDiameter(m_geometry.titleBarHeight, style.buttonSize);
     const TitleBarGlyph glyph = titleBarGlyph(size, style.buttonGlyphSize, style.buttonGlyphStroke);
     const float scale = std::max(1.0F, m_geometry.scale);
@@ -262,7 +270,7 @@ namespace umbriel {
 
   void SsdFrame::updateColors() {
     const auto& colors = config().colors.titleBar;
-    const auto& style = config().appearance.titleBar;
+    const auto& style = m_style;
     const bool backgrounds = style.buttonBackground;
     float color[4];
     const auto& background = m_focused ? colors.background : colors.backgroundUnfocused;
@@ -354,7 +362,7 @@ namespace umbriel {
     wlr_scene_rect_set_clipped_region(
         m_background, frameClip(m_background->node.x, m_background->node.y, m_opaqueBorderInset)
     );
-    const auto& style = config().appearance.titleBar;
+    const auto& style = m_style;
     const int radius = nestedRadius(g.cornerRadius, g.borderInset);
     TitleBarLayout parts =
         titleBarLayout(g.contentWidth, h, style.buttonPosition, visibleButtons(), style.buttonGeometry(), radius);
@@ -427,7 +435,7 @@ namespace umbriel {
     if (m_preview || m_geometry.suppressed || (!m_tree->node.enabled && !m_gripTree->node.enabled)) {
       return {};
     }
-    const auto& style = config().appearance.titleBar;
+    const auto& style = m_style;
     return ssdFramePointAt(
         m_geometry.contentWidth, m_geometry.contentHeight, m_geometry.titleBarHeight, m_geometry.borderInset,
         m_resizable, style.buttonPosition, visibleButtons(), style.buttonGeometry(), x, y,
@@ -498,6 +506,7 @@ namespace umbriel {
       frame->setFocused(m_focused);
       frame->setOpaqueBorderInset(m_opaqueBorderInset);
       frame->setBlurOptions(m_blurOptions);
+      frame->setStyle(m_style);
       frame->reloadConfig();
     }
   }

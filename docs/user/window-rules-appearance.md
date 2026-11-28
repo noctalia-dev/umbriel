@@ -15,6 +15,7 @@ blur = true
 | Key                 | Default | Description                                                                               |
 | ------------------- | ------- | ----------------------------------------------------------------------------------------- |
 | `opacity`           | `1.0`   | Surface opacity, 0.0 to 1.0.                                                              |
+| `drag_opacity`      | global  | Override `appearance.drag_opacity`, 0.0 to 1.0.                                           |
 | `blur`              | off     | Blur behind the window, including a translucent Umbriel title bar.                        |
 | `blur_popups`       | off     | Also blur the window's popups. Popups always blur the live content behind them.           |
 | `blur_ignore_alpha` | `0.0`   | Skip blur where the content is more transparent than this, 0.0 to 1.0.                    |
@@ -33,7 +34,19 @@ blur = true
 | `corner_radius`          | global  | Override `appearance.corner_radius`, 0 to 100.                                                                                  |
 | `shadow`                 | global  | Override `appearance.shadow.enabled`.                                                                                           |
 | `title_bar`              | global  | `"on"`, `"negotiated"`, `"forced"`, or `"off"`; overrides `appearance.title_bar.mode`.                                          |
-| `title_bar_buttons`      | global  | Override `appearance.title_bar.buttons`: any of `"minimize"`, `"maximize"`, `"close"` from the title outward, or `[]` for none. |
+| `title_bar_buttons`              | global  | Override `appearance.title_bar.buttons`: any of `"minimize"`, `"maximize"`, `"close"` from the title outward, or `[]` for none. |
+| `title_bar_height`               | global  | Override `appearance.title_bar.height`, 16 to 128.                                                                              |
+| `title_bar_font`                 | global  | Override `appearance.title_bar.font`.                                                                                           |
+| `title_bar_title_align`          | global  | Override `appearance.title_bar.title_align` (`"left"`, `"center"`, `"right"`).                                                  |
+| `title_bar_button_position`      | global  | Override `appearance.title_bar.button_position` (`"left"`, `"right"`).                                                          |
+| `title_bar_button_corner_radius` | global  | Override `appearance.title_bar.button_corner_radius`, -1 to 100.                                                                |
+| `title_bar_button_size`          | global  | Override `appearance.title_bar.button_size`, -1 to 128.                                                                         |
+| `title_bar_button_gap`           | global  | Override `appearance.title_bar.button_gap`, 0 to 100.                                                                           |
+| `title_bar_button_padding`       | global  | Override `appearance.title_bar.button_padding`, -1 to 100.                                                                      |
+| `title_bar_button_glyph`         | global  | Override `appearance.title_bar.button_glyph` (`"always"`, `"hover"`, `"never"`).                                                |
+| `title_bar_button_glyph_size`    | global  | Override `appearance.title_bar.button_glyph_size`, -1 to 128.                                                                   |
+| `title_bar_button_glyph_stroke`  | global  | Override `appearance.title_bar.button_glyph_stroke`, -1.0 to 16.0.                                                              |
+| `title_bar_button_background`    | global  | Override `appearance.title_bar.button_background`.                                                                              |
 
 ### Effects
 

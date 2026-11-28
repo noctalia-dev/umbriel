@@ -743,6 +743,23 @@ namespace umbriel {
       m_titleBarButtons = rule.titleBarButtons;
       syncTitleBarButtons();
     }
+    const Config::Appearance::TitleBar titleBarStyle = resolveTitleBarStyle(config().appearance.titleBar, rule);
+    if (m_titleBarStyle != titleBarStyle) {
+      const bool heightChanged = m_titleBarStyle.height != titleBarStyle.height;
+      m_titleBarStyle = titleBarStyle;
+      syncTitleBarStyle();
+      if (heightChanged) {
+        refreshTitleBar();
+      }
+    }
+    m_ruleDragOpacity = rule.dragOpacity;
+    if (m_server->cursor() != nullptr && m_server->cursor()->isDraggingView(this)) {
+      const float targetDragOpacity = dragOpacity();
+      if (m_dragOpacity != targetDragOpacity) {
+        m_dragOpacity = targetDragOpacity;
+        setFadeAlpha(m_fadeAlpha);
+      }
+    }
     // Tile spacing stays on the global border width, so a decoration change redraws this window without an arrange.
     const bool ringChanged = m_decoration.applyRule(rule);
     const auto resolve = [&](EffectKind kind, const std::string& fallback, const std::optional<std::string>& selected) {

@@ -398,7 +398,7 @@ namespace umbriel {
 
   void View::enterDragPresentation() {
     cancelPositionAnimation();
-    m_dragOpacity = config().appearance.dragOpacity;
+    m_dragOpacity = dragOpacity();
     // The insert hint sits below the dragged window, out of reach of the cached background blur.
     m_decoration.setBlurLive(true);
     if (m_ssdFrame != nullptr) {
