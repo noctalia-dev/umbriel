@@ -46,11 +46,13 @@ struct wlr_xwayland_surface_configure_event;
 namespace umbriel {
 
   class Server;
+  class Output;
   class SsdFrame;
   class ScratchpadManager;
   class ColorManager;
   class Workspace;
   enum class LayoutAttachOrigin;
+  struct OutputIdentity;
   struct ResolvedWindowRule;
   struct WorkspaceLaunchAnchor;
   struct DisplacedWorkspace;
@@ -457,6 +459,8 @@ namespace umbriel {
     // Re-derive the surface clip from committed state alone (tile geometry when tiled, none otherwise), for the paths
     // that leave presentation-driven cropping behind: map, drag entry, drag drop.
     void resetSurfaceClip();
+    // Keep the isolated toplevel capture scene clipped to the window's committed content bounds.
+    void syncCaptureClip();
     void setFadeAlpha(float alpha);
     void cancelFadeAnimation();
     void cancelPositionAnimation();
@@ -514,8 +518,9 @@ namespace umbriel {
     bool animatesOn(const Output* output) const override;
 
   private:
-    // `withShadow` copies the shadow.
-    CloseSnapshotId captureSnapshot(bool held, bool withShadow);
+    // `withShadow` copies the shadow. `resolvedWorkspace` is the workspace `handleUnmap` resolved before an attached
+    // dialog loses its link; null falls back to this view's own workspace.
+    CloseSnapshotId captureSnapshot(bool held, bool withShadow, Workspace* resolvedWorkspace = nullptr);
     friend class Cursor;
     friend class ScratchpadManager;
     friend class ColorManager;
@@ -681,7 +686,9 @@ namespace umbriel {
     void watchViewSurfaceTree(wlr_surface* root, wlr_subsurface* attachment = nullptr);
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
-    [[nodiscard]] CloseSnapshotId beginCloseAnimation();
+    // `resolvedWorkspace` is the workspace the closing window was drawn in, resolved before an attached dialog loses
+    // its link; null falls back to this view's own.
+    [[nodiscard]] CloseSnapshotId beginCloseAnimation(Workspace* resolvedWorkspace);
     // A frozen copy of this view's content and border, held over it until Server::releaseCloseSnapshot. The live view
     // stays under it at the same box and keeps drawing its own shadow, so the copy takes none.
     [[nodiscard]] CloseSnapshotId captureHeldSnapshot();
@@ -874,8 +881,16 @@ namespace umbriel {
     // Applies or undoes the alone size effect after the workspace's tiled set changes.
     bool notifyAloneStateChanged();
     // Resolves the rules with `alone` forced, so the alone effect can compare both outcomes, and so the opening paths
-    // can read the alone rules before the view is in the layout.
-    ResolvedWindowRule resolveRulesWithAlone(bool alone) const;
+    // can read the alone rules before the view is in the layout. `output` selects what `match.output` tests; null
+    // resolves against the window's current output.
+    ResolvedWindowRule resolveRulesWithAlone(bool alone, const Output* output = nullptr) const;
+    // Opening rules resolved against the output the window is about to open on. Placement rules pick that output
+    // and `match.output` rules pick the placement, so resolution iterates until the prediction settles.
+    ResolvedWindowRule resolveRulesForOpening(WindowRuleState state) const;
+    // The output the placement rules in `rule` would open this window on, mirroring the map-time attach order.
+    Output* predictedRuleOutput(const ResolvedWindowRule& rule) const;
+    // The identity `match.output` tests: `output`, or the window's current output when null.
+    std::optional<OutputIdentity> ruleOutputIdentity(const Output* output = nullptr) const;
     ResolvedWindowRule aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
     void revertAloneRuleEffects();
@@ -907,9 +922,12 @@ namespace umbriel {
     std::optional<std::string> m_rulesXdgTag;
     ContentType m_rulesContentType = ContentType::None;
     WindowRuleState m_rulesState;
+    // `match.output` resolves against the window's output, so it is part of the resolution key too.
+    Output* m_rulesOutput = nullptr;
     // The state applyDynamicRules last applied effects for. Any resolvedRules() caller refreshes the cache above, so
     // only this tells a transition whether the effects on screen still match the window's state.
     WindowRuleState m_appliedRuleState;
+    Output* m_appliedRuleOutput = nullptr;
     // Alone effects: one of the four size effects applies while the window is alone, and the window remembers which
     // one to undo once it is not alone anymore.
     bool m_aloneEffectsActive = false;

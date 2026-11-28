@@ -2,6 +2,7 @@
 #include "input/cursor.h"
 #include "input/seat.h"
 #include "layer/layer_surface.h"
+#include "layout/layout.h"
 #include "layout/scrolling.h"
 #include "output/output.h"
 #include "overview/overview.h"
@@ -610,9 +611,12 @@ namespace umbriel {
     if (!current) {
       return;
     }
-    // The same 0.1 fraction floor the fraction path enforces, so a hint-less
-    // client cannot collapse to a single pixel.
-    const double target = std::clamp(*current + delta, 0.1, 1.0);
+    // The same step rule as the fraction path: a 0.1 floor so a hint-less client cannot collapse to a single pixel,
+    // and a float already past a limit never moves against the step.
+    const auto target = stepFraction(*current, delta, 1.0);
+    if (!target) {
+      return;
+    }
     const SizeHints hints = sizeHints();
     const auto [basisWidth, basisHeight] = floatingSize();
     // A pending size and the position animation target form one logical box.
@@ -624,8 +628,8 @@ namespace umbriel {
         .width = basisWidth,
         .height = basisHeight,
     };
-    const int width = widthAxis ? clampWidth(floatingFractionSize(target, usable.width), hints) : basisWidth;
-    const int height = widthAxis ? basisHeight : clampHeight(floatingFractionSize(target, usable.height), hints);
+    const int width = widthAxis ? clampWidth(floatingFractionSize(*target, usable.width), hints) : basisWidth;
+    const int height = widthAxis ? basisHeight : clampHeight(floatingFractionSize(*target, usable.height), hints);
     if (width <= 0 || height <= 0) {
       return;
     }

@@ -17,7 +17,7 @@ pointer() {
 
 spawn_client() {
   local title=$1
-  "$CLIENT" "$title" 1200 700 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
+  FOLLOW_CONFIGURES=1 "$CLIENT" "$title" 1200 700 > "$UMBRIEL_RUNTIME_DIR/$title.log" 2>&1 &
 }
 
 wait_for_count() {
@@ -79,8 +79,8 @@ wait_for_count 2
 spawn_client "dwindle-close-focused"
 wait_for_count 3
 
-# Let the one-millisecond opening animation settle before using target positions for hit-testing.
-sleep 0.1
+# Let the opening animation and the clients' redraws at their tile sizes settle before hit-testing target positions.
+"$UMBRIEL" settle
 windows=$("$UMBRIEL" windows --json)
 other_id=$(jq -r '.[] | select(.title == "dwindle-close-pointer") | .id' <<< "$windows")
 predecessor_id=$(jq -r '.[] | select(.title == "dwindle-close-predecessor") | .id' <<< "$windows")
@@ -126,8 +126,8 @@ for title in dwindle-close-a dwindle-close-b dwindle-reveal-predecessor dwindle-
   wait_for_count "$count"
 done
 
-# Let the opening animation settle before reading target positions for hit-testing.
-sleep 0.1
+# Let the opening animation and the clients' redraws at their tile sizes settle before hit-testing target positions.
+"$UMBRIEL" settle
 windows=$("$UMBRIEL" windows --json)
 closing_id=$(jq -r '.[] | select(.title == "dwindle-close-under-pointer") | .id' <<< "$windows")
 expander_id=$(jq -r '.[] | select(.title == "dwindle-close-expander") | .id' <<< "$windows")

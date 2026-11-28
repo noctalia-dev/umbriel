@@ -7,6 +7,7 @@
 #include "input/toplevel_drag.h"
 #include "layer/layer_surface.h"
 #include "layout/scrolling.h"
+#include "output/identity.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/effect_registry.h"
@@ -23,6 +24,7 @@ extern "C" {
 // clang-format off
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <utility>
 #include "wlr.h"
 // clang-format on
@@ -211,6 +213,94 @@ namespace umbriel {
     self->roleDestroyed();
   }
 
+  Output* View::predictedRuleOutput(const ResolvedWindowRule& rule) const {
+    // An attached dialog takes its parent's placement, so its output is wherever the parent lives. Before map
+    // wantsAttach() cannot run yet, so a requested parent stands in for it.
+    if (attached()) {
+      return currentOutput();
+    }
+    if (openingParented() && config().general.attachModalDialogs) {
+      if (const View* parent = shellParent(); parent != nullptr) {
+        return parent->currentOutput();
+      }
+    }
+    Output* preferred = m_server->outputFromWlr(m_server->preferredOutput());
+    const bool launchRuleOverride = m_launchPlacementPending
+        && (rule.defaultOutput.has_value() || rule.defaultWorkspace.has_value() || rule.defaultScratchpad.has_value());
+    Workspace* target = nullptr;
+    if (!launchRuleOverride) {
+      if (m_workspace != nullptr) {
+        target = m_workspace;
+      } else if (m_launchWorkspace != nullptr && m_launchWorkspace->workspace != nullptr) {
+        target = m_launchWorkspace->workspace;
+      }
+    }
+    if (target == nullptr) {
+      WorkspaceGroup* preferredGroup = preferred != nullptr ? preferred->workspaceGroup() : nullptr;
+      WorkspaceGroup* group = windowRuleWorkspaceGroup(*m_server, rule, preferredGroup);
+      target = windowRuleWorkspace(group, rule);
+    }
+    Output* output = target != nullptr && target->group() != nullptr ? target->group()->output() : preferred;
+    ScratchpadManager* scratchpadManager = m_server->scratchpadManager();
+    const std::string_view scratchpad = rule.defaultScratchpad
+        ? std::string_view(*rule.defaultScratchpad)
+        : (m_launchPlacementPending && !launchRuleOverride && !rule.defaultPinned.value_or(false)
+               ? std::string_view(m_launchScratchpad)
+               : std::string_view{});
+    if (!scratchpad.empty() && scratchpadManager != nullptr && scratchpadManager->hasScratchpad(scratchpad)) {
+      output = scratchpadManager->presentationOutput(scratchpad, output);
+    }
+    return output;
+  }
+
+  ResolvedWindowRule View::resolveRulesForOpening(WindowRuleState state) const {
+    const auto resolveForOutput = [&](const Output* output) {
+      std::optional<OutputIdentity> identity;
+      if (output != nullptr) {
+        identity = output->identity();
+      }
+      return resolveWindowRules(
+          config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, state, m_server->uptimeMs(),
+          identity ? &*identity : nullptr
+      );
+    };
+
+    // The first pass runs without an output: the placement rules alone pick where the window opens, which is the
+    // output `match.output` then tests. Follow the placement each resolution predicts until it settles. Configs whose
+    // output rules move the window in a circle have no fixed point, so remember the first move and fall back to the
+    // rules on its destination with that move's placement fields preserved.
+    Output* openingOutput = predictedRuleOutput(resolveForOutput(nullptr));
+    Output* current = openingOutput;
+    std::set<Output*> visited;
+    ResolvedWindowRule openingRule;
+    Output* openingDestination = nullptr;
+    while (true) {
+      if (!visited.insert(current).second) {
+        break;
+      }
+      ResolvedWindowRule candidate = resolveForOutput(current);
+      Output* next = predictedRuleOutput(candidate);
+      if (current == openingOutput) {
+        openingRule = candidate;
+        openingDestination = next;
+      }
+      if (next == current) {
+        return candidate;
+      }
+      if (visited.contains(next)) {
+        break;
+      }
+      current = next;
+    }
+
+    ResolvedWindowRule fallback = resolveForOutput(openingDestination);
+    fallback.defaultOutput = openingRule.defaultOutput;
+    fallback.defaultWorkspace = openingRule.defaultWorkspace;
+    fallback.defaultScratchpad = openingRule.defaultScratchpad;
+    fallback.defaultPinned = openingRule.defaultPinned;
+    return fallback;
+  }
+
   void View::handleMap() {
     m_hasEverMapped = true;
     // The XDG map signal is emitted before the root surface commit signal.
@@ -257,10 +347,7 @@ namespace umbriel {
     m_initialRuleState = ruleState();
     m_initialRuleState.focused = false;
     m_initialRuleState.alone = false;
-    ResolvedWindowRule rule = resolveWindowRules(
-        config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, m_initialRuleState,
-        m_server->uptimeMs()
-    );
+    ResolvedWindowRule rule = resolveRulesForOpening(m_initialRuleState);
     // spawn-floating acts as a default_floating rule; an explicit default_floating rule decides instead.
     if (m_launchFloating && !rule.defaultFloating) {
       rule.defaultFloating = true;
@@ -550,6 +637,12 @@ namespace umbriel {
   }
 
   void View::handleUnmap(bool animateClose) {
+    // Resolve the pad before the attachment links below are released: an attached dialog reaches its pad through its
+    // placement root, and `unlinkAttachment()` drops that link.
+    Workspace* snapshotWorkspace = m_workspace;
+    if (snapshotWorkspace == nullptr && m_server->scratchpadManager() != nullptr) {
+      snapshotWorkspace = m_server->scratchpadManager()->workspaceFor(this);
+    }
     m_server->seat()->toplevelDrags().unmapped(this);
     if (m_effectSelectionIdle != nullptr) {
       wl_event_source_remove(m_effectSelectionIdle);
@@ -623,7 +716,7 @@ namespace umbriel {
       overview->onViewUnmapped(this, animateClose);
     }
     // Replacement focus can hide the closing tab. Capture while its current visibility still decides eligibility.
-    const CloseSnapshotId snapshot = animateClose ? beginCloseAnimation() : kInvalidCloseSnapshot;
+    const CloseSnapshotId snapshot = animateClose ? beginCloseAnimation(snapshotWorkspace) : kInvalidCloseSnapshot;
     // After the close capture, so a minimized window closes unseen. The live node is not re-enabled: a remap shows the
     // window normally.
     if (m_minimized) {
@@ -669,8 +762,8 @@ namespace umbriel {
     }
     cancelFadeAnimation();
     // The workspace owns the snapshot's visibility and its slide translation from here.
-    if (snapshot != kInvalidCloseSnapshot && m_workspace != nullptr) {
-      m_workspace->trackCloseSnapshot(snapshot, m_presentedBox);
+    if (snapshot != kInvalidCloseSnapshot && snapshotWorkspace != nullptr) {
+      snapshotWorkspace->trackCloseSnapshot(snapshot, m_presentedBox);
     }
     cancelSizeAnimation();
     m_tiledSizeRequest.reset();
@@ -761,6 +854,7 @@ namespace umbriel {
     m_ruleBlur.snap(0.0);
     m_outerBorderColorAnim.snap(m_outerBorderColorAnim.target());
     m_appliedRuleState = {};
+    m_appliedRuleOutput = nullptr;
     // An unmapped window keeps no layout state. The detach released its alone effect when the column survives it.
     m_aloneEffectsActive = false;
     m_aloneAction = AloneAction::None;
@@ -835,20 +929,23 @@ namespace umbriel {
     }
   }
 
+  void View::syncCaptureClip() {
+    if (m_captureScene == nullptr) {
+      return;
+    }
+    // Same bounds as on-screen presentation, so a stale window geometry does not crop the capture. Client subsurfaces
+    // stay visible and buffer content outside the window is excluded; window-owned popups are separate children.
+    const wlr_box captureClip = committedContentBox();
+    wlr_scene_subsurface_tree_set_clip(&m_captureScene->tree.node, &captureClip);
+  }
+
   void View::handleCommit(bool reconfigureOpeningState) {
     UMBRIEL_ZONE("View::handleCommit");
     // Client transparency can change on any commit. An unmap commit reaches here after handleUnmap hid the backdrop.
     if (m_mapped) {
       m_presentation.setFullscreenOpaque(fullscreenOpaque());
     }
-    if (m_captureScene != nullptr) {
-      // Restrict the capture to the window geometry. Client subsurfaces
-      // remain visible, while buffer content outside the declared window is
-      // excluded. Window-owned popups are separate children and remain part
-      // of the isolated scene.
-      const wlr_box captureClip = geometryBox();
-      wlr_scene_subsurface_tree_set_clip(&m_captureScene->tree.node, &captureClip);
-    }
+    syncCaptureClip();
     syncXwaylandShape();
     if (openingConfigurePending() || reconfigureOpeningState) {
       m_openingFloatingRuleSize = {};
@@ -857,9 +954,7 @@ namespace umbriel {
       openingState.focused = false;
       openingState.floating = !looksTiled();
       openingState.alone = false;
-      ResolvedWindowRule rule = resolveWindowRules(
-          config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, openingState, m_server->uptimeMs()
-      );
+      ResolvedWindowRule rule = resolveRulesForOpening(openingState);
       if (m_launchFloating && !rule.defaultFloating) {
         rule.defaultFloating = true;
       }
@@ -916,7 +1011,7 @@ namespace umbriel {
       // maximize-to-edges still need this window to be the only tile in that column. A state that neither the client
       // nor the not-alone rules asked for is recorded as the alone rules' own, for map to hand to that effect.
       const bool openingSoleTiled = target == nullptr || target->isOnlyTiledView(this);
-      ResolvedWindowRule alone = resolveRulesWithAlone(true);
+      ResolvedWindowRule alone = resolveRulesWithAlone(true, predictedRuleOutput(rule));
       const bool openingAlone = wantTiled
           && (target == nullptr
               || target->wouldBeAloneInLayout(
@@ -1097,6 +1192,10 @@ namespace umbriel {
     }
     updateForeignState();
     if (Output* output = currentOutput()) {
+      // An output counts a view as fullscreen until its client commits the exit, so that commit changes the VRR policy.
+      if (m_committedFullscreen != currentFullscreen()) {
+        output->updateVrr();
+      }
       output->updateHdr();
     }
     // The commit that leaves fullscreen uncovers top-layer surfaces, so an exclusive one takes the seat back.

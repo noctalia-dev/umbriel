@@ -140,6 +140,7 @@ namespace umbriel {
       wlr_xwayland_surface_set_maximized(m_xsurface, maximized, maximized);
     }
     syncSsdFrame();
+    refreshStateRuleEffects();
   }
 
   void View::requestClose() {

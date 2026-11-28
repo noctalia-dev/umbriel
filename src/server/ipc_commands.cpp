@@ -1659,7 +1659,7 @@ namespace umbriel {
       return true;
     }
     OutputMode parsed;
-    if (!parseOutputMode(args[1], parsed)) {
+    if (!parseOutputMode(args[1], parsed, false)) {
       error = "invalid mode: " + args[1] + " (use WIDTHxHEIGHT[@HZ])";
       return false;
     }
