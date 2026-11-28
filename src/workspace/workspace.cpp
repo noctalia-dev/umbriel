@@ -2444,30 +2444,28 @@ namespace umbriel {
 
   bool Workspace::modifyFocusedWidth(double delta) {
     if (m_focusedView != nullptr && m_focusedView->floating()) {
-      if (const auto current = focusedFloatingFraction(true)) {
-        return resizeFocusedFloating(std::clamp(*current + delta, 0.1, 1.0), std::nullopt);
-      }
-      return false;
+      const auto current = focusedFloatingFraction(true);
+      const auto stepped = current ? stepFraction(*current, delta, 1.0) : std::nullopt;
+      return stepped && resizeFocusedFloating(stepped, std::nullopt);
     }
     const int column = m_layout->columnOf(m_focusedView);
     if (column < 0) {
       return false;
     }
-    // Clamp here, not in the layouts: ScrollingLayout clamps internally but
-    // DwindleLayout does not, and both must land in [0.1, the layout's ceiling].
-    return setFocusedWidth(std::clamp(m_layout->widthFraction(column) + delta, 0.1, m_layout->maxExtentFraction()));
+    // Clamp here, not in the layouts: ScrollingLayout clamps internally but DwindleLayout does not.
+    const auto stepped = stepFraction(m_layout->widthFraction(column), delta, m_layout->maxExtentFraction());
+    return stepped && setFocusedWidth(*stepped);
   }
 
   bool Workspace::modifyFocusedHeight(double delta) {
     if (m_focusedView != nullptr && m_focusedView->floating()) {
-      if (const auto current = focusedFloatingFraction(false)) {
-        return resizeFocusedFloating(std::nullopt, std::clamp(*current + delta, 0.1, 1.0));
-      }
-      return false;
+      const auto current = focusedFloatingFraction(false);
+      const auto stepped = current ? stepFraction(*current, delta, 1.0) : std::nullopt;
+      return stepped && resizeFocusedFloating(std::nullopt, stepped);
     }
-    // Clamp here, not in the layouts: DwindleLayout does not clamp the overall
-    // fraction, and every layout must land in [0.1, 1.0].
-    return setFocusedHeight(std::clamp(m_layout->heightFraction(m_focusedView) + delta, 0.1, 1.0));
+    // Clamp here, not in the layouts: DwindleLayout does not clamp the overall fraction.
+    const auto stepped = stepFraction(m_layout->heightFraction(m_focusedView), delta, 1.0);
+    return stepped && setFocusedHeight(*stepped);
   }
 
   bool Workspace::resizeFocusedEdge(uint32_t edges, double delta) {

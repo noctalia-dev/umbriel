@@ -229,8 +229,8 @@ namespace umbriel {
     bool cycleFocusedHeight(int direction);
     bool setFocusedWidth(double fraction);
     bool centerFocusedColumn();
-    // Incremental width change: apply `delta` to the focused column's current
-    // width fraction, clamped to [0.1, 1.0].
+    // Incremental width change: step the focused column's current width
+    // fraction by `delta`, as `stepFraction` does.
     bool modifyFocusedWidth(double delta);
     bool setFocusedHeight(double fraction);
     bool modifyFocusedHeight(double delta);
