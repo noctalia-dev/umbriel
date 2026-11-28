@@ -263,6 +263,13 @@ namespace umbriel {
     };
   }
 
+  size_t Overview::rowForWorkspace(const OutputState& state, size_t workspaceIndex) {
+    WorkspaceGroup* group = state.output->workspaceGroup();
+    Workspace* workspace = group != nullptr ? group->workspaceAt(workspaceIndex) : nullptr;
+    const auto it = std::ranges::find(state.workspaceRows, workspace);
+    return it == state.workspaceRows.end() ? 0 : static_cast<size_t>(it - state.workspaceRows.begin());
+  }
+
   void Overview::layoutCard(Card& card, const PreviewMetrics& metrics, double workspaceScroll, const View* liveTarget) {
     View* view = card.view;
     if (card.shadowTree != nullptr) {
@@ -581,6 +588,9 @@ namespace umbriel {
 
   void Overview::layoutOutput(OutputState& state) {
     UMBRIEL_ZONE("Overview::layoutOutput");
+    if (WorkspaceGroup* group = state.output->workspaceGroup()) {
+      syncWorkspaceRows(state, *group);
+    }
     PreviewMetrics metrics{};
     if (!previewMetrics(state, *m_server, zoom(), metrics)) {
       return;
@@ -1544,8 +1554,8 @@ namespace umbriel {
       }
 
       std::vector<size_t> visible;
-      visible.reserve(group->workspaceCount());
-      for (size_t index = 0; index < group->workspaceCount(); ++index) {
+      visible.reserve(state->workspaceRows.size());
+      for (size_t index = 0; index < state->workspaceRows.size(); ++index) {
         const wlr_box preview = previewBox(metrics, state->rowScroll.target(), index);
         wlr_box shown{};
         if (wlr_box_intersection(&shown, &preview, &metrics.outputBox)) {
@@ -1705,16 +1715,12 @@ namespace umbriel {
       const std::array<float, 4> backgroundTint = tint(config().colors.overview.backgroundTint, 0.0);
       state->backgroundTint = wlr_scene_rect_create(state->tree, 1, 1, backgroundTint.data());
       wlr_scene_rect_set_corner_radius(state->backgroundTint, 0);
-      state->workspaceBackgrounds.reserve(group->workspaceCount());
-      for (size_t row = 0; row < group->workspaceCount(); ++row) {
-        state->workspaceBackgrounds.push_back(createWorkspaceBackground(*state));
-      }
       state->tileShadows = wlr_scene_tree_create(state->tree);
-      state->activeWorkspaceIndex = group->active() != nullptr ? group->active()->index() : 0;
-      state->rowScroll.snap(static_cast<double>(state->activeWorkspaceIndex));
       OutputState* raw = state.get();
       m_outputs.push_back(std::move(state));
       populateCards(*raw);
+      syncWorkspaceRows(*raw, *group);
+      raw->rowScroll.snap(static_cast<double>(raw->activeWorkspaceIndex));
     }
   }
 
@@ -1787,7 +1793,7 @@ namespace umbriel {
     if (switchPick.group != nullptr) {
       if (OutputState* state = stateFor(switchPick.group->output())) {
         // Read the row after activate: reconcileDynamic may have dropped the workspace the swipe left.
-        const auto row = static_cast<double>(switchPick.target->index());
+        const auto row = static_cast<double>(rowForWorkspace(*state, switchPick.target->index()));
         state->rowScroll.snap(row + switchPick.offset);
         animateRow(*state, row, switchPick.velocity);
       }
@@ -1888,7 +1894,7 @@ namespace umbriel {
     for (const auto& state : m_outputs) {
       const WorkspaceGroup* group = state->output->workspaceGroup();
       if (group != nullptr && group->active() != nullptr) {
-        animateRow(*state, static_cast<double>(group->active()->index()));
+        animateRow(*state, static_cast<double>(rowForWorkspace(*state, group->active()->index())));
       }
     }
     startAnimation(0.0, true, releaseVelocity);
@@ -2039,7 +2045,7 @@ namespace umbriel {
       }
     }
     for (const auto& [group, offset, velocity] : carried) {
-      if (group->slideBegin(offset < 0, offset > 0)) {
+      if (group->slideBegin(offset < 0, offset > 0, config().overview.hideEmptyWorkspaces)) {
         group->slideApply(offset);
         group->slideSettle(0, velocity);
       }
@@ -2175,6 +2181,7 @@ namespace umbriel {
     if (createCard(*state, view, workspace->index()) == nullptr) {
       return;
     }
+    layoutOutput(*state);
     assignShortcuts();
   }
 
@@ -2419,8 +2426,8 @@ namespace umbriel {
     if (target == nullptr) {
       return;
     }
-    const auto row = static_cast<double>(group->active()->index());
-    target->activeWorkspaceIndex = group->active()->index();
+    syncWorkspaceRows(*target, *group);
+    const auto row = static_cast<double>(rowForWorkspace(*target, group->active()->index()));
     if (std::abs(target->rowScroll.target() - row) < 0.001 && target->rowScroll.animating()) {
       return;
     }
@@ -2458,11 +2465,10 @@ namespace umbriel {
     if (state == nullptr) {
       return;
     }
-    // Renumbering rows on one side of the active workspace must shift the filmstrip scroll by the same amount,
-    // otherwise every surviving card visibly jumps even though its workspace identity did not move.
-    if (Workspace* active = group->active()) {
-      const double delta = static_cast<double>(active->index()) - static_cast<double>(state->activeWorkspaceIndex);
-      state->activeWorkspaceIndex = active->index();
+    if (!config().overview.hideEmptyWorkspaces && group->active() != nullptr) {
+      const double delta =
+          static_cast<double>(group->active()->index()) - static_cast<double>(state->activeWorkspaceIndex);
+      state->activeWorkspaceIndex = group->active()->index();
       state->rowScroll.translate(delta);
     }
     syncWorkspaceRows(*state, *group);
@@ -2617,7 +2623,7 @@ namespace umbriel {
       }
       const bool horizontalWorkspaces = metrics.axis == WorkspaceAxis::Horizontal;
       for (size_t index = 0; index < state->workspaceBackgrounds.size(); ++index) {
-        Workspace* workspace = group->workspaceAt(index);
+        Workspace* workspace = state->workspaceRows[index];
         if (workspace == nullptr) {
           continue;
         }
@@ -2689,7 +2695,7 @@ namespace umbriel {
         continue;
       }
       const bool horizontalWorkspaces = metrics.axis == WorkspaceAxis::Horizontal;
-      const size_t previewCount = std::min(group->workspaceCount(), state->workspaceBackgrounds.size());
+      const size_t previewCount = state->workspaceRows.size();
       for (size_t index = 0; index < previewCount; ++index) {
         const wlr_box lower = previewBox(metrics, state->rowScroll.current(), index);
         // Index zero has no preceding preview. Its insertion gap begins at the output edge, so dynamic workspaces can
@@ -2715,7 +2721,7 @@ namespace umbriel {
           *outState = state.get();
         }
         if (outIndex != nullptr) {
-          *outIndex = index;
+          *outIndex = state->workspaceRows[index]->index();
         }
         if (outHintBox != nullptr) {
           // A bar across the gap: thin along the workspace axis, preview-sized across it.
@@ -2932,13 +2938,17 @@ namespace umbriel {
     if (group->active() == nullptr) {
       return false;
     }
-    const int index = static_cast<int>(group->active()->index()) + delta;
-    if (index < 0 || index >= static_cast<int>(group->workspaceCount())) {
+    OutputState* state = stateFor(output);
+    if (state == nullptr) {
+      return false;
+    }
+    const int index = static_cast<int>(rowForWorkspace(*state, group->active()->index())) + delta;
+    if (index < 0 || index >= static_cast<int>(state->workspaceRows.size())) {
       return false;
     }
     // select() lands in onWorkspaceActivated, which animates the filmstrip onto the new
     // workspace, so the caller does not have to arrange anything.
-    group->select(group->workspaceAt(static_cast<size_t>(index)));
+    group->select(state->workspaceRows[static_cast<size_t>(index)]);
     return true;
   }
 
@@ -3085,7 +3095,7 @@ namespace umbriel {
         m_navigationScale = OverviewNavigation::travelScale(1.0, settledZoom(), factor, travel.workspace);
         m_navigationStarted = true;
       }
-      const auto last = static_cast<double>(group->workspaceCount() - 1);
+      const auto last = static_cast<double>(state->workspaceRows.size() - 1);
       // snap() also stops any settle still running on this output; row animations elsewhere and the zoom continue.
       state->rowScroll.snap(
           GesturePhysics::rubberBand(
@@ -3157,7 +3167,7 @@ namespace umbriel {
       if (state == nullptr || group == nullptr || group->active() == nullptr) {
         return;
       }
-      const auto last = static_cast<double>(group->workspaceCount() - 1);
+      const auto last = static_cast<double>(state->workspaceRows.size() - 1);
       if (m_dragCard != nullptr) {
         // Settle-only while a card drag is live: snap the rows (back to where the pan started on a cancel) and
         // select nothing: the active workspace must not change under the held card. The drop then resolves under
@@ -3170,7 +3180,7 @@ namespace umbriel {
         refreshDragTarget();
         return;
       }
-      const int index = cancelled ? static_cast<int>(group->active()->index())
+      const int index = cancelled ? static_cast<int>(rowForWorkspace(*state, group->active()->index()))
                                   : GesturePhysics::stepTarget(projected, 0, static_cast<int>(last));
       // Rubber-banded travel moves the filmstrip slower than the fingers, so the release carries the visible speed.
       const double position = m_navigationStart + m_navigation.position() * m_navigationScale;
@@ -3178,12 +3188,12 @@ namespace umbriel {
                                         : m_navigation.velocity()
               * m_navigationScale
               * GesturePhysics::rubberBandDerivative(position, 0.0, last, GesturePhysics::kOverscrollLimit);
-      if (index != static_cast<int>(group->active()->index())) {
-        group->select(group->workspaceAt(static_cast<size_t>(index)));
+      if (index != static_cast<int>(rowForWorkspace(*state, group->active()->index()))) {
+        group->select(state->workspaceRows[static_cast<size_t>(index)]);
         state = stateFor(output);
       }
       if (state != nullptr) {
-        animateRow(*state, static_cast<double>(index), velocity);
+        animateRow(*state, static_cast<double>(rowForWorkspace(*state, group->active()->index())), velocity);
       }
       return;
     }
@@ -3528,11 +3538,11 @@ namespace umbriel {
     }
     OutputState* state = stateFor(&output);
     WorkspaceGroup* group = output.workspaceGroup();
-    if (state == nullptr || group == nullptr || group->workspaceCount() < 2) {
+    if (state == nullptr || group == nullptr || state->workspaceRows.size() < 2) {
       return false;
     }
     const double current = state->rowScroll.current();
-    const auto last = static_cast<double>(group->workspaceCount() - 1);
+    const auto last = static_cast<double>(state->workspaceRows.size() - 1);
     return speedPxPerSec < 0 ? current > 0 : current < last;
   }
 
@@ -3554,7 +3564,7 @@ namespace umbriel {
     }
     const double rowsPerSec = speedPxPerSec * metrics.zoom / static_cast<double>(step);
     const double current = state->rowScroll.current();
-    const auto last = static_cast<double>(group->workspaceCount() - 1);
+    const auto last = static_cast<double>(state->workspaceRows.size() - 1);
     const double next = std::clamp(current + rowsPerSec * static_cast<double>(elapsedMsec) / 1000.0, 0.0, last);
     if (next == current) {
       return false;
@@ -3699,7 +3709,8 @@ namespace umbriel {
       // Floating: map the card origin back out of the thumbnail.
       PreviewMetrics metrics{};
       if (previewMetrics(*dropState, *m_server, zoom(), metrics)) {
-        const wlr_box preview = previewBox(metrics, dropState->rowScroll.current(), target->index());
+        const wlr_box preview =
+            previewBox(metrics, dropState->rowScroll.current(), rowForWorkspace(*dropState, target->index()));
         const int x = metrics.outputBox.x + static_cast<int>(std::lround((cardBox.x - preview.x) / metrics.zoom));
         const int y = metrics.outputBox.y + static_cast<int>(std::lround((cardBox.y - preview.y) / metrics.zoom));
         if (view->workspace() != target) {
@@ -3756,7 +3767,7 @@ namespace umbriel {
       if (group == nullptr || group->active() == nullptr) {
         continue;
       }
-      const auto row = static_cast<double>(group->active()->index());
+      const auto row = static_cast<double>(rowForWorkspace(*state, group->active()->index()));
       if (std::abs(state->rowScroll.target() - row) >= 0.001) {
         animateRow(*state, row);
       }
@@ -3764,8 +3775,36 @@ namespace umbriel {
   }
 
   void Overview::syncWorkspaceRows(OutputState& state, WorkspaceGroup& group) {
-    const bool grew = state.workspaceBackgrounds.size() < group.workspaceCount();
-    while (state.workspaceBackgrounds.size() > group.workspaceCount()) {
+    if (group.active() == nullptr) {
+      return;
+    }
+    std::vector<Workspace*> rows;
+    for (size_t index = 0; index < group.workspaceCount(); ++index) {
+      Workspace* workspace = group.workspaceAt(index);
+      if (!config().overview.hideEmptyWorkspaces
+          || workspace == group.active()
+          || std::ranges::any_of(state.cards, [workspace](const auto& card) {
+               return card->view != nullptr && card->view->workspace() == workspace;
+             })) {
+        rows.push_back(workspace);
+      }
+    }
+    if (rows.empty()) {
+      return;
+    }
+    const size_t oldRow = state.activeWorkspaceIndex;
+    Workspace* oldWorkspace = oldRow < state.workspaceRows.size() ? state.workspaceRows[oldRow] : rows.front();
+    const auto oldPosition = std::ranges::find(rows, oldWorkspace);
+    const size_t preservedRow = oldPosition == rows.end()
+        ? static_cast<size_t>(std::ranges::find(rows, group.active()) - rows.begin())
+        : static_cast<size_t>(oldPosition - rows.begin());
+    if (config().overview.hideEmptyWorkspaces && !state.workspaceRows.empty()) {
+      state.rowScroll.translate(static_cast<double>(preservedRow) - static_cast<double>(oldRow));
+    }
+    state.workspaceRows = std::move(rows);
+    state.activeWorkspaceIndex = rowForWorkspace(state, group.active()->index());
+    const bool grew = state.workspaceBackgrounds.size() < state.workspaceRows.size();
+    while (state.workspaceBackgrounds.size() > state.workspaceRows.size()) {
       WorkspaceBackground background = std::move(state.workspaceBackgrounds.back());
       state.workspaceBackgrounds.pop_back();
       for (const auto& mirror : background.mirrors) {
@@ -3776,7 +3815,7 @@ namespace umbriel {
         wlr_scene_node_destroy(&background.tree->node);
       }
     }
-    while (state.workspaceBackgrounds.size() < group.workspaceCount()) {
+    while (state.workspaceBackgrounds.size() < state.workspaceRows.size()) {
       state.workspaceBackgrounds.push_back(createWorkspaceBackground(state));
     }
     if (grew) {
@@ -3784,7 +3823,7 @@ namespace umbriel {
     }
     for (const auto& card : state.cards) {
       if (card->view != nullptr && card->view->workspace() != nullptr) {
-        card->workspaceIndex = card->view->workspace()->index();
+        card->workspaceIndex = rowForWorkspace(state, card->view->workspace()->index());
       }
     }
   }

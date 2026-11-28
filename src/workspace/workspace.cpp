@@ -3728,7 +3728,7 @@ namespace umbriel {
     m_slide = {};
   }
 
-  bool WorkspaceGroup::slideBegin(bool includePrev, bool includeNext) {
+  bool WorkspaceGroup::slideBegin(bool includePrev, bool includeNext, bool skipEmpty) {
     if (m_active == nullptr) {
       return false;
     }
@@ -3756,8 +3756,24 @@ namespace umbriel {
     m_slide.extent = extent;
     m_slide.progress = start;
     const size_t idx = m_active->index();
-    m_slide.previous = (includePrev && idx > 0) ? workspaceAt(idx - 1) : nullptr;
-    m_slide.next = includeNext ? workspaceAt(idx + 1) : nullptr;
+    if (includePrev) {
+      for (size_t index = idx; index > 0;) {
+        Workspace* candidate = workspaceAt(--index);
+        if (!skipEmpty || candidate->hasViews()) {
+          m_slide.previous = candidate;
+          break;
+        }
+      }
+    }
+    if (includeNext) {
+      for (size_t index = idx + 1; index < workspaceCount(); ++index) {
+        Workspace* candidate = workspaceAt(index);
+        if (!skipEmpty || candidate->hasViews()) {
+          m_slide.next = candidate;
+          break;
+        }
+      }
+    }
     m_slide.base->beginSwitchTransition();
     if (m_slide.previous != nullptr) {
       m_slide.previous->beginSwitchTransition();

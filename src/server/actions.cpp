@@ -1614,11 +1614,17 @@ namespace umbriel {
       if (group == nullptr) {
         return true;
       }
-      Workspace* target = stepWorkspace(*group, group->active()->index(), Direction);
-      if (target == nullptr || target == group->active()) {
-        return true;
+      Workspace* target = group->active();
+      for (size_t visited = 0; visited < group->workspaceCount(); ++visited) {
+        target = stepWorkspace(*group, target->index(), Direction);
+        if (target == nullptr || target == group->active()) {
+          return true;
+        }
+        if (!config().workspaces.skipEmpty || target->hasViews()) {
+          group->select(target);
+          return true;
+        }
       }
-      group->select(target);
       return true;
     }
 

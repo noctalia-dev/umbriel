@@ -156,12 +156,11 @@ namespace umbriel {
       return {};
     }
     int delta = settle.target;
-    const size_t index = base->index();
     Workspace* target = base;
-    if (delta < 0 && index > 0) {
-      target = group->workspaceAt(index - 1);
-    } else if (delta > 0 && index + 1 < group->workspaceCount()) {
-      target = group->workspaceAt(index + 1);
+    if (delta < 0 && group->slidePrevious() != nullptr) {
+      target = group->slidePrevious();
+    } else if (delta > 0 && group->slideNext() != nullptr) {
+      target = group->slideNext();
     } else {
       delta = 0;
     }
@@ -452,13 +451,12 @@ namespace umbriel {
       } else {
         // Travel along the workspace axis switches workspaces.
         WorkspaceGroup* group = out->workspaceGroup();
-        const size_t idx = group->active()->index();
-        m_hasPrev = idx > 0;
-        m_hasNext = idx + 1 < group->workspaceCount();
-        if (!group->slideBegin(m_hasPrev, m_hasNext)) {
+        if (!group->slideBegin(true, true, config().workspaces.skipEmpty)) {
           m_state = State::Idle;
           return;
         }
+        m_hasPrev = group->slidePrevious() != nullptr;
+        m_hasNext = group->slideNext() != nullptr;
         m_switchGroup = group;
         m_switchTracker.reset();
         m_switchStart = group->slideProgress();

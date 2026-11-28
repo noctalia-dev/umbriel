@@ -13,6 +13,7 @@ scroll_factor_horizontal = 1.0
 scroll_factor_vertical = 1.0
 background_blur = true
 workspace_wallpaper = true
+hide_empty_workspaces = false
 shortcuts = true
 shortcut_keys = "1234567890"
 ```
@@ -24,10 +25,13 @@ shortcut_keys = "1234567890"
 | `scroll_factor_vertical`   | `1.0`          | Vertical gesture and wheel sensitivity.                      |
 | `background_blur`          | `true`         | Blur the desktop behind the overview.                        |
 | `workspace_wallpaper`      | `true`         | Show each output's background inside its workspace previews. |
+| `hide_empty_workspaces`    | `false`        | Hide empty inactive workspace previews.                      |
 | `shortcuts`                | `true`         | Show and accept keyboard shortcut badges.                    |
 | `shortcut_keys`            | `"1234567890"` | Preferred keys for shortcut badges.                          |
 
 Background blur uses `[appearance.blur]`. Preview backgrounds use `colors.overview.workspace_background` when wallpaper mirroring is disabled or no background surface is available.
+
+When `hide_empty_workspaces` is enabled, the active workspace stays visible even when empty. Empty workspaces appear when selected directly and disappear after leaving them. To move a window to an empty workspace, select that workspace first or use a workspace-move action.
 
 ### Open and navigate
 

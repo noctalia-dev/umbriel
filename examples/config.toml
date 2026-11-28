@@ -75,6 +75,11 @@ files = []
 # color_profile = "edid" # Or a factory ICC path; with sdr_gamut = "srgb" a characterized panel describes itself to tagged clients.
 # sdr_gamut = "srgb" # Map untagged SDR into the panel gamut; "native" stages no mapping.
 
+# Skip empty workspaces for touchpad swipes and next/previous actions.
+# Direct workspace selection and window moves still reach empty workspaces.
+# [workspaces]
+# skip_empty = true
+
 # ==============================================================================
 # Appearance
 # Blur uses a smaller radius than the built-in default.
@@ -475,6 +480,8 @@ blur_optimized = false
 # the overview after a short delay.
 # Overview: https://docs.noctalia.dev/umbriel/workspaces-overview/
 # Animation: https://docs.noctalia.dev/umbriel/animation/
+# [overview]
+# hide_empty_workspaces = true
 [hot_corners.top_left]
 enabled = true
 delay_ms = 500
