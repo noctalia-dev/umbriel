@@ -278,6 +278,8 @@ vec4 animation(vec2 uv) {
       };
       if (m_deformation == nullptr) {
         kLog.error("the drag physics program failed to compile; dragged windows stay rigid");
+      } else {
+        fx_effect_shader_set_bounded(m_deformation.get(), true);
       }
     }
     syncLightLayer();
