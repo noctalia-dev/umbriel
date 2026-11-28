@@ -16,6 +16,8 @@ namespace umbriel {
   struct TabLabelRequest {
     std::string_view text;
     std::array<float, 4> color{};
+    // A dark edge under the text, painted into the same buffer. No alpha paints none.
+    std::array<float, 4> shadow{};
     std::string_view font;
     // Logical width the title is cut to with an ellipsis.
     int maxWidth = 0;
@@ -23,10 +25,18 @@ namespace umbriel {
     double scale = 1.0;
   };
 
+  // How far the edge sits from the text it shades, in logical pixels.
+  constexpr int kTabLabelShadowOffset = 1;
+
   struct TabLabel {
     wlr_buffer* buffer = nullptr;
+    // The text's own box: what a layout centres and clips to.
     int width = 0;
     int height = 0;
+    // The buffer's extent, one logical pixel larger right and below when it carries an edge. A scene buffer showing
+    // this label is sized to this, so the edge is not scaled away.
+    int bufferWidth = 0;
+    int bufferHeight = 0;
   };
 
   // Rendered tab titles, kept by what they render from and dropped least recently used first. Every tab bar shares

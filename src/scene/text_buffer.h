@@ -7,6 +7,14 @@ struct wlr_buffer;
 
 namespace umbriel {
 
+  // The same text in another colour, painted under it and offset in logical pixels. Empty markup paints no edge. The
+  // surface grows by the offset, so the edge is never clipped.
+  struct TextShadow {
+    std::string markup;
+    int dx = 0;
+    int dy = 0;
+  };
+
   struct TextBufferParams {
     std::string markup; // Pango markup
     std::string font = "monospace 11";
@@ -29,8 +37,13 @@ namespace umbriel {
 
   struct [[nodiscard]] TextBufferResult {
     wlr_buffer* buffer = nullptr; // caller must wlr_buffer_drop after handing to scene
+    // The surface's extent, which is what a scene buffer is sized to.
     int logicalWidth = 0;
     int logicalHeight = 0;
+    // The text's own box inside that surface, smaller by the shadow's offset when one is painted, so a caller that
+    // centres or clips the text does not count the overhang.
+    int textWidth = 0;
+    int textHeight = 0;
   };
 
   struct TextBufferSize {
@@ -40,10 +53,10 @@ namespace umbriel {
 
   std::string escapeMarkup(std::string_view text);
 
-  TextBufferSize measureTextBuffer(const TextBufferParams& params);
+  TextBufferSize measureTextBuffer(const TextBufferParams& params, const TextShadow& shadow = {});
 
   // Render Pango-markup text into a Cairo-backed wlr_buffer.
   // Returns a buffer the caller owns (drop after wlr_scene_buffer_create).
-  TextBufferResult renderTextBuffer(const TextBufferParams& params);
+  TextBufferResult renderTextBuffer(const TextBufferParams& params, const TextShadow& shadow = {});
 
 } // namespace umbriel

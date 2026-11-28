@@ -23,17 +23,18 @@ blur = true
 
 ### Borders, corners, and shadow
 
-| Key                      | Default | Description                                                                                                                     |
-| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `border_width`           | global  | Override `appearance.border_width`, 0 to 100.                                                                                   |
-| `outer_border_width`     | global  | Override `appearance.outer_border_width`, 0 to 100.                                                                             |
-| `border_color_focused`   | global  | Override `colors.border.focused`.                                                                                               |
-| `border_color_unfocused` | global  | Override `colors.border.unfocused`.                                                                                             |
-| `border_color_outer`     | global  | Override `colors.border.outer`.                                                                                                 |
-| `corner_radius`          | global  | Override `appearance.corner_radius`, 0 to 100.                                                                                  |
-| `shadow`                 | global  | Override `appearance.shadow.enabled`.                                                                                           |
-| `title_bar`              | global  | `"on"`, `"negotiated"`, `"forced"`, or `"off"`; overrides `appearance.title_bar.mode`.                                          |
-| `title_bar_buttons`      | global  | Override `appearance.title_bar.buttons`: any of `"minimize"`, `"maximize"`, `"close"` from the title outward, or `[]` for none. |
+| Key                      | Default | Description                                                                                                                         |
+| ------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `border_width`           | global  | Override `appearance.border_width`, 0 to 100.                                                                                       |
+| `outer_border_width`     | global  | Override `appearance.outer_border_width`, 0 to 100.                                                                                 |
+| `border_color_focused`   | global  | Override `colors.border.focused`.                                                                                                   |
+| `border_color_unfocused` | global  | Override `colors.border.unfocused`.                                                                                                 |
+| `border_color_outer`     | global  | Override `colors.border.outer`.                                                                                                     |
+| `corner_radius`          | global  | Override `appearance.corner_radius`, 0 to 100.                                                                                      |
+| `shadow`                 | global  | Override `appearance.shadow.enabled`.                                                                                               |
+| `title_bar`              | global  | `"on"`, `"negotiated"`, `"forced"`, or `"off"`; overrides `appearance.title_bar.mode`.                                              |
+| `title_bar_buttons`      | global  | Override `appearance.title_bar.buttons`: any of `"minimize"`, `"maximize"`, `"close"` from the title outward, or `[]` for none.     |
+| `title_bar_color_source` | global  | `"fixed"`, `"window"`, or `"average"`; overrides `appearance.title_bar.color_source`. See [Title bars](title-bars.md#color-source). |
 
 ### Effects
 
@@ -135,6 +136,17 @@ title_bar = "off"
 - Forcing a bar does not remove the application's own headerbar.
 
 The modes and the bar's look are described in [Title bars](title-bars.md).
+
+### Color source
+
+```toml
+# Take the bar's color from the window's own edge, for these only
+[[window_rule]]
+match.app_id = "^my-wine-app$"
+title_bar_color_source = "window"
+```
+
+`title_bar_color_source` sets [`color_source`](title-bars.md#color-source) for one window, so the bar can take its color from the window's own top edge only where that helps — a program with an ugly header bar, or a Wine application — while terminals and editors keep the palette. It works in both directions: `"window"` or `"average"` opts a window in over a global `"fixed"`, and `"fixed"` exempts one from a global `"window"`. A later matching rule replaces an earlier override, while a rule that omits the key leaves one in place. `color_source_height`, `title_shadow`, `title_contrast`, and `title_contrast_sample` stay global.
 
 ## Applications with their own decorations
 

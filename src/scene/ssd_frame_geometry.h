@@ -38,6 +38,16 @@ namespace umbriel {
     uint32_t edges = 0;
   };
 
+  // A horizontal run of the bar in logical pixels: the title, or one button.
+  struct SampleSpan {
+    int left = 0;
+    int width = 0;
+    [[nodiscard]] bool empty() const { return width <= 0; }
+  };
+
+  // `left`/`width` clamped into `[0, contentWidth]`. An empty span means there is nothing to sample there.
+  SampleSpan titleBarSampleSpan(int left, int width, int contentWidth);
+
   // Configured button row geometry in logical pixels. A negative `size` derives from the bar height, and a negative
   // `padding` matches the vertical inset.
   struct TitleBarButtonGeometry {
@@ -64,4 +74,19 @@ namespace umbriel {
       const TitleBarButtonGeometry& geometry, double x, double y, int radius = 0
   );
   wlr_box contentBoxInTile(const wlr_box& tile, int titleBarHeight);
+  // How many logical pixels of the window's top edge an adaptive title bar can take: one flat color row up to a few
+  // rows of the window's own detail.
+  inline constexpr int kTitleBarStripHeightMin = 1;
+  inline constexpr int kTitleBarStripHeightMax = 4;
+  // The slice of a surface's buffer that appears as the top `logicalHeight` pixels of the window content.
+  // `source` is the visible part of the buffer in buffer coordinates, `bufferWidth`/`bufferHeight` its full size,
+  // `geometry` the window geometry in surface-local coordinates (an empty box means the whole surface, and its
+  // margins stay out of the strip), `surfaceWidth`/`surfaceHeight` the surface's own size in surface-local pixels,
+  // and `transform` its buffer transform. A box with no area means the caller has no usable buffer.
+  // `widthFraction` of the visible edge, starting `startFraction` into it and 1.0 being all of it, keeps the strip to
+  // the part a readback needs: the title and its slack, wherever the title sits, instead of the whole bar.
+  wlr_fbox titleBarStripSourceBox(
+      const wlr_fbox& source, int bufferWidth, int bufferHeight, const wlr_box& geometry, int surfaceWidth,
+      int surfaceHeight, uint32_t transform, int logicalHeight, double widthFraction = 1.0, double startFraction = 0.0
+  );
 } // namespace umbriel

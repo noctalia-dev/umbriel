@@ -26,28 +26,43 @@ namespace umbriel {
     if (request.text.empty() || request.maxWidth <= 0) {
       return nullptr;
     }
-    const std::string markup =
-        std::format("<span foreground='{}'>{}</span>", rgbaHex(request.color), escapeMarkup(request.text));
-    std::string key = std::format("{}\x1f{}\x1f{}\x1f{}", markup, request.font, request.maxWidth, request.scale);
+    const std::string escaped = escapeMarkup(request.text);
+    const std::string markup = std::format("<span foreground='{}'>{}</span>", rgbaHex(request.color), escaped);
+    // The edge is the same text in another colour, so it is a different entry only in its colour attribute.
+    const bool shadowed = request.shadow[3] > 0.0F;
+    const std::string shadowColor = shadowed ? rgbaHex(request.shadow) : std::string();
+    const std::string shadowMarkup =
+        shadowed ? std::format("<span foreground='{}'>{}</span>", shadowColor, escaped) : std::string();
+    std::string key =
+        std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}", markup, shadowColor, request.font, request.maxWidth, request.scale);
     if (const auto found = m_index.find(key); found != m_index.end()) {
       m_entries.splice(m_entries.begin(), m_entries, found->second);
       return &found->second->label;
     }
 
-    const TextBufferResult rendered = renderTextBuffer({
-        .markup = markup,
-        .font = std::string(request.font),
-        .maxWidth = request.maxWidth,
-        .padding = 0,
-        .scale = request.scale,
-        .ellipsize = true,
-    });
+    const TextBufferResult rendered = renderTextBuffer(
+        {
+            .markup = markup,
+            .font = std::string(request.font),
+            .maxWidth = request.maxWidth,
+            .padding = 0,
+            .scale = request.scale,
+            .ellipsize = true,
+        },
+        {.markup = shadowMarkup, .dx = shadowed ? kTabLabelShadowOffset : 0, .dy = shadowed ? kTabLabelShadowOffset : 0}
+    );
     if (rendered.buffer == nullptr) {
       return nullptr;
     }
     m_entries.push_front({
         .key = key,
-        .label = {.buffer = rendered.buffer, .width = rendered.logicalWidth, .height = rendered.logicalHeight},
+        .label = {
+            .buffer = rendered.buffer,
+            .width = rendered.textWidth,
+            .height = rendered.textHeight,
+            .bufferWidth = rendered.logicalWidth,
+            .bufferHeight = rendered.logicalHeight
+        },
     });
     m_index.emplace(std::move(key), m_entries.begin());
     trim();
