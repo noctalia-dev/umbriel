@@ -207,4 +207,24 @@ wait_for_state '
 ' > /dev/null
 
 stop_client
-echo "tearing requires output opt-in and fullscreen, honors hints, and applies window overrides"
+
+# Clients such as Wine present from a desync subsurface and set the hint there, not on the toplevel surface.
+write_config '[output.HEADLESS-1]
+tearing = true'
+TEARING_ON_SUBSURFACE=1 start_client tearing-subsurface async
+wait_for_state '
+  .surfaces[0].title == "tearing-subsurface"
+  and .surfaces[0].fullscreen == true
+' > /dev/null
+redraw_client
+
+wait_for_state '
+  .outputs[0].requested == true
+  and .outputs[0].last_commit_tearing == true
+  and .surfaces[0].hint == "async"
+  and .surfaces[0].rule_override == null
+  and .surfaces[0].eligible == true
+' > /dev/null
+
+stop_client
+echo "tearing requires output opt-in and fullscreen, honors hints on any surface, and applies window overrides"

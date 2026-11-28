@@ -157,6 +157,7 @@ namespace {
     bool requestWindowsBt2100 = false;
     bool colorOnSubsurface = false;
     bool contentTypeOnSubsurface = false;
+    bool tearingOnSubsurface = false;
     bool colorChildLifecycle = false;
     uint32_t colorChildLifecyclePhase = 0;
     bool hasExtendedTargetVolume = false;
@@ -918,6 +919,7 @@ int main(int argc, char** argv) {
   state.requestWindowsBt2100 = std::getenv("COLOR_WINDOWS_BT2100") != nullptr;
   state.colorOnSubsurface = std::getenv("COLOR_ON_SUBSURFACE") != nullptr;
   state.contentTypeOnSubsurface = std::getenv("CONTENT_TYPE_ON_SUBSURFACE") != nullptr;
+  state.tearingOnSubsurface = std::getenv("TEARING_ON_SUBSURFACE") != nullptr;
   state.colorChildLifecycle = std::getenv("COLOR_CHILD_LIFECYCLE") != nullptr;
   if (const char* hint = std::getenv("TEARING_HINT")) {
     if (std::strcmp(hint, "async") == 0) {
@@ -1067,14 +1069,6 @@ int main(int argc, char** argv) {
   }
 
   state.surface = wl_compositor_create_surface(state.compositor);
-  if (state.tearingHint >= 0) {
-    if (state.tearingManager == nullptr) {
-      std::println(stderr, "unmap-client: compositor is missing wp_tearing_control_manager_v1");
-      return EXIT_FAILURE;
-    }
-    state.tearingControl = wp_tearing_control_manager_v1_get_tearing_control(state.tearingManager, state.surface);
-    wp_tearing_control_v1_set_presentation_hint(state.tearingControl, static_cast<uint32_t>(state.tearingHint));
-  }
   const bool deferContentTypeChild = state.contentTypeOnSubsurface
       && !state.colorOnSubsurface
       && initialContentType == nullptr
@@ -1106,7 +1100,9 @@ int main(int argc, char** argv) {
     return true;
   };
   wl_surface* colorTargetSurface = state.surface;
-  if (state.colorOnSubsurface || (state.contentTypeOnSubsurface && !deferContentTypeChild)) {
+  if (state.colorOnSubsurface
+      || state.tearingOnSubsurface
+      || (state.contentTypeOnSubsurface && !deferContentTypeChild)) {
     if (state.subcompositor == nullptr) {
       std::println(stderr, "unmap-client: compositor is missing wl_subcompositor");
       return EXIT_FAILURE;
@@ -1118,6 +1114,16 @@ int main(int argc, char** argv) {
     if (state.colorOnSubsurface) {
       colorTargetSurface = state.colorChildSurface;
     }
+  }
+  if (state.tearingHint >= 0) {
+    if (state.tearingManager == nullptr) {
+      std::println(stderr, "unmap-client: compositor is missing wp_tearing_control_manager_v1");
+      return EXIT_FAILURE;
+    }
+    state.tearingControl = wp_tearing_control_manager_v1_get_tearing_control(
+        state.tearingManager, state.tearingOnSubsurface ? state.colorChildSurface : state.surface
+    );
+    wp_tearing_control_v1_set_presentation_hint(state.tearingControl, static_cast<uint32_t>(state.tearingHint));
   }
   if ((initialContentType != nullptr || updatedContentType != nullptr) && !deferContentTypeChild) {
     state.contentTypeSurface = state.contentTypeOnSubsurface ? state.colorChildSurface : state.surface;

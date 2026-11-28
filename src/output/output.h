@@ -184,7 +184,6 @@ namespace umbriel {
       DirectScanoutState m_state;
       wl_listener m_commit{};
     };
-    bool clientTearingHintAsync(const View* view) const;
     bool tearingEligible(View* view) const;
     View* tearingCandidate() const;
     void resetTearingState();

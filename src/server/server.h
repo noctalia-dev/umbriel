@@ -207,6 +207,8 @@ namespace umbriel {
     // True while a live image-copy session reads `output` as a whole.
     bool outputCaptured(const wlr_output* output) const;
     wlr_tearing_control_manager_v1* tearingControlManager() const { return m_tearingControlManager; }
+    // True when any surface in the tree, subsurfaces included, carries the async tearing-control hint.
+    bool surfaceTreeTearingAsync(wlr_surface* surface) const;
     ColorManager* colorManager() const { return m_colorManager.get(); }
     const ColorDescription* surfaceImageDescription(wlr_surface* surface) const;
     const ColorDescription* surfaceTreeHdrDescription(wlr_surface* surface) const;

@@ -1316,11 +1316,7 @@ namespace umbriel {
         continue;
       }
       Output* output = view->currentOutput();
-      const bool asyncHint = output != nullptr
-          ? output->clientTearingHintAsync(view.get())
-          : wlr_tearing_control_manager_v1_surface_hint_from_surface(
-                server.tearingControlManager(), view->rootSurface()
-            ) == WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC;
+      const bool asyncHint = server.surfaceTreeTearingAsync(view->rootSurface());
       nlohmann::json entry = {
           {"id", view->extForeignIdentifier() != nullptr ? view->extForeignIdentifier() : ""},
           {"app_id", view->appId() != nullptr ? view->appId() : ""},

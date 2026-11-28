@@ -693,21 +693,14 @@ namespace umbriel {
     return candidate != views.end() ? *candidate : nullptr;
   }
 
-  bool Output::clientTearingHintAsync(const View* view) const {
-    if (view == nullptr || m_server->tearingControlManager() == nullptr) {
-      return false;
-    }
-    return wlr_tearing_control_manager_v1_surface_hint_from_surface(
-               m_server->tearingControlManager(), view->rootSurface()
-           )
-        == WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC;
-  }
-
   bool Output::tearingEligible(View* view) const {
     if (view == nullptr || tearingCandidate() != view) {
       return false;
     }
-    return tearingEnabled(configuredTearingAllowed(), view->resolvedRules().allowTearing, clientTearingHintAsync(view));
+    return tearingEnabled(
+        configuredTearingAllowed(), view->resolvedRules().allowTearing,
+        m_server->surfaceTreeTearingAsync(view->rootSurface())
+    );
   }
 
   bool Output::tearingRequested() const { return tearingEligible(tearingCandidate()); }
@@ -2187,7 +2180,9 @@ namespace umbriel {
       m_tearingFallbackReason.clear();
     } else if (const std::optional<bool> rule = tearingView->resolvedRules().allowTearing; rule && !*rule) {
       m_tearingFallbackReason.clear();
-    } else if (!tearingView->resolvedRules().allowTearing && !clientTearingHintAsync(tearingView)) {
+    } else if (
+        !tearingView->resolvedRules().allowTearing && !m_server->surfaceTreeTearingAsync(tearingView->rootSurface())
+    ) {
       m_tearingFallbackReason.clear();
     } else if (m_server->sessionLocked()) {
       tearingFrameEligible = false;

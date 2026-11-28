@@ -1252,6 +1252,28 @@ namespace umbriel {
     return nullptr;
   }
 
+  bool Server::surfaceTreeTearingAsync(wlr_surface* surface) const {
+    if (surface == nullptr || m_tearingControlManager == nullptr) {
+      return false;
+    }
+    struct Context {
+      wlr_tearing_control_manager_v1* manager;
+      bool async = false;
+    } context{.manager = m_tearingControlManager};
+    // Clients such as Wine present from a subsurface and set the hint there.
+    wlr_surface_for_each_surface(
+        surface,
+        [](wlr_surface* candidate, int, int, void* data) {
+          auto* context = static_cast<Context*>(data);
+          context->async = context->async
+              || wlr_tearing_control_manager_v1_surface_hint_from_surface(context->manager, candidate)
+                  == WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC;
+        },
+        &context
+    );
+    return context.async;
+  }
+
   const ColorDescription* Server::surfaceTreeHdrDescription(wlr_surface* surface) const {
     struct Context {
       const Server* server;
