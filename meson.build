@@ -761,6 +761,7 @@ pure_sources = files(
   'src/view/floating.cpp',
   'src/view/window_region.cpp',
   'src/view/drag_physics.cpp',
+  'src/view/popup_constraint.cpp',
   'src/xwayland/xsettings.cpp',
 )
 
@@ -822,6 +823,7 @@ core_sources = files(
   'src/server/server_events.cpp',
   'src/server/server_keybinds.cpp',
   'src/server/server_outputs.cpp',
+  'src/server/dmabuf_implicit_barrier.cpp',
   'src/server/syncobj_acquire_barrier.cpp',
   'src/server/syncobj_superseded_release.cpp',
   'src/server/syncobj_unmap_release.cpp',

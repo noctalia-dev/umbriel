@@ -413,6 +413,13 @@ default_pinned = true
 # match.is_dialog = true
 # attach_to_parent = false
 
+# Size a window differently on each monitor. match.output accepts a connector
+# name ("HDMI-A-1") or a monitor descriptor as `umbriel outputs` prints it.
+# [[window_rule]]
+# match.app_id = "^obsidian$"
+# match.output = "AU Optronics"
+# default_scrolling_extent = 1
+
 # Named scratchpads can launch an application when toggled while empty.
 # [[scratchpad]]
 # name = "music"

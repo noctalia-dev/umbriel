@@ -41,7 +41,7 @@ Locking the session or switching away from its active VT revokes outstanding lea
 | ------------------------------------------ | --------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
 | `enabled`                                  | bool                              | `true`       | Turn the monitor on or off.                                                                           |
 | `focus_at_startup`                         | bool                              | `false`      | Move the mouse cursor to this monitor on startup.                                                     |
-| `mode`                                     | string                            | preferred    | Resolution and optional refresh rate, such as `"2560x1440@165"`.                                      |
+| `mode`                                     | string                            | preferred    | Resolution and optional refresh rate, such as `"2560x1440@165"`, or a [mode keyword](#mode-keywords). |
 | `position`                                 | `[x, y]`                          | automatic    | Top-left position in logical coordinates.                                                             |
 | `scale`                                    | float                             | `1.0`        | Output scale from 0.25 to 4.0.                                                                        |
 | `render_scale`                             | float                             | unset        | Scale clients render at (0.25 to 4.0); unset follows `scale`. The compositor samples down to `scale`. |
@@ -66,6 +66,15 @@ Locking the session or switching away from its active VT revokes outstanding lea
 | `screen_cast_effect`                       | string                            | inherited    | Replace `effects.screen_cast` with a screen preset or pool, or `"off"` to disable it on this output.  |
 
 Umbriel tries an unadvertised resolution as a custom mode. If it cannot apply the configured mode, it uses the preferred advertised mode and logs a warning. Backend tests include the 8-bit SDR fallback, so a rejected swapchain can reach the preferred mode. On that mode, Umbriel retries the configured HDR and bit-depth preferences. A temporary rendering failure after an accepted backend test retries the current candidate instead of changing modes.
+
+### Mode keywords
+
+`mode` accepts:
+
+- `"highest_refresh"` selects the advertised mode with the highest refresh rate, then the most pixels among those.
+- `"highest_resolution"` selects the advertised mode with the most pixels, then the highest refresh rate among those.
+
+Outputs without advertised modes, such as virtual outputs, keep their current mode. `output-create` accepts only `WIDTHxHEIGHT[@HZ]`.
 
 ### Workspace count
 

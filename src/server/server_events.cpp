@@ -4314,6 +4314,8 @@ namespace umbriel {
       wl_signal_add(&view->m_captureSource->events.destroy, &view->m_captureSourceDestroy);
     }
 
+    view->syncCaptureClip();
+
     if (Output* output = view->currentOutput()) {
       umbrielfx_scene_capture_source_set_scale(view->m_captureSource, output->wlr()->scale);
     }

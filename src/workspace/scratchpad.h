@@ -41,6 +41,9 @@ namespace umbriel {
 
     bool contains(const View* view) const;
     Output* outputFor(const View* view) const;
+    // The workspace arranging `view`'s pad, resolving an attached dialog through its placement root; null when `view`
+    // is not in a scratchpad.
+    Workspace* workspaceFor(const View* view) const;
     std::string_view nameFor(const View* view) const;
     bool hasScratchpad(std::string_view name) const;
     // The workspace that arranges scratchpad `name`'s windows, or null while the pad has no output.
@@ -70,6 +73,9 @@ namespace umbriel {
     bool modalOn(const Output* output) const;
     // Whether the scratchpad shown on `output` stays up when the output switches workspace.
     bool stickyOn(const Output* output) const;
+    // The animated visibility fade of the scratchpad arranging `workspace`, 0 when it is not a scratchpad workspace.
+    // A closing member's snapshot follows it so a pad hidden mid-close takes the snapshot with it.
+    [[nodiscard]] float fadeFor(const Workspace* workspace) const;
     // Hide the scratchpad shown on `output`, for a press on its backdrop. False when none is shown there.
     bool dismissOn(Output* output);
     // Give the keyboard to the scratchpad shown on `output`, making it the launch destination again. False when none is
@@ -125,6 +131,9 @@ namespace umbriel {
     struct Scratchpad {
       Output* output = nullptr;
       bool visible = false;
+      // The pad's own visibility fade. Its backdrop and its closing members follow it, independently of any other pad
+      // on the same output.
+      AnimatedValue fade;
       bool active = false;
       View* lastFocused = nullptr;
       // Where cycle() resumes once the window focused last has left the pad.
@@ -161,6 +170,10 @@ namespace umbriel {
     const Scratchpad* findScratchpad(std::string_view name) const;
     Entry* findEntry(const View* view);
     const Entry* findEntry(const View* view) const;
+    // The entry for `view`, resolving an attached dialog through its placement root.
+    const Entry* entryFor(const View* view) const;
+    // The scratchpad `view` belongs to, resolving an attached dialog through its placement root.
+    const Scratchpad* scratchpadFor(const View* view) const;
     bool hasEntries(std::string_view name) const;
     // Whether `view`, a member of `scratchpad`, is on screen.
     static bool presents(const Scratchpad& scratchpad, const View* view);
@@ -199,8 +212,13 @@ namespace umbriel {
         bool reposition = true
     );
     bool restoreView(View* view, Output* fallback, bool focus, Workspace* target = nullptr);
-    // Retarget the backdrop dim/blur fade for `output` and refresh its scene nodes.
-    void retargetBackdrop(Output* output, bool visible, bool animateTransition = true);
+    // The modal pad with the greatest fade on `output`: it owns the output's dim and blur, whose shader binds to its
+    // fade. Null when no modal pad is there.
+    const Scratchpad* backdropOwner(const Output* output) const;
+    // The fade of `backdropOwner(output)`, which is the dim and blur alpha there; 0 when no modal pad draws a backdrop.
+    [[nodiscard]] float backdropFade(Output* output) const;
+    // Retarget the pad's own fade, animating the transition when configured, and refresh its output's dim/blur.
+    void retargetFade(std::string_view name, bool visible, bool animateTransition = true);
     wlr_scene_rect* dimRectFor(Output* output);
     wlr_scene_blur* blurNodeFor(Output* output);
     void updateDimAndBlur(Output* output);
@@ -213,7 +231,6 @@ namespace umbriel {
     std::vector<View*> m_hidingViews;
     std::unordered_map<Output*, wlr_scene_rect*> m_dimRects;
     std::unordered_map<Output*, wlr_scene_blur*> m_blurNodes;
-    std::unordered_map<Output*, AnimatedValue> m_backdropFades;
     View* m_focusedView = nullptr;
   };
 

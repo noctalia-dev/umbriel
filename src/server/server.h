@@ -145,6 +145,7 @@ namespace umbriel {
   class Gestures;
   class ColorManager;
   struct ColorDescription;
+  class DmabufImplicitBarrier;
   class SyncobjAcquireBarrier;
   class SyncobjSupersededRelease;
   class SyncobjUnmapRelease;
@@ -549,6 +550,15 @@ namespace umbriel {
     // Place a snapshot's captured box at a canvas origin in output-root coordinates, or hide it while its workspace
     // is not showing.
     void presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible);
+    // Fold an owner's fade (a scratchpad's backdrop) into a snapshot's opacity, relative to the fade its capture
+    // already baked in. A reaped id is a no-op.
+    void setCloseSnapshotFade(CloseSnapshotId id, float fade);
+    // Record the owner's fade at capture time, so later fades restore what the capture froze instead of attenuating it
+    // a second time. A reaped id is a no-op.
+    void setCloseSnapshotFadeReference(CloseSnapshotId id, float reference);
+    // Move a snapshot's trees under `parent`, keeping its canvas coordinates. Used when the owner's tree is about to
+    // be destroyed.
+    void reparentCloseSnapshot(CloseSnapshotId id, wlr_scene_tree* parent);
     // False once the snapshot has been reaped.
     bool closeSnapshotAlive(CloseSnapshotId id) const;
     // End a held snapshot; it is reaped at the end of the current animation tick.
@@ -776,6 +786,7 @@ namespace umbriel {
     wlr_content_type_manager_v1* m_contentTypeManager = nullptr;
     wlr_security_context_manager_v1* m_securityContextManager = nullptr;
     std::unique_ptr<ColorManager> m_colorManager;
+    std::unique_ptr<DmabufImplicitBarrier> m_dmabufImplicitBarrier;
     std::unique_ptr<SyncobjAcquireBarrier> m_syncobjAcquireBarrier;
     std::unique_ptr<SyncobjUnmapRelease> m_syncobjUnmapRelease;
     std::unique_ptr<SyncobjSupersededRelease> m_syncobjSupersededRelease;
@@ -863,6 +874,12 @@ namespace umbriel {
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
       void present(int canvasX, int canvasY, bool visible);
+      // Fold the owner's fade into this snapshot's opacity, without touching its own timeline.
+      void setPadFade(float fade);
+      // The owner's fade at capture time, which the captured nodes already carry.
+      void setFadeReference(float reference);
+      // Reparent the snapshot and its shadow under `parent`, keeping their content above the shadow.
+      void reparent(wlr_scene_tree* parent);
 
       AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
       bool tickAnimations(double nowMsec) override;
@@ -872,6 +889,10 @@ namespace umbriel {
     private:
       void applyPresentation();
       void applyShrink(int width, int height);
+      // Push lifecycle alpha times the owner's fade into every captured node.
+      void applyOpacity();
+      // Recompute the owner's multiplier and push it, unless the snapshot is held as captured.
+      void applyFade();
 
       Server* m_server = nullptr;
       CloseSnapshotId m_id = kInvalidCloseSnapshot;
@@ -926,6 +947,11 @@ namespace umbriel {
       int m_shadowWidth = 0;
       int m_shadowHeight = 0;
       wlr_box m_shadowHole{};
+      // The owner's fade (a scratchpad backdrop) as last reported, and the fade its capture already carries. Their
+      // ratio is the multiplier the capture needs to follow the owner without attenuating it twice.
+      std::optional<float> m_padFade;
+      float m_fadeReference = 1.0F;
+      float m_fadeMultiplier = 1.0F;
     };
     // unique_ptr because the registry holds raw pointers to these: a vector of
     // values would move them out from under it on reallocation.

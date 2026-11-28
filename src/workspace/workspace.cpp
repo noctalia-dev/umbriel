@@ -300,7 +300,8 @@ namespace umbriel {
       view->notifyOutputScale();
       if (view->mapped()) {
         view->enterForeignOutput(group.output());
-        view->syncMinimizeEligibility();
+        // Also re-resolves `match.output` rules against the new output.
+        view->refreshStateRuleEffects();
       }
     }
     group.server()->scheduleIpcWindowsEvent();
@@ -1765,17 +1766,34 @@ namespace umbriel {
       return !server->closeSnapshotAlive(snapshot.id);
     });
 
-    const bool visible = m_active || m_inSwitchTransition;
+    bool visible = m_active || m_inSwitchTransition;
+    float fade = 1.0F;
+    if (m_scratchpad) {
+      // A pad workspace stays active; its snapshots follow the owning pad's own visibility fade instead.
+      const ScratchpadManager* scratchpads = server->scratchpadManager();
+      fade = scratchpads != nullptr ? scratchpads->fadeFor(this) : 0.0F;
+      visible = fade > 0.001F;
+    }
     for (const TrackedCloseSnapshot& snapshot : m_trackedCloseSnapshots) {
       server->presentCloseSnapshot(
           snapshot.id, snapshot.canvas.x + m_slideOffsetX, snapshot.canvas.y + m_slideOffsetY, visible
       );
+      if (m_scratchpad) {
+        server->setCloseSnapshotFade(snapshot.id, fade);
+      }
     }
   }
 
   void Workspace::discardCloseSnapshots() {
     if (m_group != nullptr) {
       Server* server = m_group->server();
+      if (m_scratchpad) {
+        // The snapshot lives in this pad's tree; move it out before the tree is destroyed so the server can still
+        // reap it without destroying its node twice.
+        for (const TrackedCloseSnapshot& snapshot : m_trackedCloseSnapshots) {
+          server->reparentCloseSnapshot(snapshot.id, server->scratchpadTree());
+        }
+      }
       for (const TrackedCloseSnapshot& snapshot : m_trackedCloseSnapshots) {
         // Keep the server-owned animation object alive until the normal post-tick reap. Destroying it while a
         // WorkspaceGroup animation tick is iterating the server's owner snapshot would invalidate that iteration.
@@ -2443,30 +2461,28 @@ namespace umbriel {
 
   bool Workspace::modifyFocusedWidth(double delta) {
     if (m_focusedView != nullptr && m_focusedView->floating()) {
-      if (const auto current = focusedFloatingFraction(true)) {
-        return resizeFocusedFloating(std::clamp(*current + delta, 0.1, 1.0), std::nullopt);
-      }
-      return false;
+      const auto current = focusedFloatingFraction(true);
+      const auto stepped = current ? stepFraction(*current, delta, 1.0) : std::nullopt;
+      return stepped && resizeFocusedFloating(stepped, std::nullopt);
     }
     const int column = m_layout->columnOf(m_focusedView);
     if (column < 0) {
       return false;
     }
-    // Clamp here, not in the layouts: ScrollingLayout clamps internally but
-    // DwindleLayout does not, and both must land in [0.1, the layout's ceiling].
-    return setFocusedWidth(std::clamp(m_layout->widthFraction(column) + delta, 0.1, m_layout->maxExtentFraction()));
+    // Clamp here, not in the layouts: ScrollingLayout clamps internally but DwindleLayout does not.
+    const auto stepped = stepFraction(m_layout->widthFraction(column), delta, m_layout->maxExtentFraction());
+    return stepped && setFocusedWidth(*stepped);
   }
 
   bool Workspace::modifyFocusedHeight(double delta) {
     if (m_focusedView != nullptr && m_focusedView->floating()) {
-      if (const auto current = focusedFloatingFraction(false)) {
-        return resizeFocusedFloating(std::nullopt, std::clamp(*current + delta, 0.1, 1.0));
-      }
-      return false;
+      const auto current = focusedFloatingFraction(false);
+      const auto stepped = current ? stepFraction(*current, delta, 1.0) : std::nullopt;
+      return stepped && resizeFocusedFloating(std::nullopt, stepped);
     }
-    // Clamp here, not in the layouts: DwindleLayout does not clamp the overall
-    // fraction, and every layout must land in [0.1, 1.0].
-    return setFocusedHeight(std::clamp(m_layout->heightFraction(m_focusedView) + delta, 0.1, 1.0));
+    // Clamp here, not in the layouts: DwindleLayout does not clamp the overall fraction.
+    const auto stepped = stepFraction(m_layout->heightFraction(m_focusedView), delta, 1.0);
+    return stepped && setFocusedHeight(*stepped);
   }
 
   bool Workspace::resizeFocusedEdge(uint32_t edges, double delta) {

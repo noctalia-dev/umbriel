@@ -220,7 +220,7 @@ The implicit `default` scratchpad is always modal and never sticky.
 
 A dialog parented to a visible scratchpad window joins that scratchpad unless a window rule explicitly chooses another destination.
 
-Backdrop dim and blur affect only the output showing the scratchpad.
+Backdrop dim and blur affect only the output showing a modal scratchpad. A member that closes while its scratchpad is shown fades like any other window, over the pad's backdrop rather than under it, and a scratchpad hidden mid-close takes the closing window with it; a non-modal pad has no backdrop, but its closing member still follows the pad's fade. Hiding a pad fades the dim and blur out with it rather than cutting them at the first frame, and each pad owns its own fade, so showing another pad while one is hiding leaves the hiding pad's closing window hidden.
 
 A shown scratchpad sits above workspace windows and below panels. When a fullscreen window is on its output, or one of its own windows is fullscreen, the scratchpad and its backdrop draw above fullscreen windows instead, until it has faded out. This applies to every shown scratchpad at once, so a scratchpad shown on another output at the same time also draws above that output's panels. Pinned windows, overlay-layer surfaces such as notifications, and the lock screen stay above it.
 
