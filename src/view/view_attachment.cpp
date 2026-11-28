@@ -130,6 +130,9 @@ namespace umbriel {
     if (m_attachedTo != nullptr) {
       unlinkAttachment();
     } else {
+      if (m_windowedFullscreen) {
+        setWindowedFullscreen(false);
+      }
       if (scheduledFullscreen() || currentFullscreen()) {
         setFullscreen(false);
       }

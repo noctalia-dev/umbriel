@@ -236,6 +236,7 @@ namespace umbriel {
           boolean("default_focused", &W::defaultFocused),
           boolean("default_pinned", &W::defaultPinned),
           boolean("focus_on_activate", &W::focusOnActivate),
+          boolean("windowed_fullscreen", &W::windowedFullscreen),
           boolean("attach_to_parent", &W::attachToParent),
           boolean("confine_pointer", &W::confinePointer),
           real("touchpad_scroll_factor", 0.1, 10.0, &W::touchpadScrollFactor),

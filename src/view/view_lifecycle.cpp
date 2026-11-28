@@ -870,6 +870,11 @@ namespace umbriel {
     m_pendingFloatingPosition.reset();
     m_savedScrollingExtentPx.reset();
     m_savedScrollingExtent.reset();
+    if (m_windowedFullscreen && roleInitialized()) {
+      sendClientFullscreen(false);
+    }
+    m_windowedFullscreen = false;
+    m_windowedFullscreenExitSerial.reset();
     if (m_displacedHome) {
       m_server->scheduleDisplacedViewRestore();
     }
@@ -939,6 +944,9 @@ namespace umbriel {
 
   void View::handleCommit(bool reconfigureOpeningState) {
     UMBRIEL_ZONE("View::handleCommit");
+    if (m_windowedFullscreenExitSerial && configureSettled(*m_windowedFullscreenExitSerial)) {
+      m_windowedFullscreenExitSerial.reset();
+    }
     // Client transparency can change on any commit. An unmap commit reaches here after handleUnmap hid the backdrop.
     if (m_mapped) {
       m_presentation.setFullscreenOpaque(fullscreenOpaque());
@@ -1045,8 +1053,19 @@ namespace umbriel {
         rule.defaultScrollingColumnOrder = alone.defaultScrollingColumnOrder;
       }
 
+      const bool clientFullscreen = !openingInScratchpad && requestedFullscreen();
+      bool wantWindowedFullscreen = false;
+      if (clientFullscreen && !rule.defaultFullscreen.value_or(false)) {
+        // The request policy sees the opening placement before m_tiled and layout membership are committed.
+        openingState.floating = !wantTiled;
+        openingState.alone = openingAlone;
+        const ResolvedWindowRule fullscreenRule = resolveWindowRules(
+            config(), ruleText(appId()), ruleText(title()), m_xdgTag, m_contentType, openingState, m_server->uptimeMs()
+        );
+        wantWindowedFullscreen = fullscreenRule.windowedFullscreen.value_or(false);
+      }
       const bool wantFullscreen =
-          (!openingInScratchpad && requestedFullscreen()) || (rule.defaultFullscreen && *rule.defaultFullscreen);
+          (clientFullscreen && !wantWindowedFullscreen) || rule.defaultFullscreen.value_or(false);
       const bool layoutMaximizeToEdges =
           (target != nullptr ? target->layoutConfig().clientMaximize : config().layout.clientMaximize)
           == ClientMaximize::Edges;
@@ -1069,11 +1088,18 @@ namespace umbriel {
       // corners and shadows the border cannot follow.
       const bool tiledEdges = wantTiled || config().appearance.preferNoCsd;
       setTiledState(tiledEdges ? WLR_EDGE_TOP | WLR_EDGE_RIGHT | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT : 0);
+      if (wantWindowedFullscreen) {
+        setWindowedFullscreen(true);
+      }
 
       if (wantFullscreen) {
-        // An X11 client can request fullscreen before its first buffer. The request event is too early to configure,
-        // but the role preserves it in requested state for us to honor now.
-        setFullscreenState(true);
+        if (reconfigureOpeningState && m_toplevel != nullptr) {
+          // A late XDG request must save the pending floating size before replacing it with the output size.
+          setFullscreen(true);
+        } else {
+          // An X11 request before the first buffer is too early to configure; the role preserves it until map.
+          setFullscreenState(true);
+        }
         wlr_box fullArea{};
         wlr_output* initialOutput = targetOutput != nullptr ? targetOutput->wlr() : m_server->preferredOutput();
         if (initialOutput != nullptr) {

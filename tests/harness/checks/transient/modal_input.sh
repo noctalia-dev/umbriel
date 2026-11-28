@@ -116,8 +116,20 @@ fi
 printf n >&"$control_fd"
 expect_detached "unset_modal"
 expect_parent_colour "unshaded" 170
+"$UMBRIEL" msg window-focus "$(field modal-dialog id)" > /dev/null
+"$UMBRIEL" msg window-toggle-windowed-fullscreen > /dev/null
+"$UMBRIEL" settle
+if [[ $(field modal-dialog windowed_fullscreen) != true ]]; then
+  echo "the detached dialog did not enter windowed fullscreen: $(windows)"
+  exit 1
+fi
 printf m >&"$control_fd"
 expect_attached "set_modal again"
+"$UMBRIEL" settle
+if [[ $(field modal-dialog windowed_fullscreen) != false || $(field modal-dialog fullscreen) != false ]]; then
+  echo "attaching the dialog retained fullscreen state: $(windows)"
+  exit 1
+fi
 
 # The global switch opts out on reload, and back in.
 sed 's/^\[general\]$/[general]\nattach_modal_dialogs = false/' "$BASE_CONFIG" > "$UMBRIEL_CONFIG"

@@ -32,6 +32,7 @@ The keys are grouped by what they change: [Placement rules](window-rules-placeme
 | Blur a translucent app                | `blur`, `blur_ignore_alpha`                 | [Appearance](window-rules-appearance.md#transparent-content-and-blur)            |
 | Tune a game: VRR, tearing, pointer    | `vrr`, `tearing`, `confine_pointer`         | [Behavior](window-rules-behavior.md#games)                                       |
 | Keep shortcuts in a virtual machine   | `allow_shortcuts_inhibit`                   | [Behavior](window-rules-behavior.md#keep-compositor-shortcuts)                   |
+| Keep app fullscreen inside its window | `windowed_fullscreen`                       | [Behavior](window-rules-behavior.md#fullscreen-inside-a-window)                  |
 | Hide a window from screen sharing     | `block_capture`                             | [Behavior](window-rules-behavior.md#hide-a-window-from-screenshots)              |
 
 ## Match windows

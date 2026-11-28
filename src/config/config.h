@@ -492,6 +492,8 @@ namespace umbriel {
     std::optional<bool> defaultFocused;
     std::optional<bool> defaultPinned;
     std::optional<bool> focusOnActivate;
+    // Client fullscreen requests keep the normal window geometry; compositor fullscreen actions remain unchanged.
+    std::optional<bool> windowedFullscreen;
     // Lets a modal dialog hang on its parent's frame (true, the default) or opens it as an ordinary window (false).
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;
@@ -571,6 +573,7 @@ namespace umbriel {
           && defaultFocused == other.defaultFocused
           && defaultPinned == other.defaultPinned
           && focusOnActivate == other.focusOnActivate
+          && windowedFullscreen == other.windowedFullscreen
           && attachToParent == other.attachToParent
           && confinePointer == other.confinePointer
           && touchpadScrollFactor == other.touchpadScrollFactor
@@ -623,6 +626,7 @@ namespace umbriel {
     std::optional<bool> defaultFocused;
     std::optional<bool> defaultPinned;
     std::optional<bool> focusOnActivate;
+    std::optional<bool> windowedFullscreen;
     std::optional<bool> attachToParent;
     std::optional<bool> confinePointer;
     std::optional<double> touchpadScrollFactor;

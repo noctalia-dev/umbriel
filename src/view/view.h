@@ -469,6 +469,10 @@ namespace umbriel {
     void applyFullscreenLayout(bool animate = false);
     // Compositor-driven fullscreen toggle (keybind); client requests use handleRequestFullscreen.
     void toggleFullscreen();
+    // Tell the client it is fullscreen while the window keeps its layout slot, so a video can fill a tile. The
+    // compositor treats the window as windowed throughout; a client unfullscreen request leaves this state.
+    void toggleWindowedFullscreen();
+    bool windowedFullscreen() const { return m_windowedFullscreen; }
     void applyDeferredUnfullscreen();
     void setMaximizedToEdges(bool maximized, bool animate = true);
     void toggleMaximizedToEdges();
@@ -1121,9 +1125,15 @@ namespace umbriel {
     // Inactive client unfullscreen requests wait briefly for xdg or foreign activation. Any later client request or
     // compositor-driven fullscreen change clears the parked request.
     DeferredUnfullscreen m_deferredUnfullscreen;
+    // Masks older fullscreen configures until the client commits the windowed-fullscreen exit configure.
+    std::optional<uint32_t> m_windowedFullscreenExitSerial;
     // An X11 window entered through the compositor toggle stays fullscreen until another compositor action releases
     // it. This prevents Wine from immediately undoing the explicit user action with a contradictory EWMH request.
     bool m_xCompositorFullscreen = false;
+    // Windowed fullscreen: the client's xdg state says fullscreen, which the fullscreen accessors hide from the layout.
+    bool m_windowedFullscreen = false;
+    void setWindowedFullscreen(bool windowed);
+    void sendClientFullscreen(bool fullscreen);
     bool m_onActiveWorkspace = false;
     bool m_inScratchpad = false;
     bool m_urgent = false;

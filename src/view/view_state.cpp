@@ -469,6 +469,20 @@ namespace umbriel {
       reassertRoleState();
       return;
     }
+    if (m_windowedFullscreen) {
+      // A video player's own fullscreen button stays in the tile; its exit leaves windowed fullscreen.
+      setWindowedFullscreen(requested);
+      return;
+    }
+    if (requested && !m_mapped && m_toplevel != nullptr && !scheduledFullscreen()) {
+      // A request after the first configure still needs the predicted opening placement until the window maps.
+      handleCommit(true);
+      return;
+    }
+    if (requested && !scheduledFullscreen() && resolvedRules().windowedFullscreen.value_or(false)) {
+      setWindowedFullscreen(true);
+      return;
+    }
     if (!requested && scheduledFullscreen() && m_xCompositorFullscreen) {
       kLog.debug("request_fullscreen denied for compositor-owned X11 '{}'", appId() != nullptr ? appId() : "?");
       reassertRoleState();
@@ -533,6 +547,34 @@ namespace umbriel {
     const bool fullscreen = !scheduledFullscreen();
     m_xCompositorFullscreen = m_xsurface != nullptr && fullscreen;
     setFullscreen(fullscreen);
+  }
+
+  void View::toggleWindowedFullscreen() {
+    if (!roleInitialized() || attached()) {
+      return;
+    }
+    if (!m_windowedFullscreen && scheduledFullscreen()) {
+      setFullscreen(false);
+    }
+    setWindowedFullscreen(!m_windowedFullscreen);
+  }
+
+  void View::setWindowedFullscreen(bool windowed) {
+    if (windowed == m_windowedFullscreen) {
+      reassertRoleState();
+      return;
+    }
+    kLog.debug(
+        "set_windowed_fullscreen '{}' [{}] -> {}", appId() != nullptr ? appId() : "?", static_cast<const void*>(this),
+        windowed
+    );
+    m_deferredUnfullscreen.clear();
+    m_windowedFullscreen = windowed;
+    sendClientFullscreen(windowed);
+    m_windowedFullscreenExitSerial.reset();
+    if (!windowed && m_toplevel != nullptr) {
+      m_windowedFullscreenExitSerial = m_toplevel->base->scheduled_serial;
+    }
   }
 
   void View::applyDeferredUnfullscreen() {

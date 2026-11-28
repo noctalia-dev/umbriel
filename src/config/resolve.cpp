@@ -388,6 +388,9 @@ namespace umbriel {
       if (rule.focusOnActivate) {
         resolved.focusOnActivate = rule.focusOnActivate;
       }
+      if (rule.windowedFullscreen) {
+        resolved.windowedFullscreen = rule.windowedFullscreen;
+      }
       if (rule.attachToParent) {
         resolved.attachToParent = rule.attachToParent;
       }

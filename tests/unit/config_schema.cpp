@@ -358,3 +358,25 @@ UMBRIEL_TEST(shortcutsInhibitionRuleParsesAndParticipatesInReloads) {
   }));
   CHECK(std::ranges::none_of(invalid.messages, [](const auto& message) { return message.contains("unknown key"); }));
 }
+
+UMBRIEL_TEST(windowedFullscreenRuleIsOptionalAndStrictlyBoolean) {
+  const auto enabled = load(toml::parse("[[window_rule]]\nwindowed_fullscreen = true\n"));
+  CHECK(enabled.messages.empty());
+  CHECK(enabled.config.windowRules.at(0).windowedFullscreen.value_or(false));
+  const auto disabled = load(toml::parse("[[window_rule]]\nwindowed_fullscreen = false\n"));
+  CHECK(disabled.messages.empty());
+  CHECK(disabled.config.windowRules != enabled.config.windowRules);
+  CHECK(disabled.config.windowRules.at(0).windowedFullscreen.has_value());
+  CHECK(!*disabled.config.windowRules.at(0).windowedFullscreen);
+  const auto omitted = load(toml::parse("[[window_rule]]\n"));
+  CHECK(omitted.messages.empty());
+  CHECK(!omitted.config.windowRules.at(0).windowedFullscreen.has_value());
+  for (const char* value : {"\"false\"", "1", "1.0", "[]", "{}"}) {
+    const auto invalid = load(toml::parse(std::format("[[window_rule]]\nwindowed_fullscreen = {}\n", value)));
+    CHECK(!invalid.config.windowRules.at(0).windowedFullscreen.has_value());
+    CHECK(std::ranges::any_of(invalid.messages, [](const auto& message) {
+      return message.contains("windowed_fullscreen") && message.contains("expected boolean");
+    }));
+    CHECK(std::ranges::none_of(invalid.messages, [](const auto& message) { return message.contains("unknown key"); }));
+  }
+}
