@@ -517,6 +517,7 @@ namespace {
     case A::WorkspaceSwapActiveOutputDown:
     case A::WorkspaceSwapActiveOutputNext:
     case A::WorkspaceSwapActiveOutputPrevious:
+    case A::WorkspaceSwap:
       return Group::Workspaces;
     case A::OutputFocusLeft:
     case A::OutputFocusRight:

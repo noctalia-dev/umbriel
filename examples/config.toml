@@ -259,6 +259,8 @@ numlock_toggle = true
 # "Mod+Ctrl+Page_Down" = "workspace-move-to-output-next"
 # "Mod+Ctrl+Page_Up" = "workspace-move-to-output-previous"
 # "Mod+Ctrl+W" = "workspace-move-to-output current WEB --output DP-1"
+# Swap the active workspace's windows with workspace 3, keeping their layout. Names stay in place.
+# "Mod+Ctrl+3" = "workspace-swap 3"
 "Mod+1" = "workspace-switch 1"
 "Mod+2" = "workspace-switch 2"
 "Mod+3" = "workspace-switch 3"

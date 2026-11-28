@@ -1846,20 +1846,9 @@ namespace umbriel {
                                : reject(error, std::move(message));
     }
 
-    bool swapActiveWorkspaceWindows(Server& server, Output* sourceOutput, Output* targetOutput, std::string* error) {
-      if (sourceOutput == nullptr || targetOutput == nullptr || sourceOutput == targetOutput) {
-        return reject(error, "invalid outputs for swap");
-      }
-      WorkspaceGroup* sourceGroup = sourceOutput->workspaceGroup();
-      WorkspaceGroup* targetGroup = targetOutput->workspaceGroup();
-      if (sourceGroup == nullptr || targetGroup == nullptr) {
-        return reject(error, "output has no workspace group");
-      }
-      Workspace* sourceWs = sourceGroup->active();
-      Workspace* targetWs = targetGroup->active();
-      if (sourceWs == nullptr || targetWs == nullptr) {
-        return reject(error, "output has no active workspace");
-      }
+    // Exchanges every window of two workspaces, replaying each layout's own snapshot so split trees, ratios and
+    // scroll offsets arrive unchanged. The seat stays on the source workspace's output unless follow-warp is on.
+    bool swapWorkspaceWindows(Server& server, Workspace* sourceWs, Workspace* targetWs) {
       if (!sourceWs->hasViews() && !targetWs->hasViews()) {
         return true;
       }
@@ -1983,6 +1972,61 @@ namespace umbriel {
       sourceWs->markArrange(true);
       targetWs->markArrange(true);
 
+      return true;
+    }
+
+    bool swapActiveWorkspaceWindows(Server& server, Output* sourceOutput, Output* targetOutput, std::string* error) {
+      if (sourceOutput == nullptr || targetOutput == nullptr || sourceOutput == targetOutput) {
+        return reject(error, "invalid outputs for swap");
+      }
+      WorkspaceGroup* sourceGroup = sourceOutput->workspaceGroup();
+      WorkspaceGroup* targetGroup = targetOutput->workspaceGroup();
+      if (sourceGroup == nullptr || targetGroup == nullptr) {
+        return reject(error, "output has no workspace group");
+      }
+      Workspace* sourceWs = sourceGroup->active();
+      Workspace* targetWs = targetGroup->active();
+      if (sourceWs == nullptr || targetWs == nullptr) {
+        return reject(error, "output has no active workspace");
+      }
+      return swapWorkspaceWindows(server, sourceWs, targetWs);
+    }
+
+    // Swaps the active workspace's windows with any selected workspace, on this or another output, then follows them:
+    // the selected workspace becomes active and keeps the arrangement the windows had. Workspace names and indices stay
+    // where they are, so this is how a fixed-name layout "renumbers" a workspace.
+    bool actionWorkspaceSwap(Server& server, const Keybind& bind, std::string* error) {
+      const auto* selector = payloadIf<WorkspaceArg>(bind);
+      if (selector == nullptr) {
+        return reject(error, "action carries no workspace selector");
+      }
+      const std::expected<Workspace*, std::string> target = resolveWorkspaceSelector(server, *selector);
+      if (!target.has_value()) {
+        return reject(error, target.error());
+      }
+      Workspace* source = activeWorkspace(server);
+      if (source == nullptr) {
+        return reject(error, "no active workspace");
+      }
+      Workspace* destination = *target;
+      if (destination == source) {
+        return true;
+      }
+      if (!swapWorkspaceWindows(server, source, destination)) {
+        return false;
+      }
+
+      WorkspaceGroup* group = destination->group();
+      group->select(destination);
+      if (View* focused = destination->focusedView(); focused != nullptr && focused->mapped()) {
+        server.focusView(focused, FocusReason::Gesture);
+        finishWorkspaceTransfer(server, *focused);
+      } else if (
+          Output* output = group->output();
+          output != nullptr && output != server.outputFromWlr(server.preferredOutput())
+      ) {
+        warpToOutputCenter(server, *output);
+      }
       return true;
     }
 
@@ -2328,6 +2372,7 @@ namespace umbriel {
         &actionWorkspaceSwapActiveOutput<WLR_DIRECTION_DOWN>,
         &actionWorkspaceSwapActiveOutputCycle<1>,
         &actionWorkspaceSwapActiveOutputCycle<-1>,
+        &actionWorkspaceSwap,
         &actionModifyWidth,
         &actionWindowCenter,
         &actionWindowMoveTo,

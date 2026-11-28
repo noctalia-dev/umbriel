@@ -239,6 +239,7 @@ Selector resolution, including forced numeric names and `--output` qualifiers, i
 | `workspace-next`                                                                        | Switch to the next workspace on this output                |
 | `workspace-previous`                                                                    | Switch to the previous workspace on this output            |
 | `workspace-set-layout <scrolling\|dwindle\|master\|stacking\|toggle [mode1 mode2 ...]>` | Set the active workspace's layout mode                     |
+| `workspace-swap <workspace> [--output <output>]`                                        | Swap the active workspace's windows with the selected one  |
 | `workspace-swap-active-output-down`                                                     | Swap active workspace windows with the output below        |
 | `workspace-swap-active-output-left`                                                     | Swap active workspace windows with the output left         |
 | `workspace-swap-active-output-next`                                                     | Swap active workspace windows with the next output         |
