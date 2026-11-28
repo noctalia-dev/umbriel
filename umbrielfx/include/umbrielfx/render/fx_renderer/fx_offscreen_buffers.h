@@ -14,10 +14,13 @@ struct fx_target_buffers {
   struct fx_framebuffer* effects_buffer;
   // Swap buffer used for effects
   struct fx_framebuffer* effects_buffer_swapped;
+  // Full-resolution blur scratch allocated only for split (non-fused) paths
+  struct fx_framebuffer* effects_buffer_full;
   // Copy of the target under an in-place effect, which the program samples
   struct fx_framebuffer* in_place_source;
   struct fx_framebuffer* animation_buffers[FX_ANIMATION_DEPTH];
   struct fx_framebuffer* animation_backdrop;
+  struct fx_framebuffer* animation_shadow_blur;
 };
 
 /**
@@ -51,6 +54,8 @@ struct fx_offscreen_buffers {
 
   // Contains the blurred background for tiled windows
   struct fx_framebuffer* optimized_blur_buffer;
+  int optimized_blur_source_width;
+  int optimized_blur_source_height;
   // Whether the optimized blur buffers hold a completed render
   bool optimized_blur_valid;
   // sdr_tf the optimized blur buffers were rendered in linear light with, or 0
@@ -70,8 +75,14 @@ struct fx_offscreen_buffers {
 
 void fx_offscreen_buffers_destroy(struct fx_offscreen_buffers* fbos);
 void fx_offscreen_buffers_clear_group(struct fx_offscreen_buffers* fbos);
+struct fx_offscreen_buffers* fx_offscreen_buffers_lookup(struct wlr_output* output);
 struct fx_offscreen_buffers* fx_offscreen_buffers_try_get(struct wlr_output* output);
 void fx_offscreen_buffers_invalidate_blend(struct wlr_output* output);
-void fx_renderer_clear_animation_buffers(struct wlr_output* output);
+bool fx_offscreen_buffers_has_optimized_blur(const struct fx_offscreen_buffers* fbos);
+bool fx_offscreen_buffers_has_optimized_no_blur(const struct fx_offscreen_buffers* fbos);
+bool fx_offscreen_buffers_clear_blur(struct fx_offscreen_buffers* fbos);
+bool fx_offscreen_buffers_clear_optimized_blur(struct fx_offscreen_buffers* fbos);
+void fx_offscreen_buffers_clear_optimized_no_blur(struct fx_offscreen_buffers* fbos);
+void fx_offscreen_buffers_clear_animation(struct fx_offscreen_buffers* fbos);
 
 #endif

@@ -72,23 +72,44 @@ static void clear_animation_buffers(struct fx_target_buffers* buffers) {
     drop_framebuffer(&buffers->animation_buffers[i]);
   }
   drop_framebuffer(&buffers->animation_backdrop);
+  drop_framebuffer(&buffers->animation_shadow_blur);
   drop_framebuffer(&buffers->in_place_source);
+}
+
+static void clear_target_blur_buffers(struct fx_target_buffers* buffers) {
+  drop_framebuffer(&buffers->effects_buffer);
+  drop_framebuffer(&buffers->effects_buffer_swapped);
+  drop_framebuffer(&buffers->effects_buffer_full);
 }
 
 static void clear_target_buffers(struct fx_target_buffers* buffers) {
   clear_animation_buffers(buffers);
-  drop_framebuffer(&buffers->effects_buffer);
-  drop_framebuffer(&buffers->effects_buffer_swapped);
+  clear_target_blur_buffers(buffers);
+}
+
+static bool clear_optimized_blur_buffers(struct fx_offscreen_buffers* fbos) {
+  const bool had_optimized = fbos->optimized_blur_buffer != NULL || fbos->optimized_no_blur_buffer != NULL;
+  drop_framebuffer(&fbos->optimized_blur_buffer);
+  drop_framebuffer(&fbos->optimized_no_blur_buffer);
+  fbos->optimized_blur_source_width = 0;
+  fbos->optimized_blur_source_height = 0;
+  fbos->optimized_blur_valid = false;
+  return had_optimized;
+}
+
+static bool clear_blur_buffers(struct fx_offscreen_buffers* fbos) {
+  clear_target_blur_buffers(&fbos->output);
+  clear_target_blur_buffers(&fbos->group);
+  drop_framebuffer(&fbos->blur_saved_pixels_buffer);
+  return clear_optimized_blur_buffers(fbos);
 }
 
 static void clear_effect_buffers(struct fx_offscreen_buffers* fbos) {
   fbos->sdr_composition_valid = false;
   drop_framebuffer(&fbos->sdr_composition_buffer);
-  clear_target_buffers(&fbos->output);
-  clear_target_buffers(&fbos->group);
-  drop_framebuffer(&fbos->optimized_blur_buffer);
-  drop_framebuffer(&fbos->optimized_no_blur_buffer);
-  drop_framebuffer(&fbos->blur_saved_pixels_buffer);
+  clear_animation_buffers(&fbos->output);
+  clear_animation_buffers(&fbos->group);
+  clear_blur_buffers(fbos);
 }
 
 static void addon_handle_destroy(struct wlr_addon* addon) {
@@ -132,63 +153,74 @@ void fx_offscreen_buffers_destroy(struct fx_offscreen_buffers* fbos) { addon_han
 
 void fx_offscreen_buffers_clear_group(struct fx_offscreen_buffers* fbos) { clear_target_buffers(&fbos->group); }
 
-void fx_renderer_clear_output_effect_buffers(struct wlr_output* output) {
+struct fx_offscreen_buffers* fx_offscreen_buffers_lookup(struct wlr_output* output) {
   if (output == NULL) {
-    return;
+    return NULL;
   }
-
   struct wlr_addon* addon = wlr_addon_find(&output->addons, output, &fbos_addon_impl);
   if (addon == NULL) {
-    return;
+    return NULL;
   }
-
   struct fx_offscreen_buffers* fbos = wl_container_of(addon, fbos, addon);
-  clear_effect_buffers(fbos);
+  return fbos;
 }
 
-void fx_renderer_clear_animation_buffers(struct wlr_output* output) {
-  struct wlr_addon* addon = wlr_addon_find(&output->addons, output, &fbos_addon_impl);
-  if (addon == NULL) {
+void fx_renderer_clear_output_effect_buffers(struct wlr_output* output) {
+  struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_lookup(output);
+  if (fbos != NULL) {
+    clear_effect_buffers(fbos);
+  }
+}
+
+bool fx_offscreen_buffers_has_optimized_blur(const struct fx_offscreen_buffers* fbos) {
+  return fbos != NULL && fbos->optimized_blur_buffer != NULL && fbos->optimized_blur_valid;
+}
+
+bool fx_offscreen_buffers_has_optimized_no_blur(const struct fx_offscreen_buffers* fbos) {
+  return fbos != NULL && fbos->optimized_no_blur_buffer != NULL;
+}
+
+bool fx_offscreen_buffers_clear_blur(struct fx_offscreen_buffers* fbos) {
+  return fbos != NULL && clear_blur_buffers(fbos);
+}
+
+bool fx_offscreen_buffers_clear_optimized_blur(struct fx_offscreen_buffers* fbos) {
+  return fbos != NULL && clear_optimized_blur_buffers(fbos);
+}
+
+void fx_offscreen_buffers_clear_optimized_no_blur(struct fx_offscreen_buffers* fbos) {
+  if (fbos != NULL) {
+    drop_framebuffer(&fbos->optimized_no_blur_buffer);
+  }
+}
+
+void fx_offscreen_buffers_clear_animation(struct fx_offscreen_buffers* fbos) {
+  if (fbos == NULL) {
     return;
   }
-  struct fx_offscreen_buffers* fbos = wl_container_of(addon, fbos, addon);
   clear_animation_buffers(&fbos->output);
   clear_animation_buffers(&fbos->group);
 }
 
 void fx_offscreen_buffers_invalidate_blend(struct wlr_output* output) {
-  if (output == NULL) {
+  struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_lookup(output);
+  if (fbos == NULL) {
     return;
   }
-
-  struct wlr_addon* addon = wlr_addon_find(&output->addons, output, &fbos_addon_impl);
-  if (addon == NULL) {
-    return;
-  }
-
-  struct fx_offscreen_buffers* fbos = wl_container_of(addon, fbos, addon);
   fbos->blend_valid = false;
   fbos->sdr_composition_valid = false;
   fbos->sdr_capture_generation = 0;
 }
 
 struct fx_offscreen_buffers* fx_offscreen_buffers_try_get(struct wlr_output* output) {
-  struct fx_offscreen_buffers* fbos = NULL;
   if (!output) {
     return NULL;
   }
-
-  struct wlr_addon* addon = wlr_addon_find(&output->addons, output, &fbos_addon_impl);
-  if (!addon) {
-    goto create_new;
+  struct fx_offscreen_buffers* fbos = fx_offscreen_buffers_lookup(output);
+  if (fbos != NULL) {
+    return fbos;
   }
 
-  if (!(fbos = wl_container_of(addon, fbos, addon))) {
-    goto create_new;
-  }
-  return fbos;
-
-create_new:;
   struct fx_renderer* renderer = fx_get_renderer(output->renderer);
   if (!renderer) {
     return NULL;

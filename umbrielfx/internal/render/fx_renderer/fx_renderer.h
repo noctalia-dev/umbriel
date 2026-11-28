@@ -30,7 +30,7 @@ bool fx_renderer_sdr_direct_matches_composition(struct wlr_buffer* buffer);
 
 // Whether the saved optimized blur is valid, encoded SDR and matches this
 // output buffer's size and effect format.
-bool fx_renderer_optimized_blur_ready(struct wlr_output* output, struct wlr_buffer* buffer);
+bool fx_renderer_optimized_blur_ready(struct wlr_output* output, struct wlr_buffer* buffer, bool needs_no_blur);
 
 struct fx_pixel_format {
   uint32_t drm_format;
@@ -296,6 +296,8 @@ struct fx_renderer {
   bool fail_animation_capture_for_test;
   // Set only through fx_renderer_split_blur_composite_for_test.
   bool split_blur_composite_for_test;
+  // Shadow casters reused instead of re-rendered, reported to tests.
+  unsigned shadow_caster_reuses;
   struct fx_effect_shader* animation_shadow_horizontal;
   struct fx_effect_shader* animation_shadow_vertical;
 
