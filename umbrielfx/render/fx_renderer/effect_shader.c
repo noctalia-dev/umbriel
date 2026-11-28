@@ -198,6 +198,12 @@ void fx_effect_shader_set_shape_preserving(struct fx_effect_shader* shader, bool
   }
 }
 
+void fx_effect_shader_set_bounded(struct fx_effect_shader* shader, bool bounded) {
+  if (shader != NULL) {
+    shader->bounded = bounded;
+  }
+}
+
 enum fx_effect_kind fx_effect_shader_kind(const struct fx_effect_shader* shader) { return shader->kind; }
 
 void fx_effect_shader_unref(struct fx_effect_shader* shader) {
@@ -269,6 +275,10 @@ const struct fx_effect_uniform* fx_effect_shader_uniform(const struct fx_effect_
 
 bool fx_effect_shader_reads(const struct fx_effect_shader* shader, const char* uniform) {
   return shader != NULL && fx_effect_shader_uniform(shader, uniform) != NULL;
+}
+
+bool fx_effect_shader_uses_history(const struct fx_effect_shader* shader) {
+  return shader != NULL && shader->previous_tex >= 0;
 }
 
 static GLenum gl_type(enum fx_uniform_type type) {

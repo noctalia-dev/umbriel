@@ -18,6 +18,7 @@ struct fx_target_buffers {
   struct fx_framebuffer* in_place_source;
   struct fx_framebuffer* animation_buffers[FX_ANIMATION_DEPTH];
   struct fx_framebuffer* animation_backdrop;
+  struct fx_framebuffer* animation_shadow_blur;
 };
 
 /**
