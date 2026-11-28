@@ -46,11 +46,13 @@ struct wlr_xwayland_surface_configure_event;
 namespace umbriel {
 
   class Server;
+  class Output;
   class SsdFrame;
   class ScratchpadManager;
   class ColorManager;
   class Workspace;
   enum class LayoutAttachOrigin;
+  struct OutputIdentity;
   struct ResolvedWindowRule;
   struct WorkspaceLaunchAnchor;
   struct DisplacedWorkspace;
@@ -100,6 +102,8 @@ namespace umbriel {
     // True while the latest configure is still queued, or sent but not yet acknowledged and committed. Always false for
     // X11 windows, which acknowledge nothing.
     bool configureOutstanding() const;
+    // True once the latest configure has been sent and acknowledged, whether or not a commit has applied it yet.
+    bool configureAcknowledged() const;
     // True while the shared scene draws the window: its frame and every ancestor are enabled.
     bool presented() const;
     void updateDimBehind();
@@ -453,6 +457,8 @@ namespace umbriel {
     // Re-derive the surface clip from committed state alone (tile geometry when tiled, none otherwise), for the paths
     // that leave presentation-driven cropping behind: map, drag entry, drag drop.
     void resetSurfaceClip();
+    // Keep the isolated toplevel capture scene clipped to the window's committed content bounds.
+    void syncCaptureClip();
     void setFadeAlpha(float alpha);
     void cancelFadeAnimation();
     void cancelPositionAnimation();
@@ -510,8 +516,9 @@ namespace umbriel {
     bool animatesOn(const Output* output) const override;
 
   private:
-    // `withShadow` copies the shadow.
-    CloseSnapshotId captureSnapshot(bool held, bool withShadow);
+    // `withShadow` copies the shadow. `resolvedWorkspace` is the workspace `handleUnmap` resolved before an attached
+    // dialog loses its link; null falls back to this view's own workspace.
+    CloseSnapshotId captureSnapshot(bool held, bool withShadow, Workspace* resolvedWorkspace = nullptr);
     friend class Cursor;
     friend class ScratchpadManager;
     friend class ColorManager;
@@ -677,7 +684,9 @@ namespace umbriel {
     void watchViewSurfaceTree(wlr_surface* root, wlr_subsurface* attachment = nullptr);
     void watchViewSurface(wlr_surface* surface, wlr_subsurface* attachment);
     void clearViewSurfaceWatches();
-    [[nodiscard]] CloseSnapshotId beginCloseAnimation();
+    // `resolvedWorkspace` is the workspace the closing window was drawn in, resolved before an attached dialog loses
+    // its link; null falls back to this view's own.
+    [[nodiscard]] CloseSnapshotId beginCloseAnimation(Workspace* resolvedWorkspace);
     // A frozen copy of this view's content and border, held over it until Server::releaseCloseSnapshot. The live view
     // stays under it at the same box and keeps drawing its own shadow, so the copy takes none.
     [[nodiscard]] CloseSnapshotId captureHeldSnapshot();
@@ -699,14 +708,15 @@ namespace umbriel {
     // Refresh a finished/cancelled resize, retaining layout and pending floating frame ownership.
     void finishSizeAnimation();
     bool sizeAnimating() const {
-      return m_presentation.animating() || m_layoutMotion || tiledOpeningActive() || fullscreenOpeningActive();
+      return m_presentation.animating()
+          || m_layoutMotion
+          || tiledOpeningActive()
+          || fullscreenOpeningActive()
+          || openingInsetActive();
     }
     bool layoutPresentationOwned() const { return sizeAnimating() || m_layoutPresentationHeld; }
     void requestTiledSize(int width, int height);
     [[nodiscard]] bool settleTiledSizeRequest();
-    // Answers a tiled client that settled on a size of its own: the layout size is sent once per such size, and a
-    // client that takes it and then returns to its own size is floated at it.
-    void reassertTiledClientSize();
     // A layout size configure the client has not yet answered with a commit at that size.
     bool tiledSizeRequestPending() const { return m_tiledSizeRequest.has_value(); }
     // While windows_in owns a freshly admitted tiled view, presentation follows its final layout slot rather than the
@@ -715,11 +725,15 @@ namespace umbriel {
     // The same for a window that opens fullscreen: the layout owns the output box it rests in, windows_in owns the
     // scaled box it is presented at until the fade ends.
     bool fullscreenOpeningActive() const;
+    // A floating window that opens with an inset scales from the box it rests in at the size its client last drew, so
+    // a client that resizes itself while opening grows toward its new size instead of being squeezed into the old one.
+    bool floatingOpeningActive() const;
+    wlr_box floatingOpeningBox() const;
     // A built-in popin, zoom, or slide open offsets the presented box inside the box the layout assigned it, until
     // the fade that drives it reaches rest.
     bool openingInsetPending() const { return m_openingScale < 1.0 || m_openingSlide != 0; }
     bool openingInsetActive() const {
-      return openingInsetPending() && (tiledOpeningActive() || fullscreenOpeningActive());
+      return openingInsetPending() && (tiledOpeningActive() || fullscreenOpeningActive() || floatingOpeningActive());
     }
     // `box` with that inset applied, else `box` itself. Both extents are at least 1.
     wlr_box openingInsetBox(const wlr_box& box) const;
@@ -752,8 +766,6 @@ namespace umbriel {
     // A pointer resize, and the final request it flushes on release until the client answers, shows the client's frame
     // as drawn: never scaled, cropped 1:1 to a smaller tile, with the opposite edges of a float held in place.
     bool presentsCommittedSize() const;
-    // A tiled resize grab steps through held switches (windows_resize.wait_for_redraw) instead of stretching buffers.
-    bool tiledResizeWaitsForClient() const;
     // Cursor owns when a drag starts and ends; View owns the scene invariants
     // for the temporary global presentation and its resting presentation.
     void enterDragPresentation();
@@ -781,7 +793,7 @@ namespace umbriel {
     // Kick the owning output so an animation started outside a frame gets ticked.
     void scheduleFrame();
     void cancelSizeAnimation();
-    void updateFullscreenPresentation(int width, int height);
+    void updateFullscreenPresentation(int width, int height, bool centerDrawn = false);
     // Apply subsurface clip to the toplevel surface only, not xdg popup children.
     void setSurfaceTreeClip(const wlr_box* clip);
     void unconstrainPopup(wlr_xdg_popup* popup);
@@ -864,8 +876,16 @@ namespace umbriel {
     // Applies or undoes the alone size effect after the workspace's tiled set changes.
     bool notifyAloneStateChanged();
     // Resolves the rules with `alone` forced, so the alone effect can compare both outcomes, and so the opening paths
-    // can read the alone rules before the view is in the layout.
-    ResolvedWindowRule resolveRulesWithAlone(bool alone) const;
+    // can read the alone rules before the view is in the layout. `output` selects what `match.output` tests; null
+    // resolves against the window's current output.
+    ResolvedWindowRule resolveRulesWithAlone(bool alone, const Output* output = nullptr) const;
+    // Opening rules resolved against the output the window is about to open on. Placement rules pick that output
+    // and `match.output` rules pick the placement, so resolution iterates until the prediction settles.
+    ResolvedWindowRule resolveRulesForOpening(WindowRuleState state) const;
+    // The output the placement rules in `rule` would open this window on, mirroring the map-time attach order.
+    Output* predictedRuleOutput(const ResolvedWindowRule& rule) const;
+    // The identity `match.output` tests: `output`, or the window's current output when null.
+    std::optional<OutputIdentity> ruleOutputIdentity(const Output* output = nullptr) const;
     ResolvedWindowRule aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
     void revertAloneRuleEffects();
@@ -897,9 +917,12 @@ namespace umbriel {
     std::optional<std::string> m_rulesXdgTag;
     ContentType m_rulesContentType = ContentType::None;
     WindowRuleState m_rulesState;
+    // `match.output` resolves against the window's output, so it is part of the resolution key too.
+    Output* m_rulesOutput = nullptr;
     // The state applyDynamicRules last applied effects for. Any resolvedRules() caller refreshes the cache above, so
     // only this tells a transition whether the effects on screen still match the window's state.
     WindowRuleState m_appliedRuleState;
+    Output* m_appliedRuleOutput = nullptr;
     // Alone effects: one of the four size effects applies while the window is alone, and the window remembers which
     // one to undo once it is not alone anymore.
     bool m_aloneEffectsActive = false;
@@ -1067,15 +1090,11 @@ namespace umbriel {
       ClientSize baseBuffer;
     };
     std::optional<TiledSizeRequest> m_tiledSizeRequest;
-    std::optional<ClientSize> m_reassertedClientSize;
-    // The layout size the client last drew exactly.
-    std::optional<ClientSize> m_layoutFitSize;
     float m_layoutMotionDirection = 1.0F;
     bool m_tiledOpeningDeferred = false;
     // Inset a built-in windows_in style starts an opener at, interpolated to rest by the fade: a popin or zoom scale
     // (1.0 = none) and a slide offset in logical pixels (0 = none).
     double m_openingScale = 1.0;
-    std::optional<std::array<int, 2>> m_openingFloatingSize;
     int m_openingSlide = 0;
     bool m_tiled = false;
     // Floating because its workspace uses stacking; tiles again when moved to a tiling layout.

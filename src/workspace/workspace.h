@@ -122,6 +122,8 @@ namespace umbriel {
     wlr_scene_tree* viewLayer(bool tiled) const { return tiled ? m_tiledLayer : m_floatingLayer; }
     wlr_scene_tree* tileShadowLayer() const { return m_tileShadowLayer; }
     wlr_scene_tree* fullscreenTree() const { return m_fullscreenTree; }
+    // A scratchpad workspace's tree lives in the server's scratchpad tree, above its dim rect and blur.
+    wlr_scene_tree* tree() const { return m_tree; }
     bool floatingLayerRaised() const;
     // The focused tile is drawn above floating fullscreen windows and, in scrolling, fullscreen in its column.
     bool liftedAboveFullscreen(const View* view) const;
@@ -179,9 +181,9 @@ namespace umbriel {
     void layoutDetach(View* view, bool animate = false);
     // Keeps a closed tile's held snapshot until the tiles filling its space have redrawn at their new sizes.
     void holdCloseSnapshot(CloseSnapshotId snapshot);
-    // Focus is about to move with a layout change: to an opening tile, or away from a closing one. With
-    // windows_resize.wait_for_redraw, members keep drawing the focus they show now until the next arrange ends; a
-    // member that arrange freezes for its clients keeps it until the switch, so focus lands with the new layout.
+    // Focus is about to move with a layout change: to an opening tile, or away from a closing one. Members keep drawing
+    // the focus they show now until the next arrange ends; a member that arrange freezes for its clients keeps it until
+    // the switch, so focus lands with the new layout.
     void deferFocusChrome();
     // Whether `view` records focus changes instead of drawing them; see deferFocusChrome.
     bool defersFocusChrome(const View* view) const;
@@ -229,8 +231,8 @@ namespace umbriel {
     bool cycleFocusedHeight(int direction);
     bool setFocusedWidth(double fraction);
     bool centerFocusedColumn();
-    // Incremental width change: apply `delta` to the focused column's current
-    // width fraction, clamped to [0.1, 1.0].
+    // Incremental width change: step the focused column's current width
+    // fraction by `delta`, as `stepFraction` does.
     bool modifyFocusedWidth(double delta);
     bool setFocusedHeight(double fraction);
     bool modifyFocusedHeight(double delta);
@@ -290,7 +292,8 @@ namespace umbriel {
     // overscrolls on purpose.
     void clampScrollToRange();
     // Own every view close snapshot so it follows workspace visibility and translation: the workspace translates the
-    // snapshot with its slides and hides it while the workspace is not showing.
+    // snapshot with its slides and hides it while the workspace is not showing. A scratchpad workspace is always
+    // active, so its snapshots instead follow the pad's own visibility fade.
     void trackCloseSnapshot(CloseSnapshotId id, const wlr_box& outputBox);
     // Drop `view` from the running motion without touching its presentation; the caller now owns its box.
     void releaseLayoutMotion(View* view);
@@ -298,9 +301,13 @@ namespace umbriel {
     const AnimatedValue* layoutMotionValue() const;
     // Advances the motion; true while it is still running.
     bool tickLayoutMotion(double nowMsec);
-    bool layoutMotionActive() const { return m_motion.progress.animating() || !m_motion.views.empty(); }
-    // A resizing reflow held until its clients redraw (windows_resize.wait_for_redraw).
-    bool layoutMotionWaiting() const { return m_motion.waiting; }
+    // The size half of the running motion, while windows_resize animates it.
+    bool layoutSizeAnimating() const { return m_motion.size.animating(); }
+    // Ends a motion held for its clients as soon as the last of them has answered, on the commit that answered it.
+    void releaseAnsweredLayoutHold();
+    bool layoutMotionActive() const {
+      return m_motion.waiting || m_motion.progress.animating() || !m_motion.views.empty();
+    }
     // Explicit strip scrolling defers one hover refresh until its layout motion settles and the pointer moves.
     void deferScrollHoverFocus() { m_scrollHoverFocusDeferred = true; }
     bool scrollHoverFocusDeferred() const { return m_scrollHoverFocusDeferred; }
@@ -339,11 +346,14 @@ namespace umbriel {
     // Snap or animate every tiled member of the layout into its slot from wherever it is presented now.
     void applyTiledMotion(const wlr_box& usable, bool animate);
     void startLayoutTimelines(double positionSpeed, double sizeSpeed);
-    // Advances a motion held by windows_resize.wait_for_redraw; true while it still holds.
+    // Advances a motion held for its clients' redraw; true while it still holds.
     bool tickLayoutMotionWait(double nowMsec);
+    bool layoutHoldAnswered() const;
+    void releaseLayoutHold();
     bool heldOpenerAlive(const View* view) const;
     void resumeHeldOpeners();
     void endLayoutMotion();
+    // A scratchpad workspace reads its pad's visibility fade here, so every caller presents its snapshots the same way.
     void syncCloseSnapshots();
     void discardCloseSnapshots();
     WorkspaceGroup* m_group = nullptr;
@@ -412,9 +422,11 @@ namespace umbriel {
       AnimatedValue size;
       MonotonicEasing sizeCurve;
       bool sizePhysics = false;
-      // windows_resize.wait_for_redraw: the timelines have not started yet, because a resized member's client has not
-      // redrawn at its new size. waitStartMsec is the animation clock at the first held frame.
+      // The timelines have not started yet, because a resized member's or an opener's client has not redrawn at its
+      // new size. waitStartMsec is the animation clock at the first held frame. animateAfterWait starts windows_move
+      // and windows_resize from the held boxes once the hold ends, instead of switching in one frame.
       bool waiting = false;
+      bool animateAfterWait = false;
       std::optional<double> waitStartMsec;
       // Openers kept hidden, and members whose frame is frozen, until the held motion switches.
       struct Opener {

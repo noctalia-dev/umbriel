@@ -51,13 +51,13 @@ spawn_client scene-resize-left
 wait_for_count 1
 spawn_client scene-resize-right
 wait_for_count 2
-sleep 0.1
+"$UMBRIEL" settle
 
 # Reveal the left column first, then derive the test point from the settled boundary. Reading it before the focus reveal
 # would use the strip's old offset and could leave the pointer inside the left column after the resize.
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 100 360
 wait_for_active scene-resize-left
-sleep 0.1
+"$UMBRIEL" settle
 right_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "scene-resize-right") | .x')
 pointer_x=$((right_x - 50))
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$pointer_x" 360
@@ -65,7 +65,7 @@ wait_for_active scene-resize-left
 
 # A 0.2-viewport shrink moves the right column left by about 252 pixels, well past this pointer position.
 "$UMBRIEL" msg window-modify-primary-extent -0.2 > /dev/null
-sleep 0.1
+"$UMBRIEL" settle
 wait_for_active scene-resize-left
 
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$((pointer_x + 1))" 360

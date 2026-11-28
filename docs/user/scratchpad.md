@@ -220,7 +220,7 @@ The implicit `default` scratchpad is always modal and never sticky.
 
 A dialog parented to a visible scratchpad window joins that scratchpad unless a window rule explicitly chooses another destination.
 
-Backdrop dim and blur affect only the output showing the scratchpad.
+Backdrop dim and blur affect only the output showing a modal scratchpad. A member that closes while its scratchpad is shown fades like any other window, over the pad's backdrop rather than under it, and a scratchpad hidden mid-close takes the closing window with it; a non-modal pad has no backdrop, but its closing member still follows the pad's fade. Hiding a pad fades the dim and blur out with it rather than cutting them at the first frame, and each pad owns its own fade, so showing another pad while one is hiding leaves the hiding pad's closing window hidden.
 
 A shown scratchpad sits above workspace windows and below panels. When a fullscreen window is on its output, or one of its own windows is fullscreen, the scratchpad and its backdrop draw above fullscreen windows instead, until it has faded out. This applies to every shown scratchpad at once, so a scratchpad shown on another output at the same time also draws above that output's panels. Pinned windows, overlay-layer surfaces such as notifications, and the lock screen stay above it.
 
@@ -230,7 +230,7 @@ Showing a scratchpad never moves a floating window it holds: the window stays wh
 
 Each member remembers its source output, workspace, and tiled or floating state. If that output or workspace no longer exists, Umbriel restores the window to the scratchpad's current output and active workspace.
 
-Fullscreen, pinned, and maximize-to-edges state are cleared when a window enters a scratchpad. In a floating scratchpad the window floats at its current size. A window that opens into a scratchpad through `default_scratchpad` takes its size, position, fullscreen, and maximize-to-edges state from its [window rules](window-rules.md#scratchpad-placement).
+Fullscreen, pinned, and maximize-to-edges state are cleared when a window enters a scratchpad. In a floating scratchpad the window floats at its current size. A window that opens into a scratchpad through `default_scratchpad` takes its size, position, fullscreen, and maximize-to-edges state from its [window rules](window-rules-placement.md#open-in-a-scratchpad).
 
 ## Moving scratchpad windows
 
@@ -242,7 +242,7 @@ If its output disconnects, the scratchpad temporarily moves to another enabled o
 
 ## Appearance and window actions
 
-Scratchpad windows use the regular border colors unless a [window rule](window-rules.md#border-colors) matches them:
+Scratchpad windows use the regular border colors unless a [window rule](window-rules-appearance.md#borders-that-show-window-state) matches them:
 
 ```toml
 [[window_rule]]

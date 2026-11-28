@@ -2,6 +2,7 @@
 #include "input/cursor.h"
 #include "input/seat.h"
 #include "layer/layer_surface.h"
+#include "layout/layout.h"
 #include "layout/scrolling.h"
 #include "output/output.h"
 #include "overview/overview.h"
@@ -482,15 +483,11 @@ namespace umbriel {
   void View::clearFloatingSizeRequest() {
     m_floating.clearSizeRequest();
     m_floatingSizeConfigure.reset();
-    m_openingFloatingSize.reset();
     m_xwaylandResizeConfigurePending = false;
     m_pointerResizeSettling = false;
   }
 
   std::array<int, 2> View::floatingSize() const {
-    if (openingAnimationActive() && m_openingFloatingSize) {
-      return *m_openingFloatingSize;
-    }
     if (const auto& pending = m_floating.pendingSize()) {
       return *pending;
     }
@@ -614,9 +611,12 @@ namespace umbriel {
     if (!current) {
       return;
     }
-    // The same 0.1 fraction floor the fraction path enforces, so a hint-less
-    // client cannot collapse to a single pixel.
-    const double target = std::clamp(*current + delta, 0.1, 1.0);
+    // The same step rule as the fraction path: a 0.1 floor so a hint-less client cannot collapse to a single pixel,
+    // and a float already past a limit never moves against the step.
+    const auto target = stepFraction(*current, delta, 1.0);
+    if (!target) {
+      return;
+    }
     const SizeHints hints = sizeHints();
     const auto [basisWidth, basisHeight] = floatingSize();
     // A pending size and the position animation target form one logical box.
@@ -628,8 +628,8 @@ namespace umbriel {
         .width = basisWidth,
         .height = basisHeight,
     };
-    const int width = widthAxis ? clampWidth(floatingFractionSize(target, usable.width), hints) : basisWidth;
-    const int height = widthAxis ? basisHeight : clampHeight(floatingFractionSize(target, usable.height), hints);
+    const int width = widthAxis ? clampWidth(floatingFractionSize(*target, usable.width), hints) : basisWidth;
+    const int height = widthAxis ? basisHeight : clampHeight(floatingFractionSize(*target, usable.height), hints);
     if (width <= 0 || height <= 0) {
       return;
     }
@@ -694,13 +694,7 @@ namespace umbriel {
   }
 
   void View::adoptFloatingClientSize() {
-    if (m_tiled
-        || !m_mapped
-        || scheduledFullscreen()
-        || scheduledMaximized()
-        || m_region
-        || sizeGrabTracksPointer()
-        || openingAnimationActive()) {
+    if (m_tiled || !m_mapped || scheduledFullscreen() || scheduledMaximized() || m_region || sizeGrabTracksPointer()) {
       return;
     }
     const auto requested = m_floating.pendingSize();
@@ -713,10 +707,8 @@ namespace umbriel {
     if (geo.width <= 0 || geo.height <= 0) {
       return;
     }
-    const auto openingSize = m_openingFloatingSize;
-    m_openingFloatingSize.reset();
-    if ((requested && (geo.width != (*requested)[0] || geo.height != (*requested)[1]))
-        || (openingSize && (geo.width != (*openingSize)[0] || geo.height != (*openingSize)[1]))) {
+    // An opener's inset already scales from the size its client draws.
+    if (!openingAnimationActive() && requested && (geo.width != (*requested)[0] || geo.height != (*requested)[1])) {
       beginResizeAnimation(geo.width, geo.height);
       if (anchor && !attached()) {
         const FloatingPoint origin = anchoredContentOrigin(*anchor, edges, geo);
@@ -729,17 +721,11 @@ namespace umbriel {
       adoptScheduledSize(geo.width, geo.height);
       const wlr_box usable = floatingUsableArea();
       if (!requested
-          && !openingSize
           && m_workspace != nullptr
           && m_workspace->layoutMode() == LayoutMode::Stacking
           && !m_floating.restoredOrigin(usable)
           && transientParent() == nullptr) {
         placeInUsableArea();
-      } else if (openingSize) {
-        if (const auto clamped =
-                floatingClampTarget({layoutTargetX(), layoutTargetY()}, geo.width, geo.height, false)) {
-          animateTo(clamped->x, clamped->y);
-        }
       } else {
         clampFloatingPosition();
       }

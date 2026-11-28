@@ -115,7 +115,8 @@ wait "$CLIENT_PID" 2>/dev/null || true
 CLIENT_PID=
 
 CLIENT_LOG="$UMBRIEL_RUNTIME_DIR/wine-scrgb-client.log"
-env COLOR_WINDOWS_SCRGB=1 REDRAW_ON_CLOSE=once APP_ID=wine-scrgb \
+# The client draws its tile's size in its usual colour, so the centre of the listed box is its own pixels.
+env COLOR_WINDOWS_SCRGB=1 REDRAW_ON_CLOSE=once APP_ID=wine-scrgb RESIZE_FILL_COLOR=0xFF5577AA \
   bash -c 'exec -a wine "$@"' _ \
   "$UNMAP_CLIENT" wine-scrgb > "$CLIENT_LOG" 2>&1 &
 CLIENT_PID=$!

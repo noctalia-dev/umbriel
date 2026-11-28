@@ -51,18 +51,18 @@ spawn_client scene-fullscreen-left
 wait_for_count 1
 spawn_client scene-fullscreen-right
 wait_for_count 2
-sleep 0.1
+"$UMBRIEL" settle
 
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 100 360
 wait_for_active scene-fullscreen-left
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
-sleep 0.1
+"$UMBRIEL" settle
 
 # The fullscreen window still owns this position, so the motion consumes no geometric enter into the hidden tile.
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 1000 360
 wait_for_active scene-fullscreen-left
 "$UMBRIEL" msg window-toggle-fullscreen > /dev/null
-sleep 0.1
+"$UMBRIEL" settle
 wait_for_active scene-fullscreen-left
 
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 1001 360

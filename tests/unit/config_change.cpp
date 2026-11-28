@@ -889,6 +889,10 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   changedFloatingMatcher.windowRules[0].matchFloating = true;
   CHECK(ConfigEffects::between(forcedByRule, changedFloatingMatcher).tearingPolicy);
 
+  Config changedMaximizedMatcher = forcedByRule;
+  changedMaximizedMatcher.windowRules[0].matchMaximized = true;
+  CHECK(ConfigEffects::between(forcedByRule, changedMaximizedMatcher).tearingPolicy);
+
   Config changedEdgesMatcher = forcedByRule;
   changedEdgesMatcher.windowRules[0].matchMaximizedToEdges = true;
   CHECK(ConfigEffects::between(forcedByRule, changedEdgesMatcher).tearingPolicy);
@@ -921,6 +925,10 @@ UMBRIEL_TEST(tearingPolicyDoesNotReapplyOutputStateOrInvalidateOverview) {
   Config changedTagMatcher = forcedByRule;
   changedTagMatcher.windowRules[0].xdgTagPatterns = RegexPatterns{}.add("^game-launcher$");
   CHECK(ConfigEffects::between(forcedByRule, changedTagMatcher).tearingPolicy);
+
+  Config changedOutputMatcher = forcedByRule;
+  changedOutputMatcher.windowRules[0].outputPatterns = RegexPatterns{}.add("^HDMI-A-1$");
+  CHECK(ConfigEffects::between(forcedByRule, changedOutputMatcher).tearingPolicy);
 
   Config unrelatedRule = before;
   WindowRule translucent;

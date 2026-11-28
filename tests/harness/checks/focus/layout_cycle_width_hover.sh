@@ -52,18 +52,18 @@ spawn_client scene-cycle-left
 wait_for_count 1
 spawn_client scene-cycle-right
 wait_for_count 2
-sleep 0.1
+"$UMBRIEL" settle
 
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move 100 360
 wait_for_active scene-cycle-left
-sleep 0.1
+"$UMBRIEL" settle
 right_x=$("$UMBRIEL" windows --json | jq -r '.[] | select(.title == "scene-cycle-right") | .x')
 pointer_x=$((right_x - 50))
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$pointer_x" 360
 wait_for_active scene-cycle-left
 
 "$UMBRIEL" msg window-cycle-primary-extent-back > /dev/null
-sleep 0.1
+"$UMBRIEL" settle
 wait_for_active scene-cycle-left
 
 "$POINTER" "$OUTPUT_W" "$OUTPUT_H" move "$((pointer_x + 1))" 360

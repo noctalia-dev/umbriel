@@ -20,9 +20,12 @@ namespace umbriel {
 
   inline constexpr uint64_t kStartupRuleDurationMs = 60'000;
 
+  // `output` is the identity of the output the window is on or about to open
+  // on; null when unknown, which matches no `match.output` selector.
   ResolvedWindowRule resolveWindowRules(
       const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,
-      std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs
+      std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs,
+      const OutputIdentity* output = nullptr
   );
   ResolvedLayerRule resolveLayerRules(
       const Config& config, std::optional<std::string_view> layerNamespace, LayerShellLayer layer, uint64_t uptimeMs

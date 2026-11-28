@@ -3,14 +3,18 @@
 // Pure scalar parsers shared by the config readers. No wlroots, no I/O.
 
 #include <array>
+#include <cstdint>
 #include <string_view>
 
 namespace umbriel {
+
+  enum class OutputModeTarget : uint8_t { None, HighRefreshRate, HighResolution };
 
   struct OutputMode {
     int width = 0;
     int height = 0;
     int refreshMHz = 0;
+    OutputModeTarget target = OutputModeTarget::None;
 
     bool operator==(const OutputMode&) const = default;
   };
@@ -21,7 +25,8 @@ namespace umbriel {
 
   // "<width>x<height>" with an optional "@<hz>" suffix, e.g. "2560x1440@165" or
   // "1920x1080". Width and height are clamped to 1-16384, refresh to 0-1000 Hz.
-  bool parseOutputMode(std::string_view text, OutputMode& output);
+  // With `allowKeywords`, "highest_refresh" and "highest_resolution" set `target` instead.
+  bool parseOutputMode(std::string_view text, OutputMode& output, bool allowKeywords = true);
 
   // Environment names accepted by systemd and ordinary shells: an ASCII letter or underscore followed by ASCII
   // letters, digits, or underscores.

@@ -176,6 +176,7 @@ namespace umbriel {
           strict(regexField("app_id", &W::appIdPatterns)),
           strict(regexField("title", &W::titlePatterns)),
           strict(regexField("xdg_tag", &W::xdgTagPatterns)),
+          strict(regexField("output", &W::outputPatterns)),
           strict(registry::choice("content_type", &W::matchContentType, contentTypes())),
           registry::checked<W>(
               "layout", KeyDescription("enum_or_array").withValues(registry::choiceNames(layoutModes())),
@@ -205,6 +206,7 @@ namespace umbriel {
           ),
           strict(boolean("is_focused", &W::matchFocused)),
           strict(boolean("is_floating", &W::matchFloating)),
+          strict(boolean("is_maximized", &W::matchMaximized)),
           strict(boolean("is_maximized_to_edges", &W::matchMaximizedToEdges)),
           strict(boolean("is_pinned", &W::matchPinned)),
           strict(boolean("is_scratchpad", &W::matchScratchpad)),

@@ -761,6 +761,7 @@ pure_sources = files(
   'src/view/floating.cpp',
   'src/view/window_region.cpp',
   'src/view/drag_physics.cpp',
+  'src/view/popup_constraint.cpp',
   'src/xwayland/xsettings.cpp',
 )
 
@@ -822,6 +823,7 @@ core_sources = files(
   'src/server/server_events.cpp',
   'src/server/server_keybinds.cpp',
   'src/server/server_outputs.cpp',
+  'src/server/dmabuf_implicit_barrier.cpp',
   'src/server/syncobj_acquire_barrier.cpp',
   'src/server/syncobj_superseded_release.cpp',
   'src/server/syncobj_unmap_release.cpp',
@@ -1029,6 +1031,22 @@ install_data(
   'data/umbriel-session.target',
   'data/umbriel-shutdown.target',
   install_dir: get_option('prefix') / 'lib' / 'systemd' / 'user',
+)
+
+umbriel_dinit_service = configure_file(
+  input: 'data/dinit/umbriel.in',
+  output: 'umbriel.dinit',
+  configuration: umbriel_session_config,
+)
+install_data(
+  umbriel_dinit_service,
+  rename: 'umbriel',
+  install_dir: get_option('prefix') / 'lib' / 'dinit.d' / 'user',
+  install_tag: 'runtime',
+)
+install_data(
+  'data/dinit/umbriel-session',
+  install_dir: get_option('prefix') / 'lib' / 'dinit.d' / 'user',
 )
 
 install_data(

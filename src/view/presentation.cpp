@@ -96,7 +96,8 @@ namespace umbriel {
   }
 
   void ViewPresentation::updateFullscreen(
-      bool fullscreen, int tileWidth, int tileHeight, wlr_scene_node* surfaceNode, const wlr_box& geometry
+      bool fullscreen, int tileWidth, int tileHeight, wlr_scene_node* surfaceNode, const wlr_box& geometry,
+      int centeredWidth, int centeredHeight
   ) {
     const bool validSize = tileWidth > 0 && tileHeight > 0;
     m_fullscreenSized = fullscreen && validSize;
@@ -113,13 +114,14 @@ namespace umbriel {
       m_contentCentered = m_offsetX != 0 || m_offsetY != 0;
       return;
     }
-    m_offsetX = 0;
-    m_offsetY = 0;
-    if (!fullscreen && m_contentCentered) {
+    m_offsetX = centeredWidth > 0 && validSize ? std::max(0, (tileWidth - centeredWidth) / 2) : 0;
+    m_offsetY = centeredHeight > 0 && validSize ? std::max(0, (tileHeight - centeredHeight) / 2) : 0;
+    const bool centered = m_offsetX != 0 || m_offsetY != 0;
+    if (!fullscreen && (centered || m_contentCentered)) {
       if (surfaceNode != nullptr) {
-        wlr_scene_node_set_position(surfaceNode, -geometry.x, -geometry.y);
+        wlr_scene_node_set_position(surfaceNode, m_offsetX - geometry.x, m_offsetY - geometry.y);
       }
-      m_contentCentered = false;
+      m_contentCentered = centered;
     }
   }
 
