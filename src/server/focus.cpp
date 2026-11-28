@@ -16,6 +16,7 @@
 #include "workspace/workspace.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace umbriel {
 
@@ -129,7 +130,12 @@ namespace umbriel {
     const bool overviewActive = m_server.overview() != nullptr && m_server.overview()->active();
     if (LayerSurface* layer = exclusiveKeyboardLayer()) {
       layer->focus();
+      // The workspace focus set below reaches the keyboard only through the pointer output's workspace, so remember
+      // the choice for refocus() when the layer releases the seat.
+      m_deferredView = view;
+      m_deferredReason = reason;
     } else {
+      m_deferredView = nullptr;
       seatTarget->applySeatFocus(!overviewActive, raise);
     }
     Workspace* workspace = view->workspace();
@@ -325,6 +331,14 @@ namespace umbriel {
       layer->focus();
       return;
     }
+    // A window chosen under a released exclusive layer wins over the pointer output's workspace focus, unless a
+    // window took the keyboard meanwhile.
+    if (View::fromSurface(m_server.seat()->wlr()->keyboard_state.focused_surface) == nullptr) {
+      if (View* deferred = takeDeferredView()) {
+        focusView(deferred, m_deferredReason);
+        return;
+      }
+    }
     if (retainCurrentKeyboardFocus()) {
       return;
     }
@@ -341,6 +355,34 @@ namespace umbriel {
       }
     }
     refocusFallback(nullptr);
+  }
+
+  void FocusManager::noteSeatHandoffToLayer(View* from) {
+    if (from == nullptr) {
+      return;
+    }
+    m_deferredView = from->placementRoot();
+    m_deferredReason = FocusReason::Startup;
+  }
+
+  View* FocusManager::takeDeferredView() {
+    View* candidate = std::exchange(m_deferredView, nullptr);
+    // Keybinds still run under the layer: a window minimized or left on an inactive workspace meanwhile must not be
+    // brought back, exactly as retainCurrentKeyboardFocus() would not keep it.
+    if (candidate == nullptr
+        || !candidate->mapped()
+        || !candidate->acceptsKeyboardFocus()
+        || candidate->placementRoot()->minimized()
+        || (!candidate->onActiveWorkspace() && !candidate->pinned())) {
+      return nullptr;
+    }
+    return candidate;
+  }
+
+  void FocusManager::forgetView(View* view) {
+    if (m_deferredView == view) {
+      m_deferredView = nullptr;
+    }
   }
 
   void FocusManager::refocus(Output* preferred) {
