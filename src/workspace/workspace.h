@@ -400,6 +400,8 @@ namespace umbriel {
     uint64_t m_lastAloneGeneration = 0;
     int m_slideOffsetX = 0;
     int m_slideOffsetY = 0;
+    double m_slideFractionX = 0.0;
+    double m_slideFractionY = 0.0;
     std::vector<View*> m_switchViews;
     wlr_scene_tree* m_tree = nullptr;
     wlr_scene_tree* m_tileShadowLayer = nullptr;
@@ -411,6 +413,7 @@ namespace umbriel {
         View* view = nullptr;
         wlr_box from{};
         wlr_box to{};
+        std::optional<wlr_fbox> presentedFrom;
         float direction = 1.0F;
       };
       // windows_move drives position and windows_resize size; the motion runs until both have settled. A timeline
@@ -441,6 +444,8 @@ namespace umbriel {
     struct TrackedCloseSnapshot {
       CloseSnapshotId id = kInvalidCloseSnapshot;
       wlr_box canvas{};
+      double capturedSlideFractionX = 0.0;
+      double capturedSlideFractionY = 0.0;
     };
     std::vector<TrackedCloseSnapshot> m_trackedCloseSnapshots;
     TabPresenter m_tabs{*this};

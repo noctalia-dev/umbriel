@@ -125,11 +125,9 @@ struct fx_render_texture_options {
   struct fx_corner_fradii corners;
   float discard_transparent; // discard pixels with alpha < this; 0.0 discards nothing
   struct clipped_fregion clipped_region;
-  // Texels the draw may sample, in buffer coordinates. A source box snapped to
-  // whole texels can reach past the region a cropped surface actually owns;
-  // this keeps sampling inside it by duplicating its edge texel. Empty draws
-  // with the regular shader and no sampling clamp at all; only pass a box when
-  // the source box actually reaches texels outside it.
+  // Texels the draw may sample, in buffer coordinates. Duplicates edge texels
+  // when source snapping or fractional filtering reaches outside an interior
+  // crop. Empty selects the regular shader without a sampling clamp.
   struct wlr_fbox sample_box;
   // Optional primary luminances, used by transfer functions whose shape
   // depends on the display black and white levels (BT.1886).
@@ -143,6 +141,9 @@ struct fx_render_texture_options {
   // decode when one of these is set.
   float transfer_function_power;
   struct wlr_color_transform* decode_transform;
+  // Unrounded destination in render-buffer pixels, for texture coordinates and
+  // filter footprint. Empty uses base.dst_box for both sampling and rasterization.
+  struct wlr_fbox sampling_box;
 };
 
 struct fx_render_rect_options {

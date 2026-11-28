@@ -4,6 +4,7 @@
 #include "core/animation.h"
 #include "layout/drop_target.h"
 #include "overview/navigation.h"
+#include "overview/preview_geometry.h"
 #include "scene/hint_rect.h"
 #include "scene/surface_blur.h"
 #include "view/chrome_attachment.h"
@@ -220,6 +221,7 @@ namespace umbriel {
       std::unique_ptr<ViewChromeAttachment> frame;
       std::vector<std::unique_ptr<CardSurface>> surfaces;
       wlr_box box{}; // content box in layout coordinates
+      wlr_fbox presentedBox{};
       wlr_scene_tree* badge = nullptr;
       wlr_scene_rect* badgeRect = nullptr;
       wlr_scene_buffer* badgeText = nullptr;
@@ -295,12 +297,13 @@ namespace umbriel {
       // on-screen for anything the overview wants readable.
       wlr_box usableBox{};
       double zoom = 1.0;
+      double outputScale = 1.0;
+      int outputPixelWidth = 0;
+      int outputPixelHeight = 0;
       WorkspaceAxis axis = WorkspaceAxis::Vertical;
-      int previewW = 0;
-      int previewH = 0;
-      int baseX = 0;
-      int baseY = 0;
-      int gap = 0;
+      double previewW = 0;
+      double previewH = 0;
+      double gap = 0;
     };
 
     static void onCardSurfaceCommit(wl_listener* listener, void* data);
@@ -333,8 +336,15 @@ namespace umbriel {
     // its remaining motion can no longer change a pixel.
     double zoomPixelsPerUnit() const;
     static bool previewMetrics(const OutputState& state, const Server& server, double zoom, PreviewMetrics& out);
+    static PreviewProjection previewProjection(const PreviewMetrics& metrics);
     // The workspace preview's box in layout coordinates.
     static wlr_box previewBox(const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex);
+    static wlr_fbox
+    previewPresentationBox(const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex);
+    static wlr_fbox projectPreviewBox(
+        const PreviewMetrics& metrics, const wlr_fbox& world, double workspaceScroll, size_t workspaceIndex
+    );
+    void finishRowScrollSpringTail(OutputState& state, const PreviewMetrics& metrics) const;
 
     bool beginPresentation();
     void buildState();

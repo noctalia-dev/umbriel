@@ -3,6 +3,8 @@
 #include "overview/preview_geometry.h"
 extern "C" {
 #include <umbrielfx/render/effect.h>
+#include <wlr/types/wlr_buffer.h>
+#include <wlr/util/transform.h>
 }
 
 #include "config/config.h"
@@ -70,6 +72,64 @@ namespace umbriel {
 
     bool boxContains(const wlr_box& box, double x, double y) {
       return x >= box.x && y >= box.y && x < box.x + box.width && y < box.y + box.height;
+    }
+
+    bool boxContains(const wlr_fbox& box, double x, double y) {
+      return x >= box.x && y >= box.y && x < box.x + box.width && y < box.y + box.height;
+    }
+
+    wlr_box roundedPreviewBox(const wlr_fbox& box) {
+      return {
+          static_cast<int>(std::lround(box.x)),
+          static_cast<int>(std::lround(box.y)),
+          std::max(1, static_cast<int>(std::lround(box.width))),
+          std::max(1, static_cast<int>(std::lround(box.height))),
+      };
+    }
+
+    void presentPreviewNode(wlr_scene_node* node, const wlr_box& box, const wlr_fbox& presented) {
+      if (!wlr_scene_node_set_fractional_transform(
+              node, presented.x - box.x, presented.y - box.y, presented.width / box.width, presented.height / box.height
+          )) {
+        kLog.error("failed to store fractional overview presentation");
+      }
+    }
+
+    void setDesktopSamplingReference(
+        wlr_scene_buffer* mirror, wlr_scene_buffer* source, const wlr_box& outputBox, double scale,
+        int outputPixelWidth, int outputPixelHeight
+    ) {
+      if (source == nullptr) {
+        wlr_scene_buffer_set_sampling_reference_size(mirror, 0, 0);
+        return;
+      }
+      wlr_box logical{};
+      wlr_scene_node_coords(&source->node, &logical.x, &logical.y);
+      if (source->dst_width > 0 && source->dst_height > 0) {
+        logical.width = source->dst_width;
+        logical.height = source->dst_height;
+      } else {
+        if (source->buffer == nullptr) {
+          wlr_scene_buffer_set_sampling_reference_size(mirror, 0, 0);
+          return;
+        }
+        logical.width = source->buffer->width;
+        logical.height = source->buffer->height;
+        wlr_output_transform_coords(source->transform, &logical.width, &logical.height);
+      }
+      wlr_fbox presented{};
+      wlr_scene_node_get_presentation_box(&source->node, &logical, &presented);
+      const auto edge = [scale](double value, int origin, int extent, int pixels) {
+        return value == origin + extent ? static_cast<double>(pixels) : std::round((value - origin) * scale);
+      };
+      const double left = std::round((presented.x - outputBox.x) * scale);
+      const double top = std::round((presented.y - outputBox.y) * scale);
+      const double right = edge(presented.x + presented.width, outputBox.x, outputBox.width, outputPixelWidth);
+      const double bottom = edge(presented.y + presented.height, outputBox.y, outputBox.height, outputPixelHeight);
+      int width = std::max(0, static_cast<int>(right - left));
+      int height = std::max(0, static_cast<int>(bottom - top));
+      wlr_output_transform_coords(source->transform, &width, &height);
+      wlr_scene_buffer_set_sampling_reference_size(mirror, width, height);
     }
 
     // wlr_scene_rect colors are premultiplied; straight alpha renders as an
@@ -211,11 +271,12 @@ namespace umbriel {
     for (const auto& state : m_outputs) {
       wlr_box box{};
       wlr_output_layout_get_box(m_server->outputLayout(), state->output->wlr(), &box);
-      extent = std::max(extent, static_cast<double>(std::max(box.width, box.height)));
+      extent = std::max(extent, std::max(box.width, box.height) * static_cast<double>(state->output->wlr()->scale));
     }
     const double zoomSpan = std::abs(m_targetProgress - m_progressFrom) * (1.0 - settledZoom());
-    // Whole pixels per unit keep the target (1.0) on the pixel grid finishSpringTail rounds against.
-    return std::ceil(zoomSpan * extent * rowFactor);
+    // Endpoint alignment can add one physical pixel of travel. Whole pixels per
+    // unit keep the spring target (1.0) on the grid finishSpringTail rounds against.
+    return std::ceil(zoomSpan * extent * rowFactor) + 1.0;
   }
 
   // -: geometry
@@ -233,34 +294,84 @@ namespace umbriel {
       out.usableBox = outputBox;
     }
     out.zoom = zoom;
+    out.outputScale = state.output->wlr()->scale;
+    wlr_output_transformed_resolution(state.output->wlr(), &out.outputPixelWidth, &out.outputPixelHeight);
     out.axis = group != nullptr ? group->workspaceAxis() : WorkspaceAxis::Vertical;
     const PreviewGrid grid = previewGrid(
         outputBox.x, outputBox.y, outputBox.width, outputBox.height, zoom, out.axis == WorkspaceAxis::Horizontal
     );
     out.previewW = grid.width;
     out.previewH = grid.height;
-    out.baseX = grid.baseX;
-    out.baseY = grid.baseY;
     out.gap = grid.gap;
     return true;
   }
 
   wlr_box Overview::previewBox(const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex) {
-    const bool horizontal = metrics.axis == WorkspaceAxis::Horizontal;
-    const PreviewGrid grid{
-        .width = metrics.previewW,
-        .height = metrics.previewH,
-        .baseX = metrics.baseX,
-        .baseY = metrics.baseY,
-        .gap = metrics.gap,
-    };
-    const int origin = previewAxisOrigin(grid, horizontal, workspaceIndex, workspaceScroll);
+    return roundedPreviewBox(previewPresentationBox(metrics, workspaceScroll, workspaceIndex));
+  }
+
+  wlr_fbox
+  Overview::previewPresentationBox(const PreviewMetrics& metrics, double workspaceScroll, size_t workspaceIndex) {
+    const wlr_box& output = metrics.outputBox;
+    return projectPreviewBox(
+        metrics,
+        {static_cast<double>(output.x), static_cast<double>(output.y), static_cast<double>(output.width),
+         static_cast<double>(output.height)},
+        workspaceScroll, workspaceIndex
+    );
+  }
+
+  wlr_fbox Overview::projectPreviewBox(
+      const PreviewMetrics& metrics, const wlr_fbox& world, double workspaceScroll, size_t workspaceIndex
+  ) {
+    return projectPreviewPresentationBox(previewProjection(metrics), world, workspaceScroll, workspaceIndex);
+  }
+
+  PreviewProjection Overview::previewProjection(const PreviewMetrics& metrics) {
     return {
-        .x = horizontal ? origin : metrics.baseX,
-        .y = horizontal ? metrics.baseY : origin,
-        .width = metrics.previewW,
-        .height = metrics.previewH,
+        .outputBox = metrics.outputBox,
+        .zoom = metrics.zoom,
+        .overviewZoom = settledZoom(),
+        .outputScale = metrics.outputScale,
+        .outputPixelWidth = metrics.outputPixelWidth,
+        .outputPixelHeight = metrics.outputPixelHeight,
+        .horizontal = metrics.axis == WorkspaceAxis::Horizontal,
     };
+  }
+
+  void Overview::finishRowScrollSpringTail(OutputState& state, const PreviewMetrics& metrics) const {
+    const PreviewProjection projection = previewProjection(metrics);
+    const wlr_box& output = metrics.outputBox;
+    const wlr_fbox background{
+        static_cast<double>(output.x),
+        static_cast<double>(output.y),
+        static_cast<double>(output.width),
+        static_cast<double>(output.height),
+    };
+
+    // Row spacing has a different rounding phase from the centered previews and
+    // cards. Check their edges across the spring's entire remaining excursion.
+    const auto edgesSettled = [&](double target, double remaining) {
+      for (size_t index = 0; index < state.workspaceBackgrounds.size(); ++index) {
+        if (!previewRowEdgesSettled(projection, background, index, target, remaining)) {
+          return false;
+        }
+      }
+      for (const auto& card : state.cards) {
+        if (card.get() == m_dragCard || card->tree == nullptr || !card->tree->node.enabled) {
+          continue;
+        }
+        if (!previewRowEdgesSettled(
+                projection, card->view->fractionalPresentedBox(), card->workspaceIndex, target, remaining
+            )) {
+          return false;
+        }
+      }
+      return true;
+    };
+    static_cast<void>(
+        finishPreviewRowScrollSpringTail(state.rowScroll, projection, m_zoomAnim.animating(), edgesSettled)
+    );
   }
 
   void Overview::layoutCard(Card& card, const PreviewMetrics& metrics, double workspaceScroll, const View* liveTarget) {
@@ -295,20 +406,28 @@ namespace umbriel {
     }
     const int contentW = std::max(1, static_cast<int>(std::lround(world.width * z)));
     const int contentH = std::max(1, static_cast<int>(std::lround(world.height * z)));
+    const wlr_fbox fractionalWorld = view->fractionalPresentedBox();
     if (&card == m_dragCard) {
       // The drag owns the card origin; only the scale still tracks progress.
-      card.box.width = contentW;
-      card.box.height = contentH;
-    } else {
-      const wlr_box preview = previewBox(metrics, workspaceScroll, card.workspaceIndex);
-      card.box = {
-          .x = preview.x + static_cast<int>(std::lround((world.x - metrics.outputBox.x) * z)),
-          .y = preview.y + static_cast<int>(std::lround((world.y - metrics.outputBox.y) * z)),
-          .width = contentW,
-          .height = contentH,
+      card.presentedBox = {
+          m_dragPointerX - m_dragOffsetX,
+          m_dragPointerY - m_dragOffsetY,
+          std::max(1.0, fractionalWorld.width * z),
+          std::max(1.0, fractionalWorld.height * z),
       };
+    } else {
+      card.presentedBox = projectPreviewBox(metrics, fractionalWorld, workspaceScroll, card.workspaceIndex);
     }
+    // Chrome and surfaces share the same rounded local size; the tree maps that
+    // common geometry onto the pixel-aligned presentation endpoints.
+    card.box = {
+        static_cast<int>(std::lround(card.presentedBox.x)),
+        static_cast<int>(std::lround(card.presentedBox.y)),
+        contentW,
+        contentH,
+    };
     wlr_scene_node_set_position(&card.tree->node, card.box.x, card.box.y);
+    presentPreviewNode(&card.tree->node, card.box, card.presentedBox);
     // Cards overhang their preview by design; the output's overview tree clip is
     // what keeps them off the neighbouring monitor.
     wlr_scene_tree_set_clip(card.tree, nullptr);
@@ -412,6 +531,10 @@ namespace umbriel {
       }
       const float surfaceOpacity =
           entry->sourceBuffer != nullptr ? entry->sourceBuffer->opacity * cardOpacity : cardOpacity;
+      setDesktopSamplingReference(
+          entry->buffer, entry->sourceBuffer, metrics.outputBox, metrics.outputScale, metrics.outputPixelWidth,
+          metrics.outputPixelHeight
+      );
       wlr_scene_buffer_set_opacity(entry->buffer, surfaceOpacity);
       const pixman_region32_t* shape = entry->view->xwayland() ? m_server->xwayland()->surfaceShape(surface) : nullptr;
       if (!entry->isRoot) {
@@ -533,32 +656,36 @@ namespace umbriel {
     if (parent == card.tree) {
       wlr_scene_node_lower_to_bottom(&card.shadowTree->node);
       wlr_scene_node_set_position(&card.shadowTree->node, 0, 0);
+      wlr_scene_node_set_fractional_transform(&card.shadowTree->node, 0, 0, 1, 1);
     } else {
       wlr_scene_node_set_position(&card.shadowTree->node, card.box.x, card.box.y);
+      presentPreviewNode(&card.shadowTree->node, card.box, card.presentedBox);
     }
     wlr_scene_node_set_enabled(&card.shadowTree->node, true);
 
-    const auto scaled = [zoom](int value) { return static_cast<int>(std::lround(value * zoom)); };
     const auto scaledCorner = [zoom](uint16_t value) {
       return static_cast<uint16_t>(std::lround(static_cast<double>(value) * zoom));
     };
-    wlr_scene_node_set_position(&card.shadow->node, scaled(source->node.x), scaled(source->node.y));
-    wlr_scene_shadow_set_size(card.shadow, std::max(0, scaled(source->width)), std::max(0, scaled(source->height)));
+    // The source hole is sized from the live view's integer content box. Map it
+    // into the card's local box so the tree's fractional correction keeps the
+    // hole and content edges together, including during a live resize.
+    const wlr_box& world = card.view->presentedBox();
+    const double sx = static_cast<double>(card.box.width) / world.width;
+    const double sy = static_cast<double>(card.box.height) / world.height;
+    wlr_scene_node_set_position(&card.shadow->node, source->node.x, source->node.y);
+    wlr_scene_shadow_set_size(card.shadow, source->width, source->height);
+    wlr_scene_node_set_fractional_transform(
+        &card.shadow->node, source->node.x * (sx - 1.0), source->node.y * (sy - 1.0), sx, sy
+    );
     wlr_scene_shadow_set_blur_sigma(card.shadow, static_cast<float>(source->blur_sigma * zoom));
-    wlr_scene_shadow_set_corner_radius(card.shadow, scaled(source->corner_radius));
+    wlr_scene_shadow_set_corner_radius(card.shadow, static_cast<int>(std::lround(source->corner_radius * zoom)));
     const float color[4] = {source->color[0], source->color[1], source->color[2], source->color[3] * alpha};
     wlr_scene_shadow_set_color(card.shadow, color);
     const clipped_region& hole = source->clipped_region;
     wlr_scene_shadow_set_clipped_region(
         card.shadow,
         clipped_region{
-            .area =
-                {
-                    .x = scaled(hole.area.x),
-                    .y = scaled(hole.area.y),
-                    .width = scaled(hole.area.width),
-                    .height = scaled(hole.area.height),
-                },
+            .area = hole.area,
             .corners =
                 {
                     .top_left = scaledCorner(hole.corners.top_left),
@@ -617,17 +744,25 @@ namespace umbriel {
     refreshDesktop(state);
     const int backgroundRadius = static_cast<int>(std::lround(config().appearance.cornerRadius * metrics.zoom));
     const std::array<float, 4> backgroundColor = tint(config().colors.overview.workspaceBackground, m_progress);
-    const double z = metrics.zoom;
     for (size_t index = 0; index < state.workspaceBackgrounds.size(); ++index) {
       const WorkspaceBackground& background = state.workspaceBackgrounds[index];
-      const wlr_box full = previewBox(metrics, state.rowScroll.current(), index);
-      layoutWorkspaceBackground(background.fill, full, backgroundRadius, backgroundColor);
+      if (background.tree == nullptr) {
+        continue;
+      }
+      const wlr_fbox presented = previewPresentationBox(metrics, state.rowScroll.current(), index);
+      const wlr_box full = roundedPreviewBox(presented);
+      const wlr_box local{0, 0, full.width, full.height};
+      wlr_scene_node_set_position(&background.tree->node, full.x, full.y);
+      presentPreviewNode(&background.tree->node, full, presented);
+      layoutWorkspaceBackground(background.fill, local, backgroundRadius, backgroundColor);
+      wlr_scene_tree_set_clip(background.tree, background.mirrors.empty() ? nullptr : &local);
       if (background.mirrors.empty()) {
         continue;
       }
       // The preview is the viewport onto the mirrored stack: a partially anchored surface must not reach into the
       // gap between previews.
-      wlr_scene_tree_set_clip(background.tree, &full);
+      const double fx = static_cast<double>(full.width) / metrics.outputBox.width;
+      const double fy = static_cast<double>(full.height) / metrics.outputBox.height;
       for (const auto& mirror : background.mirrors) {
         wlr_box box{};
         const bool visible = desktopSourceBox(*mirror->source, box);
@@ -635,16 +770,19 @@ namespace umbriel {
         if (!visible) {
           continue;
         }
-        wlr_scene_node_set_position(
-            &mirror->buffer->node, full.x + static_cast<int>(std::lround(box.x * z)),
-            full.y + static_cast<int>(std::lround(box.y * z))
+        setDesktopSamplingReference(
+            mirror->buffer, sourceBufferForSurface(&mirror->source->tree->node, mirror->source->surface),
+            metrics.outputBox, metrics.outputScale, metrics.outputPixelWidth, metrics.outputPixelHeight
         );
-        const int destWidth = std::max(1, static_cast<int>(std::lround(box.width * z)));
-        const int destHeight = std::max(1, static_cast<int>(std::lround(box.height * z)));
-        wlr_scene_buffer_set_dest_size(mirror->buffer, destWidth, destHeight);
+        const wlr_fbox mirrorBox{box.x * fx, box.y * fy, std::max(1.0, box.width * fx), std::max(1.0, box.height * fy)};
+        const wlr_box destination = roundedPreviewBox(mirrorBox);
+        wlr_scene_node_set_position(&mirror->buffer->node, destination.x, destination.y);
+        wlr_scene_buffer_set_dest_size(mirror->buffer, destination.width, destination.height);
+        presentPreviewNode(&mirror->buffer->node, destination, mirrorBox);
         // Lets the scene skip the background beneath a wallpaper that declares itself opaque.
         setScaledOpaqueRegion(
-            mirror->buffer, mirror->source->surface->opaque_region, box.width, box.height, destWidth, destHeight
+            mirror->buffer, mirror->source->surface->opaque_region, box.width, box.height, destination.width,
+            destination.height
         );
         // Only a surface spanning the whole output takes the preview's rounding; a smaller one keeps its own edges.
         const bool spansOutput = box.x <= 0
@@ -848,6 +986,7 @@ namespace umbriel {
         continue;
       }
       wlr_scene_buffer_set_filter_mode(buffer, WLR_SCALE_FILTER_BILINEAR);
+      wlr_scene_buffer_set_continuous_sampling(buffer, true);
       buffer->point_accepts_input = rejectInput;
       auto mirror = std::make_unique<DesktopMirror>();
       mirror->source = source.get();
@@ -1094,6 +1233,7 @@ namespace umbriel {
     entry->sy = sy + walk->dy;
     entry->isRoot = surface == card->view->rootSurface();
     wlr_scene_buffer_set_filter_mode(buffer, WLR_SCALE_FILTER_BILINEAR);
+    wlr_scene_buffer_set_continuous_sampling(buffer, true);
     buffer->point_accepts_input = rejectInput;
     entry->commit.notify = onCardSurfaceCommit;
     wl_signal_add(&surface->events.commit, &entry->commit);
@@ -1255,15 +1395,25 @@ namespace umbriel {
       wlr_scene_tree_set_clip(snapshot, &outputBox);
     }
 
+    // Keep the output clip fixed while the copied local geometry inherits the card's presentation.
+    wlr_scene_tree* presentation = wlr_scene_tree_create(snapshot);
+    if (presentation == nullptr) {
+      wlr_scene_node_destroy(&snapshot->node);
+      return;
+    }
+    wlr_scene_node_set_position(&presentation->node, card.tree->node.x, card.tree->node.y);
+    if (!wlr_scene_node_copy_fractional_transform_for_snapshot(&presentation->node, &card.tree->node)) {
+      wlr_scene_node_destroy(&snapshot->node);
+      return;
+    }
+
     // The copied surfaces keep the card's window and overlay slots, with time frozen, on a tree of their own.
-    wlr_scene_tree* surfaces = wlr_scene_tree_create(snapshot);
+    wlr_scene_tree* surfaces = wlr_scene_tree_create(presentation);
     if (surfaces == nullptr) {
       wlr_scene_node_destroy(&snapshot->node);
       return;
     }
-    wlr_scene_node_set_position(
-        &surfaces->node, card.tree->node.x + card.surfaceTree->node.x, card.tree->node.y + card.surfaceTree->node.y
-    );
+    wlr_scene_node_set_position(&surfaces->node, card.surfaceTree->node.x, card.surfaceTree->node.y);
     int buffersCopied = 0;
     for (const auto& entry : card.surfaces) {
       wlr_scene_buffer* source = entry->buffer;
@@ -1291,6 +1441,10 @@ namespace umbriel {
         colorManager->applySurfaceDescriptionToBuffer(entry->surface, copy);
       }
       wlr_scene_buffer_set_filter_mode(copy, WLR_SCALE_FILTER_BILINEAR);
+      wlr_scene_buffer_set_continuous_sampling(copy, true);
+      wlr_scene_buffer_set_sampling_reference_size(
+          copy, source->sampling_reference_width, source->sampling_reference_height
+      );
       ++buffersCopied;
     }
     if (buffersCopied == 0) {
@@ -1300,15 +1454,14 @@ namespace umbriel {
     }
 
     if (const auto* frame = dynamic_cast<const SsdFrame*>(card.frame.get())) {
-      auto* chrome = wlr_scene_tree_create(snapshot);
-      wlr_scene_node_set_position(&chrome->node, card.tree->node.x, card.tree->node.y);
-      frame->snapshot(chrome);
+      if (auto* chrome = wlr_scene_tree_create(presentation)) {
+        frame->snapshot(chrome);
+      }
     }
     std::vector<BorderSnapshot> borders;
     if (card.border != nullptr && card.border->node.enabled) {
       snapshotBorder(
-          snapshot, *card.border, card.tree->node.x + card.border->node.x, card.tree->node.y + card.border->node.y,
-          &card.border->node,
+          presentation, *card.border, card.border->node.x, card.border->node.y, &card.border->node,
           {
               .innerColor = cardBorderColor(card, liveTargetView()),
               .outerColor = card.view->borderColors().outer,
@@ -1973,9 +2126,7 @@ namespace umbriel {
       if (ticked && state->rowScroll.animating() && state->rowScroll.curve().easing == Easing::Spring) {
         PreviewMetrics metrics;
         if (previewMetrics(*state, *m_server, zoom(), metrics)) {
-          const double step =
-              (metrics.axis == WorkspaceAxis::Horizontal ? metrics.previewW : metrics.previewH) + metrics.gap;
-          static_cast<void>(state->rowScroll.finishSpringTail(step));
+          finishRowScrollSpringTail(*state, metrics);
         }
       }
       rowTicked = ticked || rowTicked;
@@ -2571,11 +2722,10 @@ namespace umbriel {
         if (card->tree == nullptr || !card->tree->node.enabled) {
           continue;
         }
-        wlr_box hit = card->box;
-        if (card.get() != m_dragCard && !wlr_box_intersection(&hit, &card->box, &metrics.outputBox)) {
+        if (card.get() != m_dragCard && !boxContains(metrics.outputBox, lx, ly)) {
           continue;
         }
-        if (boxContains(hit, lx, ly)) {
+        if (boxContains(card->presentedBox, lx, ly)) {
           return card.get();
         }
       }
@@ -2591,7 +2741,7 @@ namespace umbriel {
     if (workspace == nullptr || !previewMetrics(*state, *m_server, zoom(), metrics)) {
       return nullptr;
     }
-    const wlr_box preview = previewBox(metrics, state->rowScroll.current(), workspacePosition);
+    const wlr_fbox preview = previewPresentationBox(metrics, state->rowScroll.current(), workspacePosition);
     const std::optional<TabHit> hit = workspace->tabs().tabAt(
         metrics.outputBox.x + (lx - preview.x) / metrics.zoom, metrics.outputBox.y + (ly - preview.y) / metrics.zoom
     );
@@ -2626,7 +2776,7 @@ namespace umbriel {
         // along the scrolling axis or the extreme gaps become dead zones.
         // Background clicks retain the narrower preview hitbox.
         const bool extend = extendScrollingAxis && workspace->scrollingLayout() != nullptr;
-        wlr_box box = previewBox(metrics, state->rowScroll.current(), index);
+        wlr_fbox box = previewPresentationBox(metrics, state->rowScroll.current(), index);
         if (extend) {
           if (horizontalWorkspaces) {
             box.y = metrics.outputBox.y;
@@ -2645,11 +2795,11 @@ namespace umbriel {
           const size_t count = state->workspaceBackgrounds.size();
           if (index == 0) {
             if (horizontalWorkspaces) {
-              const int end = box.x + box.width;
+              const double end = box.x + box.width;
               box.x = metrics.outputBox.x;
               box.width = end - box.x;
             } else {
-              const int end = box.y + box.height;
+              const double end = box.y + box.height;
               box.y = metrics.outputBox.y;
               box.height = end - box.y;
             }
@@ -3483,8 +3633,8 @@ namespace umbriel {
     m_dragCard = card;
     m_dragPointerX = m_pressX;
     m_dragPointerY = m_pressY;
-    m_dragOffsetX = m_pressX - card->box.x;
-    m_dragOffsetY = m_pressY - card->box.y;
+    m_dragOffsetX = m_pressX - card->presentedBox.x;
+    m_dragOffsetY = m_pressY - card->presentedBox.y;
     m_dragSourceWorkspace = view->workspace();
     m_dragSourceColumn = -1;
     m_dragSourceRow = -1;
@@ -3548,11 +3698,11 @@ namespace umbriel {
     }
     // Neighbouring previews step one preview plus the gap along the workspace axis. The strip slides at
     // speedPxPerSec world px/s (visible at zoom in the overview); convert so the filmstrip's visible slide matches.
-    const int step = (metrics.axis == WorkspaceAxis::Horizontal ? metrics.previewW : metrics.previewH) + metrics.gap;
+    const double step = (metrics.axis == WorkspaceAxis::Horizontal ? metrics.previewW : metrics.previewH) + metrics.gap;
     if (step <= 0) {
       return false;
     }
-    const double rowsPerSec = speedPxPerSec * metrics.zoom / static_cast<double>(step);
+    const double rowsPerSec = speedPxPerSec * metrics.zoom / step;
     const double current = state->rowScroll.current();
     const auto last = static_cast<double>(group->workspaceCount() - 1);
     const double next = std::clamp(current + rowsPerSec * static_cast<double>(elapsedMsec) / 1000.0, 0.0, last);
@@ -3570,9 +3720,12 @@ namespace umbriel {
     Card* card = m_dragCard;
     m_dragPointerX = lx;
     m_dragPointerY = ly;
-    card->box.x = static_cast<int>(std::lround(lx - m_dragOffsetX));
-    card->box.y = static_cast<int>(std::lround(ly - m_dragOffsetY));
+    card->presentedBox.x = lx - m_dragOffsetX;
+    card->presentedBox.y = ly - m_dragOffsetY;
+    card->box.x = static_cast<int>(std::lround(card->presentedBox.x));
+    card->box.y = static_cast<int>(std::lround(card->presentedBox.y));
     wlr_scene_node_set_position(&card->tree->node, card->box.x, card->box.y);
+    presentPreviewNode(&card->tree->node, card->box, card->presentedBox);
 
     OutputState* state = nullptr;
     size_t workspaceIndex = 0;
@@ -3602,7 +3755,7 @@ namespace umbriel {
       return;
     }
     // Map the pointer out of the thumbnail and back into workspace world space.
-    const wlr_box preview = previewBox(metrics, state->rowScroll.current(), workspacePosition);
+    const wlr_fbox preview = previewPresentationBox(metrics, state->rowScroll.current(), workspacePosition);
     const double worldX = metrics.outputBox.x + (lx - preview.x) / metrics.zoom;
     const double worldY = metrics.outputBox.y + (ly - preview.y) / metrics.zoom;
 

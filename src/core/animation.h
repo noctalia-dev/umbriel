@@ -189,6 +189,18 @@ namespace umbriel {
     // Stop a physics spring once its remaining energy cannot leave the projected target's pixel rounding cell. Returns
     // true only when the spring was finished. The solver remains untouched while any visible motion is still possible.
     [[nodiscard]] bool finishSpringTail(double pixelsPerUnit);
+    // Interpolate physical-pixel-aligned endpoints without changing the logical solver.
+    // A retarget starts at the last presentation. At rest, rendering owns endpoint alignment.
+    // Explicit pixel endpoints are relative to origin, e.g. the output's exact final pixel.
+    double pixelAlignedCurrent(
+        double pixelsPerUnit, double origin = 0.0, std::optional<double> targetPixels = std::nullopt,
+        std::optional<double> fromPixels = std::nullopt
+    ) const;
+    // Callers combining multiple values into one edge can share its half-pixel rounding margin.
+    [[nodiscard]] bool finishPixelAlignedSpringTail(
+        double pixelsPerUnit, double origin = 0.0, std::optional<double> targetPixels = std::nullopt,
+        std::optional<double> fromPixels = std::nullopt, double roundingMarginPixels = 0.5
+    );
     // Shift from, current and target by the same amount, keeping any motion intact. For a coordinate space that is
     // renumbered under a running animation.
     void translate(double delta);
@@ -199,6 +211,7 @@ namespace umbriel {
     bool tick(double nowMsec);
 
     double current() const { return m_current; }
+    double presentedCurrent() const { return m_animating ? m_lastPixelAlignedCurrent.value_or(m_current) : m_current; }
     double target() const { return m_target; }
     double from() const { return m_from; }
     bool animating() const { return m_animating; }
@@ -215,8 +228,14 @@ namespace umbriel {
     double m_current = 0.0;
     double m_velocity = 0.0;
     double m_initialVelocity = 0.0;
+    std::optional<double> m_pixelAlignedFrom;
+    mutable std::optional<double> m_lastPixelAlignedCurrent;
+    mutable double m_pixelAlignmentScale = 1.0;
+    mutable double m_pixelAlignmentOrigin = 0.0;
+    mutable std::optional<double> m_pixelAlignmentTargetPixels;
     double m_progress = 1.0; // linear fraction as of the last tick(); 1.0 when never animating
     double m_startMsec = 0;  // 0 = clock starts on the first tick
+    double m_lastTickMsec = 0;
     uint64_t m_durationMsec = 1;
     uint64_t m_transitionId = 0;
     std::array<float, 4> m_shaderSeed{};

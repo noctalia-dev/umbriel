@@ -740,6 +740,370 @@ static bool test_background_clear(struct fixture* fixture) {
   return ok;
 }
 
+static bool configure_fractional_output(struct fixture* fixture) {
+  struct wlr_output_state output_state;
+  wlr_output_state_init(&output_state);
+  wlr_output_state_set_scale(&output_state, 1.5f);
+  wlr_output_state_set_transform(&output_state, WL_OUTPUT_TRANSFORM_NORMAL);
+  const bool committed = wlr_output_commit_state(fixture->output, &output_state);
+  wlr_output_state_finish(&output_state);
+  return check(committed, "fractional output configuration commits");
+}
+
+// Fractional motion and resizing must reach physical pixels between integer
+// logical positions, including under a translated output and nested transforms.
+static bool test_fractional_geometry(struct fixture* fixture) {
+  if (!configure_fractional_output(fixture)) {
+    return false;
+  }
+  struct wlr_swapchain* swapchain = create_swapchain(fixture);
+  struct wlr_scene* scene = wlr_scene_create();
+  if (!check(swapchain != NULL && scene != NULL, "fractional geometry scene and swapchain")) {
+    wlr_swapchain_destroy(swapchain);
+    if (scene != NULL) {
+      wlr_scene_node_destroy(&scene->tree.node);
+    }
+    return false;
+  }
+  struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
+  struct wlr_scene_tree* root = wlr_scene_tree_create(&scene->tree);
+  wlr_scene_output_set_position(output, 100, -20);
+  wlr_scene_node_set_position(&root->node, 100, -20);
+  const float green[] = {0, 1, 0, 1};
+  const float red[] = {1, 0, 0, 1};
+  // Matching the clear color must not cull a fractional rect over the green backdrop.
+  wlr_scene_set_background_color(scene, red);
+  struct wlr_scene_rect* background = wlr_scene_rect_create(root, 10, 10, green);
+  struct wlr_scene_tree* parent = wlr_scene_tree_create(root);
+  struct wlr_scene_rect* rect = wlr_scene_rect_create(parent, 2, 2, red);
+  wlr_scene_node_set_position(&rect->node, 2, 2);
+  const struct {
+    double parent_offset, offset, width;
+    bool clipped;
+    int left, right;
+  } frames[] = {
+      {0.0, 0.0, 2.0, false, 3, 6},
+      {0.2, 0.2, 2.4, false, 4, 7},
+      {0.2, 0.2, 4.0, true, 4, 6},
+      {-0.2, -0.2, 2.0, false, 2, 5},
+      // Cancelling translations leave the parent's clip at a fractional edge.
+      {-0.5, 0.5, 2.0, true, 3, 5},
+      {0.0, 0.0, 2.0, false, 3, 6},
+  };
+  bool ok = true;
+  for (size_t i = 0; i < sizeof(frames) / sizeof(frames[0]); ++i) {
+    ok &= wlr_scene_node_set_fractional_transform(&parent->node, frames[i].parent_offset, 0, 1, 1);
+    ok &= wlr_scene_node_set_fractional_transform(&rect->node, frames[i].offset, 0, frames[i].width / 2, 1);
+    const struct wlr_box clip = {0, 0, 4, 10};
+    wlr_scene_tree_set_clip(parent, frames[i].clipped ? &clip : NULL);
+    struct wlr_output_state state;
+    struct wlr_buffer* buffer = render_frame(output, swapchain, &state);
+    ok &= check(buffer != NULL, "fractional geometry frame renders");
+    if (buffer != NULL) {
+      for (int x = 0; x < 9; ++x) {
+        uint8_t pixel[4];
+        const bool inside = x >= frames[i].left && x < frames[i].right;
+        const bool read = fixture_read_display_pixel(fixture, buffer, x, 4, pixel);
+        ok &= read
+            && check(
+                  inside ? pixel[2] > 250 && pixel[1] < 5 : pixel[1] > 250 && pixel[2] < 5,
+                  "physical edges move and resize without leaving stale pixels or escaping the clip"
+            );
+      }
+      wlr_buffer_unlock(buffer);
+    }
+    wlr_output_state_finish(&state);
+    if (i == 1) {
+      double sx, sy;
+      ok &= check(
+          wlr_scene_node_at(&scene->tree.node, 102.3, -17, &sx, &sy) == &background->node,
+          "input falls through before the fractional edge"
+      );
+      ok &= check(
+          wlr_scene_node_at(&scene->tree.node, 102.5, -17, &sx, &sy) == &rect->node && fabs(sx - 1.0 / 12.0) < 0.00001,
+          "input follows the fractional presentation and returns local coordinates"
+      );
+    }
+    if (frames[i].clipped) {
+      ok &= check(
+          wlr_scene_node_at(&scene->tree.node, 104 + frames[i].parent_offset + 0.1, -17, NULL, NULL)
+              == &background->node,
+          "input falls through beyond the transformed ancestor clip"
+      );
+    }
+  }
+  // A correction on only y must retain the exact physical right edge on x.
+  wlr_scene_set_background_color(scene, green);
+  wlr_scene_tree_set_clip(parent, NULL);
+  wlr_scene_rect_set_size(rect, (int)(TEST_WIDTH / 1.5) - 2, 2);
+  ok &= wlr_scene_node_set_fractional_transform(&rect->node, 0, 0.2, 1, 1);
+  struct wlr_output_state state;
+  struct wlr_buffer* rendered = render_frame(output, swapchain, &state);
+  ok &= check(rendered != NULL, "fractional output-edge frame renders");
+  if (rendered != NULL) {
+    uint8_t pixel[4];
+    ok &= fixture_read_display_pixel(fixture, rendered, TEST_WIDTH - 1, 4, pixel)
+        && check(pixel[2] > 250 && pixel[1] < 5, "fractional geometry retains the output's final pixel");
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+  wlr_swapchain_destroy(swapchain);
+  wlr_scene_node_destroy(&scene->tree.node);
+  return ok;
+}
+
+// A snapshot outside its live workspace retains both the frame's inherited
+// correction and the presentation of a separately pooled shadow.
+static bool test_fractional_snapshot(struct fixture* fixture) {
+  if (!configure_fractional_output(fixture)) {
+    return false;
+  }
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_swapchain* swapchain = create_swapchain(fixture);
+  if (!check(scene != NULL && swapchain != NULL, "snapshot scene and swapchain")) {
+    if (scene != NULL) {
+      wlr_scene_node_destroy(&scene->tree.node);
+    }
+    wlr_swapchain_destroy(swapchain);
+    return false;
+  }
+  struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
+  wlr_scene_output_set_position(output, 100, -20);
+  struct wlr_scene_tree* root = wlr_scene_tree_create(&scene->tree);
+  wlr_scene_node_set_position(&root->node, 100, -20);
+  const float blue[] = {0, 0, 1, 1}, green[] = {0, 1, 0, 1}, red[] = {1, 0, 0, 1};
+  wlr_scene_rect_create(root, 12, 12, blue);
+  struct wlr_scene_tree* workspace = wlr_scene_tree_create(root);
+  struct wlr_scene_tree* live = wlr_scene_tree_create(workspace);
+  wlr_scene_node_set_position(&live->node, 2, 2);
+  bool ok = wlr_scene_node_set_fractional_transform(&workspace->node, 0.2, -0.2, 1.25, 1.1);
+  ok &= wlr_scene_node_set_fractional_transform(&live->node, 0.2, 0.3, 1.2, 1.25);
+  struct wlr_scene_rect* shadow = wlr_scene_rect_create(live, 4, 4, green);
+  wlr_scene_node_set_position(&shadow->node, -1, -1);
+  wlr_scene_rect_create(live, 2, 2, red);
+  uint8_t reference[TEST_HEIGHT][TEST_WIDTH][4] = {0};
+  struct wlr_output_state state;
+  struct wlr_buffer* rendered = render_frame(output, swapchain, &state);
+  ok &= check(rendered != NULL, "live fractional frame renders");
+  if (rendered != NULL) {
+    for (int y = 0; y < TEST_HEIGHT; ++y) {
+      for (int x = 0; x < TEST_WIDTH; ++x) {
+        ok &= fixture_read_display_pixel(fixture, rendered, x, y, reference[y][x]);
+      }
+    }
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+
+  struct wlr_scene_tree* destination = wlr_scene_tree_create(root);
+  ok &= wlr_scene_node_set_fractional_transform(&destination->node, -0.1, 0.1, 0.9, 0.8);
+  struct wlr_scene_tree* snapshot = wlr_scene_tree_create(destination);
+  wlr_scene_node_set_position(&snapshot->node, 2, 2);
+  ok &= wlr_scene_node_copy_fractional_transform_for_snapshot(&snapshot->node, &live->node);
+  wlr_scene_rect_create(snapshot, 2, 2, red);
+  struct wlr_scene_tree* pooled_shadow = wlr_scene_tree_create(root);
+  wlr_scene_node_set_position(&pooled_shadow->node, 2, 2);
+  ok &= wlr_scene_node_copy_fractional_transform_for_snapshot(&pooled_shadow->node, &snapshot->node);
+  shadow = wlr_scene_rect_create(pooled_shadow, 4, 4, green);
+  wlr_scene_node_set_position(&shadow->node, -1, -1);
+  wlr_scene_node_place_below(&pooled_shadow->node, &destination->node);
+  wlr_scene_node_destroy(&workspace->node);
+  rendered = render_frame(output, swapchain, &state);
+  ok &= check(rendered != NULL, "frozen fractional frame renders");
+  if (rendered != NULL) {
+    for (int y = 0; y < TEST_HEIGHT; ++y) {
+      for (int x = 0; x < TEST_WIDTH; ++x) {
+        uint8_t pixel[4];
+        ok &= fixture_read_display_pixel(fixture, rendered, x, y, pixel)
+            && check(memcmp(pixel, reference[y][x], sizeof(pixel)) == 0, "snapshot preserves every physical pixel");
+      }
+    }
+    wlr_buffer_unlock(rendered);
+  }
+  wlr_output_state_finish(&state);
+  wlr_scene_node_destroy(&scene->tree.node);
+  wlr_swapchain_destroy(swapchain);
+  return ok;
+}
+
+static bool test_fractional_occlusion(struct fixture* fixture) {
+  if (!configure_fractional_output(fixture)) {
+    return false;
+  }
+  uint8_t reference[TEST_HEIGHT][TEST_WIDTH][4] = {0};
+  bool ok = true;
+  for (int visibility = 0; visibility < 2; ++visibility) {
+    struct wlr_scene* scene = wlr_scene_create();
+    struct wlr_swapchain* swapchain = create_swapchain(fixture);
+    if (!check(scene != NULL && swapchain != NULL, "fractional occlusion scene and swapchain")) {
+      if (scene != NULL) {
+        wlr_scene_node_destroy(&scene->tree.node);
+      }
+      wlr_swapchain_destroy(swapchain);
+      return false;
+    }
+    scene->calculate_visibility = visibility;
+    struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
+    const float green[] = {0, 1, 0, 1}, red[] = {1, 0, 0, 1};
+    wlr_scene_rect_create(&scene->tree, 12, 12, green);
+    struct wlr_scene_rect* rect = wlr_scene_rect_create(&scene->tree, 16, 16, red);
+    wlr_scene_node_set_position(&rect->node, 1, 1);
+    wlr_scene_rect_set_corner_radius(rect, 4);
+    ok &= wlr_scene_node_set_fractional_transform(&rect->node, 0, 0, 0.5, 0.5);
+    struct wlr_output_state state;
+    struct wlr_buffer* rendered = render_frame(output, swapchain, &state);
+    ok &= check(rendered != NULL, "fractional rounded frame renders");
+    if (rendered != NULL) {
+      for (int y = 0; y < TEST_HEIGHT; ++y) {
+        for (int x = 0; x < TEST_WIDTH; ++x) {
+          uint8_t pixel[4];
+          if (!fixture_read_display_pixel(fixture, rendered, x, y, pixel)) {
+            ok = false;
+            continue;
+          }
+          if (visibility == 0) {
+            memcpy(reference[y][x], pixel, sizeof(pixel));
+          } else {
+            ok &= check(memcmp(pixel, reference[y][x], sizeof(pixel)) == 0, "occlusion preserves rounded backgrounds");
+          }
+        }
+      }
+      wlr_buffer_unlock(rendered);
+    }
+    wlr_output_state_finish(&state);
+    wlr_scene_node_destroy(&scene->tree.node);
+    wlr_swapchain_destroy(swapchain);
+  }
+  return ok;
+}
+
+// A red/blue boundary at one quarter of the source stays at the same screen
+// point while the window zooms around it. Integer coverage changes must not
+// move the sampled boundary, including near 1:1 and on a rotated output.
+static bool test_continuous_sampling(struct fixture* fixture) {
+  struct wlr_buffer* source = create_output_buffer(fixture, DRM_FORMAT_ARGB8888, TEST_WIDTH, TEST_HEIGHT);
+  if (!check(source != NULL, "sampling source buffer")) {
+    return false;
+  }
+  struct wlr_render_pass* pass = wlr_renderer_begin_buffer_pass(fixture->renderer, source, NULL);
+  if (!check(pass != NULL, "sampling source pass")) {
+    wlr_buffer_drop(source);
+    return false;
+  }
+  wlr_render_pass_add_rect(
+      pass,
+      &(struct wlr_render_rect_options){
+          .box = {0, 0, TEST_WIDTH, TEST_HEIGHT},
+          .color = {.b = 1, .a = 1},
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      }
+  );
+  wlr_render_pass_add_rect(
+      pass,
+      &(struct wlr_render_rect_options){
+          .box = {0, 0, TEST_WIDTH / 4, TEST_HEIGHT},
+          .color = {.r = 1, .a = 1},
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      }
+  );
+  if (!check(wlr_render_pass_submit(pass), "sampling source renders")) {
+    wlr_buffer_drop(source);
+    return false;
+  }
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_swapchain* swapchain = create_swapchain(fixture);
+  if (!check(scene != NULL && swapchain != NULL, "sampling scene and swapchain")) {
+    if (scene != NULL) {
+      wlr_scene_node_destroy(&scene->tree.node);
+    }
+    wlr_swapchain_destroy(swapchain);
+    wlr_buffer_drop(source);
+    return false;
+  }
+  struct wlr_scene_output* output = wlr_scene_output_create(scene, fixture->output);
+  struct wlr_scene_buffer* buffer = wlr_scene_buffer_create(&scene->tree, source);
+  if (!check(output != NULL && buffer != NULL, "sampling output and scene buffer")) {
+    wlr_swapchain_destroy(swapchain);
+    wlr_scene_node_destroy(&scene->tree.node);
+    wlr_buffer_drop(source);
+    return false;
+  }
+  wlr_scene_output_set_position(output, 100, -20);
+  wlr_scene_node_set_position(&buffer->node, 102, -18);
+  wlr_scene_buffer_set_dest_size(buffer, 8, 8);
+  wlr_scene_buffer_set_filter_mode(buffer, WLR_SCALE_FILTER_BILINEAR);
+  const double widths[] = {10.2, 10.8, 11.2, 10.8, 15.2, 15.8, 16.0};
+  bool ok = true;
+  for (int rotated = 0; rotated < 2; ++rotated) {
+    const enum wl_output_transform transform = rotated ? WL_OUTPUT_TRANSFORM_90 : WL_OUTPUT_TRANSFORM_NORMAL;
+    struct wlr_output_state output_state;
+    wlr_output_state_init(&output_state);
+    wlr_output_state_set_scale(&output_state, 1.5f);
+    wlr_output_state_set_transform(&output_state, transform);
+    ok &= check(wlr_output_commit_state(fixture->output, &output_state), "sampling output configuration commits");
+    wlr_output_state_finish(&output_state);
+    struct wlr_box probe = {5, 6, 1, 1};
+    wlr_box_transform(&probe, &probe, wlr_output_transform_invert(transform), TEST_WIDTH, TEST_HEIGHT);
+    for (int continuous = 0; continuous < 2; ++continuous) {
+      wlr_scene_buffer_set_continuous_sampling(buffer, continuous);
+      uint8_t reference[4] = {0};
+      int largest_change = 0;
+      for (size_t i = 0; i < sizeof(widths) / sizeof(widths[0]); ++i) {
+        const double left = 5.5 - widths[i] / 4.0;
+        ok &= wlr_scene_node_set_fractional_transform(&buffer->node, left / 1.5 - 2.0, 0, widths[i] / 12.0, 1);
+        struct wlr_output_state state;
+        struct wlr_buffer* rendered = render_frame(output, swapchain, &state);
+        ok &= check(rendered != NULL, "sampling frame renders");
+        uint8_t pixel[4];
+        if (rendered != NULL) {
+          const bool read = fixture_read_display_pixel(fixture, rendered, probe.x, probe.y, pixel);
+          ok &= read;
+          if (read) {
+            if (i == 0) {
+              memcpy(reference, pixel, sizeof(reference));
+              ok &= check(pixel[0] > 20 && pixel[2] > 20, "probe samples the red/blue boundary");
+            }
+            for (int channel = 0; channel < 3; ++channel) {
+              const int change = abs((int)pixel[channel] - reference[channel]);
+              if (change > largest_change) {
+                largest_change = change;
+              }
+            }
+          }
+          wlr_buffer_unlock(rendered);
+        }
+        wlr_output_state_finish(&state);
+      }
+      ok &= check(
+          continuous ? largest_change <= 3 : largest_change > 10,
+          continuous ? "continuous sampling holds the detail still" : "raster-box sampling reproduces the detail wobble"
+      );
+    }
+    // Crop entirely to blue, leaving red immediately outside the integer crop.
+    // The first fragment is just inside the continuous edge and must not blend red.
+    wlr_scene_buffer_set_source_box(buffer, &(struct wlr_fbox){TEST_WIDTH / 4, 0, TEST_WIDTH / 2, TEST_HEIGHT});
+    wlr_scene_buffer_set_continuous_sampling(buffer, true);
+    ok &= wlr_scene_node_set_fractional_transform(&buffer->node, 0.49 / 1.5, 0, 0.5, 1);
+    struct wlr_output_state state;
+    struct wlr_buffer* rendered = render_frame(output, swapchain, &state);
+    ok &= check(rendered != NULL, "fractional crop frame renders");
+    if (rendered != NULL) {
+      struct wlr_box edge = {3, 6, 1, 1};
+      wlr_box_transform(&edge, &edge, wlr_output_transform_invert(transform), TEST_WIDTH, TEST_HEIGHT);
+      uint8_t pixel[4];
+      ok &= fixture_read_display_pixel(fixture, rendered, edge.x, edge.y, pixel)
+          && check(pixel[0] > 250 && pixel[2] < 5, "continuous sampling excludes the cropped-out neighbor");
+      wlr_buffer_unlock(rendered);
+    }
+    wlr_output_state_finish(&state);
+    wlr_scene_buffer_set_source_box(buffer, NULL);
+  }
+  wlr_swapchain_destroy(swapchain);
+  wlr_scene_node_destroy(&scene->tree.node);
+  wlr_buffer_drop(source);
+  return ok;
+}
+
 // One whole-damage frame per swapchain buffer, so the next frame carries only its own damage.
 static bool warm_up(struct wlr_scene_output* scene_output, struct wlr_swapchain* swapchain) {
   bool ok = true;
@@ -1193,6 +1557,35 @@ static bool test_border_geometry_tree(struct fixture* fixture) {
     wlr_buffer_unlock(rendered);
   }
   wlr_output_state_finish(&state);
+  ok &= wlr_scene_node_set_fractional_transform(&tree->node, 0.2, 0.2, 0.5, 0.5);
+  for (int transformed = 0; transformed < 8; ++transformed) {
+    const enum wl_output_transform transform = transformed;
+    wlr_output_state_init(&state);
+    wlr_output_state_set_scale(&state, 1.5f);
+    wlr_output_state_set_transform(&state, transform);
+    ok &= check(wlr_output_commit_state(fixture->output, &state), "border output configuration commits");
+    wlr_output_state_finish(&state);
+    struct wlr_swapchain* swapchain = create_swapchain(fixture);
+    if (!check(swapchain != NULL, "fractional border swapchain")) {
+      ok = false;
+      break;
+    }
+    rendered = render_frame(scene_output, swapchain, &state);
+    ok &= check(rendered != NULL, "fractional border frame renders");
+    if (rendered != NULL) {
+      const int probes[][2] = {{5, 9}, {6, 7}, {7, 8}};
+      for (size_t i = 0; i < sizeof(probes) / sizeof(probes[0]); ++i) {
+        struct wlr_box probe = {probes[i][0], probes[i][1], 1, 1};
+        wlr_box_transform(&probe, &probe, wlr_output_transform_invert(transform), TEST_WIDTH, TEST_HEIGHT);
+        uint8_t pixel[4];
+        ok &= fixture_read_display_pixel(fixture, rendered, probe.x, probe.y, pixel)
+            && check(i == 0 ? pixel[0] > 250 : pixel[0] < 5, "border effect hole matches its physical raster edges");
+      }
+      wlr_buffer_unlock(rendered);
+    }
+    wlr_output_state_finish(&state);
+    wlr_swapchain_destroy(swapchain);
+  }
   fx_effect_shader_unref(program);
   wlr_scene_node_destroy(&scene->tree.node);
   return ok;
@@ -2664,6 +3057,40 @@ static bool test_in_place_shape(struct fixture* fixture) {
       wlr_buffer_unlock(rendered);
     }
     wlr_scene_node_destroy(&scene->tree.node);
+    // The buffer has its own correction below the animated tree. Probe both mask
+    // edges at physical resolution, including a rotated output.
+    for (int rotated = 0; rotated < 2; ++rotated) {
+      const enum wl_output_transform transform = rotated ? WL_OUTPUT_TRANSFORM_90 : WL_OUTPUT_TRANSFORM_NORMAL;
+      scene = wlr_scene_create();
+      scene_output = wlr_scene_output_create(scene, fixture->output);
+      wlr_scene_output_set_position(scene_output, 100, -20);
+      struct wlr_scene_tree* root = wlr_scene_tree_create(&scene->tree);
+      wlr_scene_node_set_position(&root->node, 100, -20);
+      wlr_scene_rect_create(root, 12, 12, blue);
+      struct wlr_scene_tree* surface = wlr_scene_tree_create(root);
+      wlr_scene_node_set_position(&surface->node, 2, 1);
+      ok &= wlr_scene_node_set_fractional_transform(&surface->node, 0.2, 0.2, 1, 1);
+      struct wlr_scene_buffer* buffer = wlr_scene_buffer_create(surface, content);
+      wlr_scene_buffer_set_dest_size(buffer, 6, 4);
+      wlr_scene_buffer_set_corner_radii(buffer, corner_radii_all(1));
+      wlr_scene_buffer_set_corner_box(buffer, &(struct wlr_box){1, 1, 4, 2});
+      ok &= wlr_scene_node_set_fractional_transform(&buffer->node, 0.2, 0.2, 1.2, 1.25);
+      wlr_scene_node_set_animation(&surface->node, FX_SLOT_WINDOW, paint, &parameters);
+      rendered = render_transformed(fixture, scene_output, 1.5f, transform);
+      ok &= check(rendered != NULL, "fractional in-place mask frame");
+      if (rendered != NULL) {
+        for (int x = 4; x <= 13; ++x) {
+          struct wlr_box probe = {x, 6, 1, 1};
+          wlr_box_transform(&probe, &probe, wlr_output_transform_invert(transform), TEST_WIDTH, TEST_HEIGHT);
+          const bool inside = x >= 5 && x < 13;
+          uint8_t pixel[4];
+          ok &= fixture_read_display_pixel(fixture, rendered, probe.x, probe.y, pixel)
+              && is_colour(pixel, inside ? 255 : 0, 0, 255, "fractional mask follows the content's physical edges");
+        }
+        wlr_buffer_unlock(rendered);
+      }
+      wlr_scene_node_destroy(&scene->tree.node);
+    }
     fx_effect_shader_unref(paint);
   }
   wlr_buffer_drop(content);
@@ -3110,6 +3537,14 @@ int main(int argc, char* argv[]) {
     ok = test_occlusion(&fixture);
   } else if (strcmp(argv[1], "background-clear") == 0) {
     ok = test_background_clear(&fixture);
+  } else if (strcmp(argv[1], "fractional-geometry") == 0) {
+    ok = test_fractional_geometry(&fixture);
+  } else if (strcmp(argv[1], "fractional-snapshot") == 0) {
+    ok = test_fractional_snapshot(&fixture);
+  } else if (strcmp(argv[1], "fractional-occlusion") == 0) {
+    ok = test_fractional_occlusion(&fixture);
+  } else if (strcmp(argv[1], "continuous-sampling") == 0) {
+    ok = test_continuous_sampling(&fixture);
   } else if (strcmp(argv[1], "damage-confinement") == 0) {
     ok = test_damage_confinement(&fixture);
   } else if (strcmp(argv[1], "whole-box-invalidation") == 0) {

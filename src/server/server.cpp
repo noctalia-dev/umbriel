@@ -1832,6 +1832,31 @@ namespace umbriel {
       : m_server(&server), m_id(id), m_tree(tree), m_content(content != nullptr ? content : tree), m_output(output),
         m_captured(box), m_canvasX(tree->node.x), m_canvasY(tree->node.y), m_borders(std::move(borders)),
         m_shadow(shadow) {
+    // Undo the parent's map to retain the node-local correction when its canvas
+    // moves. Workspace offsets must not discard an interrupted resize's scale.
+    const auto localPresentation = [](wlr_scene_node* node) {
+      int lx = 0;
+      int ly = 0;
+      wlr_scene_node_coords(node, &lx, &ly);
+      const wlr_box origin{lx, ly, 1, 1};
+      wlr_fbox presented{};
+      wlr_scene_node_get_presentation_box(node, &origin, &presented);
+      wlr_fbox parentPresentation{static_cast<double>(lx), static_cast<double>(ly), 1, 1};
+      if (node->parent != nullptr) {
+        wlr_scene_node_get_presentation_box(&node->parent->node, &origin, &parentPresentation);
+      }
+      return wlr_fbox{
+          (presented.x - parentPresentation.x) / parentPresentation.width,
+          (presented.y - parentPresentation.y) / parentPresentation.height,
+          presented.width / parentPresentation.width,
+          presented.height / parentPresentation.height,
+      };
+    };
+    m_capturedPresentation = localPresentation(&m_tree->node);
+    if (m_shadow.tree != nullptr) {
+      m_capturedShadowPresentation = localPresentation(&m_shadow.tree->node);
+    }
+
     m_topExtension = topExtension;
     m_event = event;
     m_blurBackground =
@@ -2051,8 +2076,21 @@ namespace umbriel {
     const int y =
         m_canvasY + (shrinks ? (m_captured.height - height) / 2 : 0) + static_cast<int>(std::lround(m_slide.current()));
     wlr_scene_node_set_position(&m_tree->node, x, y);
+    if (!wlr_scene_node_set_fractional_transform(
+            &m_tree->node, m_capturedPresentation.x + m_fractionalOffsetX,
+            m_capturedPresentation.y + m_fractionalOffsetY, m_capturedPresentation.width, m_capturedPresentation.height
+        )) {
+      kLog.error("failed to store fractional close snapshot presentation");
+    }
     if (m_shadow.tree != nullptr) {
       wlr_scene_node_set_position(&m_shadow.tree->node, x, y);
+      if (!wlr_scene_node_set_fractional_transform(
+              &m_shadow.tree->node, m_capturedShadowPresentation.x + m_fractionalOffsetX,
+              m_capturedShadowPresentation.y + m_fractionalOffsetY, m_capturedShadowPresentation.width,
+              m_capturedShadowPresentation.height
+          )) {
+        kLog.error("failed to store fractional close snapshot shadow presentation");
+      }
     }
     (void)wlr_scene_node_set_animation_output_clip(&m_tree->node, nullptr);
     wlr_scene_node_set_enabled(&m_tree->node, true);
@@ -2069,10 +2107,14 @@ namespace umbriel {
     }
   }
 
-  void Server::CloseSnapshot::present(int canvasX, int canvasY, bool visible) {
+  void Server::CloseSnapshot::present(
+      int canvasX, int canvasY, bool visible, double fractionalOffsetX, double fractionalOffsetY
+  ) {
     m_canvasX = canvasX;
     m_canvasY = canvasY;
     m_visible = visible;
+    m_fractionalOffsetX = fractionalOffsetX;
+    m_fractionalOffsetY = fractionalOffsetY;
     applyPresentation();
   }
 
@@ -2426,10 +2468,12 @@ namespace umbriel {
     return id;
   }
 
-  void Server::presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible) {
+  void Server::presentCloseSnapshot(
+      CloseSnapshotId id, int canvasX, int canvasY, bool visible, double fractionalOffsetX, double fractionalOffsetY
+  ) {
     for (const auto& snapshot : m_closeSnapshots) {
       if (snapshot->id() == id) {
-        snapshot->present(canvasX, canvasY, visible);
+        snapshot->present(canvasX, canvasY, visible, fractionalOffsetX, fractionalOffsetY);
         return;
       }
     }

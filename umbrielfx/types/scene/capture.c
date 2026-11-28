@@ -70,6 +70,7 @@ _get_scene_node_extents(struct wlr_scene_node* node, int lx, int ly, int* x_min,
     if (node_box.width <= 0 || node_box.height <= 0) {
       break;
     }
+    scene_presentation_bounds(node, &node_box);
 
     if (node_box.x < *x_min) {
       *x_min = node_box.x;

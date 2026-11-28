@@ -1329,16 +1329,16 @@ namespace umbriel {
         if (old == previous.end()) {
           continue;
         }
-        const std::array<double, 2> oldSpan = size
-            ? std::array<double, 2>{static_cast<double>(old->to.width - old->from.width),
-                                    static_cast<double>(old->to.height - old->from.height)}
-            : std::array<double, 2>{static_cast<double>(old->to.x - old->from.x),
-                                    static_cast<double>(old->to.y - old->from.y)};
-        const std::array<double, 2> newSpan = size
-            ? std::array<double, 2>{static_cast<double>(entry.to.width - entry.from.width),
-                                    static_cast<double>(entry.to.height - entry.from.height)}
-            : std::array<double, 2>{static_cast<double>(entry.to.x - entry.from.x),
-                                    static_cast<double>(entry.to.y - entry.from.y)};
+        const auto span = [size](const auto& member) {
+          const double x = member.presentedFrom ? member.presentedFrom->x : member.from.x;
+          const double y = member.presentedFrom ? member.presentedFrom->y : member.from.y;
+          const double width = member.presentedFrom ? member.presentedFrom->width : member.from.width;
+          const double height = member.presentedFrom ? member.presentedFrom->height : member.from.height;
+          return size ? std::array<double, 2>{member.to.width - width, member.to.height - height}
+                      : std::array<double, 2>{member.to.x - x, member.to.y - y};
+        };
+        const std::array<double, 2> oldSpan = span(*old);
+        const std::array<double, 2> newSpan = span(entry);
         for (size_t axis = 0; axis < 2; ++axis) {
           along += oldSpan[axis] * previousSpeed * newSpan[axis];
           squared += newSpan[axis] * newSpan[axis];
@@ -1368,6 +1368,7 @@ namespace umbriel {
       View* view;
       wlr_box from;
       wlr_box to;
+      std::optional<wlr_fbox> presentedFrom;
       bool opening;
     };
     std::vector<Member> members;
@@ -1385,7 +1386,7 @@ namespace umbriel {
       const wlr_box& presented = view->presentedBox();
       const bool positioned = view->positioned() && presented.width > 0 && presented.height > 0;
       const bool opening = !positioned || view->tiledOpeningDeferred();
-      const std::optional<wlr_box> openingLayoutBox = view->openingLayoutBox();
+      const std::optional<wlr_fbox> presentedFrom = view->tiledMotionPresentationBox();
       view->setLayoutTarget(slot.x, slot.y);
       if ((!view->onActiveWorkspace() && !m_inSwitchTransition && !overviewActive)
           || slot.width <= 0
@@ -1395,14 +1396,18 @@ namespace umbriel {
         view->presentTiledBox(slot);
         continue;
       }
-      const wlr_box from = openingLayoutBox.value_or(
-          wlr_box{.x = view->layoutX(), .y = view->layoutY(), .width = presented.width, .height = presented.height}
-      );
+      const wlr_box from = presentedFrom
+          ? wlr_box{
+                static_cast<int>(std::lround(presentedFrom->x)), static_cast<int>(std::lround(presentedFrom->y)),
+                static_cast<int>(std::lround(presentedFrom->width)), static_cast<int>(std::lround(presentedFrom->height)),
+            }
+          : wlr_box{.x = view->layoutX(), .y = view->layoutY(), .width = presented.width, .height = presented.height};
       const wlr_box to = slot;
       members.push_back({
           .view = view,
           .from = positioned ? from : wlr_box{},
           .to = to,
+          .presentedFrom = positioned ? presentedFrom : std::nullopt,
           .opening = opening,
       });
     }
@@ -1419,7 +1424,12 @@ namespace umbriel {
       if (member.opening) {
         continue;
       }
-      if (sameBox(member.from, member.to)) {
+      const bool presentationAtTarget = !member.presentedFrom
+          || (member.presentedFrom->x == member.to.x
+              && member.presentedFrom->y == member.to.y
+              && member.presentedFrom->width == member.to.width
+              && member.presentedFrom->height == member.to.height);
+      if (sameBox(member.from, member.to) && presentationAtTarget) {
         stableViews.push_back(member);
         continue;
       }
@@ -1427,6 +1437,7 @@ namespace umbriel {
           .view = member.view,
           .from = member.from,
           .to = member.to,
+          .presentedFrom = member.presentedFrom,
           .direction = motionDirection(member.from, member.to),
       });
     }
@@ -1567,7 +1578,11 @@ namespace umbriel {
     for (size_t i = 0; i < m_motion.views.size(); ++i) {
       const LayoutMotion::ViewEntry& entry = m_motion.views[i];
       entry.view->beginLayoutMotion(entry.direction);
-      entry.view->presentTiledBox(entry.from);
+      if (entry.presentedFrom) {
+        entry.view->presentTiledBox(*entry.presentedFrom);
+      } else {
+        entry.view->presentTiledBox(entry.from);
+      }
       // Freeze what a resized member shows, so its client's redraw stays out of sight until the switch.
       if (wait
           && (entry.from.width != entry.to.width || entry.from.height != entry.to.height)
@@ -1690,19 +1705,31 @@ namespace umbriel {
     }
     const bool positionTicked = m_motion.progress.tick(nowMsec);
     const bool sizeTicked = m_motion.size.tick(nowMsec);
+    const Output* output = m_group != nullptr ? m_group->output() : nullptr;
+    const double scale = output != nullptr ? output->wlr()->scale : 1.0;
+    const wlr_box outputBox = output != nullptr ? output->layoutBox() : wlr_box{};
+    int outputPixelWidth = 0;
+    int outputPixelHeight = 0;
+    if (output != nullptr) {
+      wlr_output_transformed_resolution(output->wlr(), &outputPixelWidth, &outputPixelHeight);
+    }
     // A carried-speed spring settles on its own solver; stop it once no member's pixel can change. One progress unit
     // spans each member's whole travel, so the longest travel sets the pixel scale.
     if (m_motion.progressPhysics || m_motion.sizePhysics) {
-      int travel = 1;
-      int resize = 1;
+      double travel = 1.0;
+      double resize = 1.0;
       for (const LayoutMotion::ViewEntry& entry : m_motion.views) {
-        travel = std::max({travel, std::abs(entry.to.x - entry.from.x), std::abs(entry.to.y - entry.from.y)});
-        resize = std::max(
-            {resize, std::abs(entry.to.width - entry.from.width), std::abs(entry.to.height - entry.from.height)}
-        );
+        const double x = entry.presentedFrom ? entry.presentedFrom->x : entry.from.x;
+        const double y = entry.presentedFrom ? entry.presentedFrom->y : entry.from.y;
+        const double width = entry.presentedFrom ? entry.presentedFrom->width : entry.from.width;
+        const double height = entry.presentedFrom ? entry.presentedFrom->height : entry.from.height;
+        travel = std::max({travel, std::abs(entry.to.x - x), std::abs(entry.to.y - y)});
+        resize = std::max({resize, std::abs(entry.to.width - width), std::abs(entry.to.height - height)});
       }
-      static_cast<void>(m_motion.progress.finishSpringTail(travel));
-      static_cast<void>(m_motion.size.finishSpringTail(resize));
+      // Allow for aligned endpoints and divide the rounding cell between the two
+      // timelines, since the far edge combines both position and size movement.
+      static_cast<void>(m_motion.progress.finishSpringTail(2.0 * (std::ceil((travel + 1.0) * scale) + 1.0)));
+      static_cast<void>(m_motion.size.finishSpringTail(2.0 * (std::ceil((resize + 2.0) * scale) + 2.0)));
     }
     const bool running = m_motion.progress.animating() || m_motion.size.animating();
     const bool needsFinalPresentation = !running && !m_motion.views.empty();
@@ -1718,7 +1745,10 @@ namespace umbriel {
         m_motion.size.animating() ? timeline(m_motion.size, m_motion.sizePhysics, m_motion.sizeCurve) : 1.0;
     for (const LayoutMotion::ViewEntry& entry : m_motion.views) {
       if (entry.view->mapped() && m_layout->columnOf(entry.view) >= 0) {
-        entry.view->presentTiledBox(interpolateBox(entry.from, entry.to, position, size));
+        entry.view->presentTiledBox(interpolatePresentationBox(
+            entry.from, entry.to, position, size, scale, outputBox, outputPixelWidth, outputPixelHeight,
+            entry.presentedFrom ? &*entry.presentedFrom : nullptr
+        ));
       }
     }
     if (running) {
@@ -1753,7 +1783,14 @@ namespace umbriel {
 
   void Workspace::trackCloseSnapshot(CloseSnapshotId id, const wlr_box& outputBox) {
     const wlr_box canvas{outputBox.x - m_slideOffsetX, outputBox.y - m_slideOffsetY, outputBox.width, outputBox.height};
-    m_trackedCloseSnapshots.push_back({.id = id, .canvas = canvas});
+    // The snapshot already froze this fraction with the view's own correction.
+    // Later presentations replace only the workspace's contribution.
+    m_trackedCloseSnapshots.push_back({
+        .id = id,
+        .canvas = canvas,
+        .capturedSlideFractionX = m_slideFractionX,
+        .capturedSlideFractionY = m_slideFractionY,
+    });
     syncCloseSnapshots();
   }
 
@@ -1776,7 +1813,8 @@ namespace umbriel {
     }
     for (const TrackedCloseSnapshot& snapshot : m_trackedCloseSnapshots) {
       server->presentCloseSnapshot(
-          snapshot.id, snapshot.canvas.x + m_slideOffsetX, snapshot.canvas.y + m_slideOffsetY, visible
+          snapshot.id, snapshot.canvas.x + m_slideOffsetX, snapshot.canvas.y + m_slideOffsetY, visible,
+          m_slideFractionX - snapshot.capturedSlideFractionX, m_slideFractionY - snapshot.capturedSlideFractionY
       );
       if (m_scratchpad) {
         server->setCloseSnapshotFade(snapshot.id, fade);
@@ -2780,11 +2818,15 @@ namespace umbriel {
   void Workspace::setSlideOffset(double x, double y) {
     m_slideOffsetX = static_cast<int>(std::lround(x));
     m_slideOffsetY = static_cast<int>(std::lround(y));
+    m_slideFractionX = x - m_slideOffsetX;
+    m_slideFractionY = y - m_slideOffsetY;
     if (m_tree != nullptr) {
       wlr_scene_node_set_position(&m_tree->node, m_slideOffsetX, m_slideOffsetY);
+      wlr_scene_node_set_fractional_transform(&m_tree->node, m_slideFractionX, m_slideFractionY, 1.0, 1.0);
     }
     if (m_fullscreenTree != nullptr) {
       wlr_scene_node_set_position(&m_fullscreenTree->node, m_slideOffsetX, m_slideOffsetY);
+      wlr_scene_node_set_fractional_transform(&m_fullscreenTree->node, m_slideFractionX, m_slideFractionY, 1.0, 1.0);
     }
     for (View* view : m_views) {
       if (!view->pinned() && view->mapped()) {
@@ -3844,9 +3886,9 @@ namespace umbriel {
   bool WorkspaceGroup::tickAnimations(double nowMsec) {
     const bool ticked = m_slideAnim.tick(nowMsec);
     if (ticked && m_slideAnim.animating() && m_slideAnim.curve().easing == Easing::Spring) {
-      // One step is `extent` pixels, so a spring that can no longer move a pixel has already landed there: end it
+      // One step is `extent` logical pixels, so a spring that can no longer move a physical pixel has landed: end it
       // now rather than letting it creep at amplitudes the pixel grid rounds away.
-      static_cast<void>(m_slideAnim.finishSpringTail(m_slide.extent));
+      static_cast<void>(m_slideAnim.finishSpringTail(m_slide.extent * m_output->wlr()->scale));
     }
     if (config().animation.workspaces.style == "slide") {
       bindAnimationEffect(&m_output->viewRoot()->node, AnimationEvent::Workspaces, m_slideAnim);

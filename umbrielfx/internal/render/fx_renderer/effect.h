@@ -58,10 +58,10 @@ void fx_effect_shader_bind_parameters(
     struct fx_effect_shader* shader, const struct fx_animation_parameters* parameters
 );
 
-// Border node geometry in logical px, relative to the composite's logical_box origin.
+// Border geometry in buffer pixels relative to the composite box, in unrotated texture axes.
 struct fx_effect_geometry {
   struct wlr_box hole;
-  float radius[4]; // tl, tr, br, bl logical px
+  float radius[4]; // tl, tr, br, bl buffer px
 };
 
 #define FX_LIGHT_LEVELS 6
